@@ -22,6 +22,8 @@ import { ResidentDashboard } from './components/ResidentDashboard.tsx';
 import { CamerasGrid } from './components/CamerasGrid.tsx';
 import { FinancialModule } from './components/FinancialModule.tsx';
 import { AdminTopologyView } from './components/AdminTopologyView.tsx';
+import { UnitManagementModule } from './components/UnitManagementModule.tsx';
+import { DeviceManagementModule } from './components/DeviceManagementModule.tsx';
 import { AdminDashboard } from './components/AdminDashboard.tsx';
 import { PortariaModule } from './components/PortariaModule.tsx';
 import { MaiaChatDrawer } from './components/MaiaChatDrawer.tsx';
@@ -58,7 +60,7 @@ export default function App() {
     mfaEnabled: true,
   });
 
-  const [activeTab, setActiveTab] = useState<'inicio' | 'portaria' | 'cameras' | 'financeiro' | 'engenharia'>('inicio');
+  const [activeTab, setActiveTab] = useState<'inicio' | 'portaria' | 'cameras' | 'financeiro' | 'engenharia' | 'dispositivos' | 'moradores'>('inicio');
 
   // Estados dos Módulos do Sistema
   const [units, setUnits] = useState<Unit[]>([]);
@@ -179,6 +181,7 @@ export default function App() {
       const data = await res.json();
       if (data.success && data.session) {
         setSession(data.session);
+        setActiveTab('inicio');
         setFeedbackMessage(`Sessão alterada para perfil: ${data.session.role.toUpperCase()}`);
         setTimeout(() => setFeedbackMessage(null), 3000);
         refreshAllData();
@@ -396,7 +399,7 @@ export default function App() {
             />
           )}
 
-          {activeTab === 'cameras' && <CamerasGrid cameras={cameras} />}
+          {activeTab === 'cameras' && session.role !== 'morador' && <CamerasGrid cameras={cameras} />}
 
           {activeTab === 'financeiro' && (
             <FinancialModule
@@ -407,7 +410,7 @@ export default function App() {
             />
           )}
 
-          {activeTab === 'engenharia' && (
+          {activeTab === 'engenharia' && (session.role === 'super_admin' || session.role === 'admin_sistema') && (
             <AdminTopologyView
               systemStatus={systemStatus}
               auditLogs={auditLogs}
@@ -416,6 +419,15 @@ export default function App() {
               automations={automations}
               onToggleIoTDevice={handleToggleIoTDevice}
             />
+          )}
+
+          
+          {activeTab === 'moradores' && session.role !== 'morador' && (
+            <UnitManagementModule />
+          )}
+  
+          {activeTab === 'dispositivos' && (session.role === 'super_admin' || session.role === 'admin_sistema') && (
+            <DeviceManagementModule />
           )}
         </main>
 

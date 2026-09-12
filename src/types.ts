@@ -120,6 +120,29 @@ export interface CameraDevice {
   resolution: string;
   status: 'online' | 'offline';
   isXpeIntegrated?: boolean;
+  manufacturer?: string;
+  model?: string;
+  ip?: string;
+}
+
+export interface DiscoveredCamera {
+  id: string;
+  ip: string;
+  mac: string;
+  manufacturer: 'Intelbras' | 'Hikvision' | 'Dahua' | 'Axis' | 'Uniview' | 'ONVIF Genérica';
+  model: string;
+  firmwareVersion?: string;
+  onvifPort: number;
+  rtspPort: number;
+  httpPort: number;
+  discoveryMethod: 'WS-Discovery' | 'SSDP' | 'ARP/OUI Scan';
+  supportedProfiles: ('ONVIF_Profile_S' | 'ONVIF_Profile_T')[];
+  suggestedRtspMain: string;
+  suggestedRtspSub: string;
+  suggestedGo2rtcConfig: string;
+  isConfigured: boolean;
+  defaultCredentialsHint: string;
+  detectedCodec: string;
 }
 
 export type CallOrigin = 'xpe_3115_ip' | 'qr_virtual_intercom' | 'app_webrtc';
@@ -257,6 +280,10 @@ export type EventBusEventType =
   | 'SOS_TRIGGERED'
   | 'PAYMENT_OVERDUE'
   | 'GATE_OPENED'
+  | 'CAMERA_ADDED'
+  | 'CAMERA_REMOVED'
+  | 'DISCOVERY_SCAN_COMPLETED'
+  | 'CAMERA_PARAMETRIZED_VIA_DISCOVERY'
   | 'MAIA_ACTION_EXECUTED';
 
 export interface EventBusMessage {

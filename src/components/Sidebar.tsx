@@ -1,5 +1,6 @@
 import React, { useState } from 'react';
 import {
+  Users,
   Home,
   PhoneCall,
   Camera,
@@ -25,8 +26,8 @@ import {
 import type { UserSession, SystemStatus } from '../types.ts';
 
 interface SidebarProps {
-  currentTab: 'inicio' | 'portaria' | 'cameras' | 'financeiro' | 'engenharia';
-  onSelectTab: (tab: 'inicio' | 'portaria' | 'cameras' | 'financeiro' | 'engenharia') => void;
+  currentTab: 'inicio' | 'portaria' | 'cameras' | 'financeiro' | 'engenharia' | 'dispositivos' | 'moradores';
+  onSelectTab: (tab: 'inicio' | 'portaria' | 'cameras' | 'financeiro' | 'engenharia' | 'dispositivos' | 'moradores') => void;
   session: UserSession;
   systemStatus: SystemStatus | null;
   activeCallCount: number;
@@ -56,7 +57,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
   const [isCollapsed, setIsCollapsed] = useState(false);
   const [roleDropdownOpen, setRoleDropdownOpen] = useState(false);
 
-  const navItems = [
+  const navItems: any[] = [
     {
       id: 'inicio',
       label: session.role === 'morador' ? 'Portal do Morador' : 'Painel Central',
@@ -64,38 +65,92 @@ export const Sidebar: React.FC<SidebarProps> = ({
       badge: null,
       section: 'principal',
     },
-    {
-      id: 'cameras',
-      label: 'Câmeras IP ONVIF',
-      icon: Camera,
-      badge: '4 ao vivo',
-      section: 'seguranca',
-    },
-    {
+  ];
+
+  if (session.role === 'morador') {
+    navItems.push({
       id: 'financeiro',
       label: 'Boletos & Financeiro',
       icon: DollarSign,
       badge: null,
       section: 'gestao',
-    },
-    {
-      id: 'engenharia',
-      label: 'Engenharia & Auditoria',
-      icon: Server,
-      badge: 'LAN OK',
-      section: 'gestao',
-    },
-  ];
-
-  // Adiciona Portaria para quem não é morador
-  if (session.role !== 'morador') {
-    navItems.splice(1, 0, {
-      id: 'portaria',
-      label: 'Portaria & Acessos',
-      icon: DoorOpen,
-      badge: null,
-      section: 'seguranca',
-    } as any);
+    });
+  } else if (session.role === 'sindico') {
+    navItems.push(
+      {
+        id: 'portaria',
+        label: 'Portaria & Acessos',
+        icon: DoorOpen,
+        badge: null,
+        section: 'seguranca',
+      },
+      {
+        id: 'moradores',
+        label: 'Gestão de Moradores',
+        icon: Users,
+        badge: null,
+        section: 'gestao',
+      },
+      {
+        id: 'cameras',
+        label: 'Câmeras IP ONVIF',
+        icon: Camera,
+        badge: '4 ao vivo',
+        section: 'seguranca',
+      },
+      {
+        id: 'financeiro',
+        label: 'Boletos & Financeiro',
+        icon: DollarSign,
+        badge: null,
+        section: 'gestao',
+      }
+    );
+  } else if (session.role === 'super_admin' || session.role === 'admin_sistema') {
+    navItems.push(
+      {
+        id: 'portaria',
+        label: 'Portaria & Acessos',
+        icon: DoorOpen,
+        badge: null,
+        section: 'seguranca',
+      },
+      {
+        id: 'moradores',
+        label: 'Gestão de Moradores',
+        icon: Users,
+        badge: null,
+        section: 'gestao',
+      },
+      {
+        id: 'cameras',
+        label: 'Câmeras IP ONVIF',
+        icon: Camera,
+        badge: '4 ao vivo',
+        section: 'seguranca',
+      },
+      {
+        id: 'financeiro',
+        label: 'Boletos & Financeiro',
+        icon: DollarSign,
+        badge: null,
+        section: 'gestao',
+      },
+      {
+        id: 'dispositivos',
+        label: 'Configurar Dispositivos',
+        icon: Radio,
+        badge: 'IoT',
+        section: 'gestao',
+      },
+      {
+        id: 'engenharia',
+        label: 'Engenharia & Auditoria',
+        icon: Server,
+        badge: 'LAN OK',
+        section: 'gestao',
+      }
+    );
   }
 
   return (

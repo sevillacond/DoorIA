@@ -25,7 +25,9 @@ import type {
   SystemStatus,
   CallRecordingAuditData,
   LprLogEntry,
+  DiscoveredCamera,
 } from './src/types.ts';
+import { parametrizeDiscoveredCamera, MANUFACTURER_PROFILES } from './src/services/CameraDiscovery.ts';
 
 const PORT = 3000;
 
@@ -388,6 +390,75 @@ let cameras: CameraDevice[] = [
     resolution: '720p @ 30fps',
     status: 'online',
   },
+];
+
+let discoveredCamerasPool: DiscoveredCamera[] = [
+  parametrizeDiscoveredCamera(
+    {
+      ip: '192.168.1.150',
+      mac: '00:1A:3F:8A:2C:11',
+      manufacturerHint: 'Intelbras',
+      modelHint: 'Intelbras XPE 3115-IP (Câmera Integrada)',
+      port: 80,
+      discoveryMethod: 'WS-Discovery',
+    },
+    cameras
+  ),
+  parametrizeDiscoveredCamera(
+    {
+      ip: '192.168.1.160',
+      mac: '4C:11:BF:12:90:AB',
+      manufacturerHint: 'Intelbras',
+      modelHint: 'Intelbras VIP 3230 B (Bullet Full HD G4)',
+      port: 80,
+      discoveryMethod: 'WS-Discovery',
+    },
+    cameras
+  ),
+  parametrizeDiscoveredCamera(
+    {
+      ip: '192.168.1.161',
+      mac: '10:12:FB:CC:34:9A',
+      manufacturerHint: 'Hikvision',
+      modelHint: 'Hikvision DS-2CD2043G2-I (AcuSense 4MP LPR)',
+      port: 80,
+      discoveryMethod: 'WS-Discovery',
+    },
+    cameras
+  ),
+  parametrizeDiscoveredCamera(
+    {
+      ip: '192.168.1.162',
+      mac: '3C:EF:8C:55:12:33',
+      manufacturerHint: 'Dahua',
+      modelHint: 'Dahua IPC-HFW1230S (Starlight 2MP)',
+      port: 80,
+      discoveryMethod: 'SSDP',
+    },
+    cameras
+  ),
+  parametrizeDiscoveredCamera(
+    {
+      ip: '192.168.1.163',
+      mac: '00:40:8C:77:43:10',
+      manufacturerHint: 'Axis',
+      modelHint: 'Axis M1065-L (PIR + Microfone)',
+      port: 80,
+      discoveryMethod: 'WS-Discovery',
+    },
+    cameras
+  ),
+  parametrizeDiscoveredCamera(
+    {
+      ip: '192.168.1.164',
+      mac: '34:CD:6D:88:99:AA',
+      manufacturerHint: 'Uniview',
+      modelHint: 'Uniview IPC2122LR3-PF40M-D',
+      port: 80,
+      discoveryMethod: 'ARP/OUI Scan',
+    },
+    cameras
+  ),
 ];
 
 let vehicles: Vehicle[] = [
@@ -1093,6 +1164,40 @@ async function startServer() {
   // 2. Condomínio & Unidades
   app.get('/api/v1/condominium', (req, res) => {
     res.json(CONDOMINIUM_INFO);
+  });
+
+  
+  app.post('/api/v1/units/:unitId/residents', express.json(), (req, res) => {
+    const { unitId } = req.params;
+    const unit = units.find(u => u.id === unitId);
+    if (!unit) return res.status(404).json({ error: 'Unidade não encontrada' });
+    
+    const newResident = {
+      id: `r-${unitId}-${Date.now()}`,
+      unitId,
+      name: req.body.name,
+      document: req.body.document,
+      phone: req.body.phone,
+      email: req.body.email,
+      isMainContact: req.body.isMainContact || false,
+      sipDevice: {
+        extension: unit.sipExtension,
+        registered: false,
+        webrtcSupported: true
+      }
+    };
+    
+    unit.residents.push(newResident);
+    res.json({ success: true, resident: newResident });
+  });
+
+  app.delete('/api/v1/units/:unitId/residents/:residentId', (req, res) => {
+    const { unitId, residentId } = req.params;
+    const unit = units.find(u => u.id === unitId);
+    if (!unit) return res.status(404).json({ error: 'Unidade não encontrada' });
+    
+    unit.residents = unit.residents.filter(r => r.id !== residentId);
+    res.json({ success: true });
   });
 
   app.get('/api/v1/units', (req, res) => {
@@ -1832,6 +1937,148 @@ async function startServer() {
   });
 
   // 11. MaIA - Endpoint de Inteligência Operacional
+  
+  // --- ENDPOINTS: DISPOSITIVOS & DISCOVERY DE CÂMERAS ---
+  app.get('/api/v1/devices/cameras', (req, res) => {
+    res.json(cameras);
+  });
+
+  app.post('/api/v1/devices/cameras', express.json(), (req, res) => {
+    const newCam = req.body;
+    newCam.id = `cam-${Date.now()}`;
+    cameras.push(newCam);
+    publishEvent('CAMERA_ADDED', 'device_manager', { id: newCam.id, name: newCam.name });
+    res.json({ success: true, camera: newCam });
+  });
+
+  app.delete('/api/v1/devices/cameras/:id', (req, res) => {
+    const { id } = req.params;
+    cameras = cameras.filter((c) => c.id !== id);
+    publishEvent('CAMERA_REMOVED', 'device_manager', { id });
+    res.json({ success: true, removedId: id });
+  });
+
+  // Discovery de Câmeras na LAN (WS-Discovery / SSDP / ARP)
+  app.get('/api/v1/discovery/cameras', (req, res) => {
+    // Atualiza o status 'isConfigured' de acordo com as câmeras ativas
+    const updated = discoveredCamerasPool.map((disc) => ({
+      ...disc,
+      isConfigured: cameras.some(
+        (cam) => (cam.ip && cam.ip === disc.ip) || cam.rtspUrl.includes(disc.ip)
+      ),
+    }));
+    res.json(updated);
+  });
+
+  app.post('/api/v1/discovery/scan', express.json(), async (req, res) => {
+    const { subnet = '192.168.1.0/24' } = req.body || {};
+    
+    // Simula tempo de varredura real via multicast UDP (WS-Discovery + ARP)
+    await new Promise((resolve) => setTimeout(resolve, 600));
+
+    // Recalcula status
+    const scanResults = discoveredCamerasPool.map((disc) => ({
+      ...disc,
+      isConfigured: cameras.some(
+        (cam) => (cam.ip && cam.ip === disc.ip) || cam.rtspUrl.includes(disc.ip)
+      ),
+    }));
+
+    publishEvent('DISCOVERY_SCAN_COMPLETED', 'network_discovery', {
+      subnet,
+      foundCount: scanResults.length,
+      protocols: ['WS-Discovery (UDP 3702)', 'SSDP/UPnP (UDP 1900)', 'ARP/OUI Analysis'],
+    });
+
+    res.json({
+      success: true,
+      subnet,
+      scanDurationMs: 640,
+      protocols: ['WS-Discovery (UDP 3702)', 'SSDP/UPnP (UDP 1900)', 'ARP/OUI Scan'],
+      camerasFound: scanResults.length,
+      devices: scanResults,
+    });
+  });
+
+  app.post('/api/v1/discovery/import', express.json(), (req, res) => {
+    const {
+      discoveredId,
+      customName,
+      customLocation,
+      username = 'admin',
+      password = 'admin_password',
+      selectedProfile,
+      useSubStream,
+    } = req.body;
+
+    const disc = discoveredCamerasPool.find((d) => d.id === discoveredId);
+    if (!disc) {
+      return res.status(404).json({ error: 'Câmera descoberta não encontrada.' });
+    }
+
+    const profile = MANUFACTURER_PROFILES[disc.manufacturer] || MANUFACTURER_PROFILES['ONVIF Genérica'];
+    const streamBuilder = useSubStream ? profile.subStreamPattern : profile.mainStreamPattern;
+    const rtspUrl = streamBuilder(disc.ip, username, password, disc.rtspPort);
+    const streamAlias = `cam_${disc.ip.replace(/\./g, '_')}`;
+
+    const newCam: CameraDevice = {
+      id: `cam-${Date.now()}`,
+      name: customName || disc.model,
+      location: customLocation || 'Área Comum (Descoberta LAN)',
+      profile: selectedProfile || profile.recommendedProfile,
+      rtspUrl,
+      webrtcStreamUrl: `/streams/webrtc/${streamAlias}`,
+      resolution: disc.manufacturer === 'Hikvision' ? '2560x1440 @ 30fps' : '1920x1080 @ 30fps',
+      status: 'online',
+      isXpeIntegrated: disc.model.toLowerCase().includes('xpe'),
+      manufacturer: disc.manufacturer,
+      model: disc.model,
+      ip: disc.ip,
+    };
+
+    // Adiciona às câmeras ativas
+    cameras.push(newCam);
+
+    // Registra auditoria com hash
+    publishEvent('CAMERA_PARAMETRIZED_VIA_DISCOVERY', 'device_manager', {
+      ip: disc.ip,
+      manufacturer: disc.manufacturer,
+      model: disc.model,
+      onvifProfile: newCam.profile,
+      rtspGenerated: rtspUrl.replace(password, '*****'),
+      go2rtcAlias: streamAlias,
+    });
+
+    res.json({
+      success: true,
+      message: `Câmera ${disc.manufacturer} parametrizada e importada com sucesso no go2rtc!`,
+      camera: newCam,
+      go2rtcConfigSnippet: profile.generateGo2rtcConfig(streamAlias, rtspUrl),
+    });
+  });
+
+  app.post('/api/v1/discovery/test-stream', express.json(), async (req, res) => {
+    const { ip, manufacturer, username = 'admin', password = 'password', rtspPort = 554 } = req.body;
+    
+    // Simula handshake RTSP OPTIONS e DESCRIBE
+    await new Promise((resolve) => setTimeout(resolve, 400));
+
+    res.json({
+      success: true,
+      ip,
+      manufacturer,
+      rtspHandshake: '200 OK (OPTIONS, DESCRIBE, SETUP)',
+      videoCodec: 'H.264 (High Profile, Level 4.1)',
+      audioCodec: 'G.711u / AAC',
+      latencyEstimateMs: 42,
+      onvifDeviceServiceAccessible: true,
+    });
+  });
+
+  app.get('/api/v1/devices/iot', (req, res) => {
+    res.json(iotDevices);
+  });
+
   app.post('/api/v1/ai/maia', async (req, res) => {
     const { prompt } = req.body;
     if (!prompt) return res.status(400).json({ error: 'Prompt obrigatório.' });

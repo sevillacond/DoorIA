@@ -13,6 +13,10 @@ import {
   Zap,
   CheckCircle2,
   AlertTriangle,
+  BookOpen,
+  FileText,
+  Network,
+  Video,
 } from 'lucide-react';
 import type { SystemStatus, AuditLogEntry, EventBusMessage, IoTDevice, AutomationRule } from '../types.ts';
 
@@ -33,7 +37,7 @@ export const AdminTopologyView: React.FC<AdminTopologyViewProps> = ({
   automations,
   onToggleIoTDevice,
 }) => {
-  const [activeTab, setActiveTab] = useState<'topologia' | 'auditoria' | 'eventos' | 'iot'>('topologia');
+  const [activeTab, setActiveTab] = useState<'topologia' | 'auditoria' | 'eventos' | 'iot' | 'documentacao'>('topologia');
 
   return (
     <div className="space-y-6">
@@ -105,6 +109,18 @@ export const AdminTopologyView: React.FC<AdminTopologyViewProps> = ({
           }`}
         >
           Automação & IoT Zigbee ({iotDevices.length})
+        </button>
+
+        <button
+          onClick={() => setActiveTab('documentacao')}
+          className={`px-3.5 py-1.5 rounded-lg text-xs font-semibold transition flex items-center gap-1.5 ${
+            activeTab === 'documentacao'
+              ? 'bg-cyan-600 text-white shadow-sm'
+              : 'text-slate-400 hover:text-white hover:bg-slate-800'
+          }`}
+        >
+          <BookOpen className="w-3.5 h-3.5" />
+          <span>Manual & Docs do Sistema</span>
         </button>
       </div>
 
@@ -419,6 +435,172 @@ export const AdminTopologyView: React.FC<AdminTopologyViewProps> = ({
                   </div>
                 </div>
               ))}
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ABA 5: MANUAL E DOCUMENTAÇÃO TÉCNICA DO SISTEMA */}
+      {activeTab === 'documentacao' && (
+        <div className="space-y-6">
+          {/* Banner de Introdução Técnica */}
+          <div className="p-6 rounded-2xl bg-gradient-to-r from-slate-900 via-slate-900 to-cyan-950/40 border border-slate-800 shadow-xl space-y-3">
+            <div className="flex items-center gap-3">
+              <div className="w-10 h-10 rounded-xl bg-cyan-950 border border-cyan-800 flex items-center justify-center text-cyan-400">
+                <FileText className="w-5 h-5" />
+              </div>
+              <div>
+                <h3 className="text-base font-bold text-white">Manual Operacional & Arquitetura Enlace-DoorIA</h3>
+                <p className="text-xs text-slate-400">
+                  Referência técnica consolidada para Síndicos, Administradores, Integradores de CFTV e Portaria.
+                </p>
+              </div>
+            </div>
+          </div>
+
+          {/* Grid de Seções do Manual */}
+          <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 text-xs">
+            {/* Seção 1: Arquitetura em Três Motores */}
+            <div className="p-5 rounded-2xl bg-slate-900 border border-slate-800 space-y-4 shadow-lg">
+              <div className="flex items-center gap-2 text-white font-bold text-sm border-b border-slate-800 pb-2">
+                <Server className="w-4 h-4 text-cyan-400" />
+                <span>1. Tríade Arquitetural Local-First</span>
+              </div>
+              <p className="text-slate-300 leading-relaxed">
+                O sistema roda na guarita em um nó x86-64 sem dependência obrigatória de conectividade de nuvem para a operação diária de interfonia e controle de acesso.
+              </p>
+              <div className="space-y-2.5">
+                <div className="p-3 rounded-xl bg-slate-950 border border-slate-800 space-y-1">
+                  <div className="font-bold text-white flex items-center justify-between">
+                    <span>Motor A: Asterisk 20+ Pure (PJSIP)</span>
+                    <span className="text-[10px] font-mono text-emerald-400">SIP: 5060 | RTP: 10000-20000</span>
+                  </div>
+                  <p className="text-slate-400 text-[11px]">
+                    Gerencia sinalização SIP, registro de ramais condominiais, codecs G.711u/alaw e injeção de comandos DTMF no canal seguro via Asterisk Manager Interface (AMI).
+                  </p>
+                </div>
+
+                <div className="p-3 rounded-xl bg-slate-950 border border-slate-800 space-y-1">
+                  <div className="font-bold text-white flex items-center justify-between">
+                    <span>Motor B: go2rtc Video Gateway</span>
+                    <span className="text-[10px] font-mono text-cyan-400">WebRTC WS: 1984 | RTSP: 554</span>
+                  </div>
+                  <p className="text-slate-400 text-[11px]">
+                    Conversor ultra-rápido de streams RTSP para WebRTC H.264. Entrega latência inferior a 50ms nos navegadores e apps sem onerar a CPU do servidor.
+                  </p>
+                </div>
+
+                <div className="p-3 rounded-xl bg-slate-950 border border-slate-800 space-y-1">
+                  <div className="font-bold text-white flex items-center justify-between">
+                    <span>Motor C: Enlace-DoorIA Core + Policy Engine</span>
+                    <span className="text-[10px] font-mono text-purple-400">Node.js + React | REST / WS: 3000</span>
+                  </div>
+                  <p className="text-slate-400 text-[11px]">
+                    Orquestrador com barramento de eventos pub/sub, RBAC granular (Síndico, Operador, Morador) e inteligência artificial MaIA com guardrails estritos.
+                  </p>
+                </div>
+              </div>
+            </div>
+
+            {/* Seção 2: Regras de Segurança Física e Anti-Invasão */}
+            <div className="p-5 rounded-2xl bg-slate-900 border border-slate-800 space-y-4 shadow-lg">
+              <div className="flex items-center gap-2 text-white font-bold text-sm border-b border-slate-800 pb-2">
+                <ShieldCheck className="w-4 h-4 text-emerald-400" />
+                <span>2. Protocolos de Segurança Física</span>
+              </div>
+              <ul className="space-y-2.5 text-slate-300">
+                <li className="flex items-start gap-2">
+                  <CheckCircle2 className="w-4 h-4 text-emerald-400 shrink-0 mt-0.5" />
+                  <div>
+                    <strong className="text-white">Zero Contato Seco na Rua:</strong> Nenhum fio de fechadura magnética ou motor de portão sai diretamente do interfone externo (XPE 3115-IP). Os relés residem exclusivamente dentro de quadros elétricos blindados no interior do condomínio.
+                  </div>
+                </li>
+                <li className="flex items-start gap-2">
+                  <CheckCircle2 className="w-4 h-4 text-emerald-400 shrink-0 mt-0.5" />
+                  <div>
+                    <strong className="text-white">Vídeo Assimétrico Estrito:</strong> Ao atender o interfone pelo navegador ou smartphone, o morador visualiza o visitante em alta definição, mas o vídeo do morador nunca é transmitido para o totem externo.
+                  </div>
+                </li>
+                <li className="flex items-start gap-2">
+                  <CheckCircle2 className="w-4 h-4 text-emerald-400 shrink-0 mt-0.5" />
+                  <div>
+                    <strong className="text-white">Auditoria Criptográfica de Gravações:</strong> Toda chamada e abertura de portão gera uma trilha com hash SHA-256 no Security Audit Log para fins periciais.
+                  </div>
+                </li>
+              </ul>
+
+              {/* Tabela de DTMF */}
+              <div className="p-3 bg-slate-950 border border-slate-800 rounded-xl space-y-1.5">
+                <div className="text-[11px] font-bold text-slate-400 uppercase tracking-wider">
+                  Mapeamento de Comandos DTMF Homologados:
+                </div>
+                <div className="grid grid-cols-2 gap-2 font-mono text-[11px]">
+                  <div className="p-2 rounded bg-slate-900 border border-slate-800">
+                    <span className="text-amber-400 font-bold">*07:</span>{' '}
+                    <span className="text-slate-300">Portão Social Pedestre (Relé 1)</span>
+                  </div>
+                  <div className="p-2 rounded bg-slate-900 border border-slate-800">
+                    <span className="text-cyan-400 font-bold">*08:</span>{' '}
+                    <span className="text-slate-300">Portão Garagem Veicular (Relé 2)</span>
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            {/* Seção 3: Descoberta e Parametrização de Câmeras */}
+            <div className="p-5 rounded-2xl bg-slate-900 border border-slate-800 space-y-4 shadow-lg">
+              <div className="flex items-center gap-2 text-white font-bold text-sm border-b border-slate-800 pb-2">
+                <Video className="w-4 h-4 text-cyan-400" />
+                <span>3. Discovery de Rede e Fabricantes de Câmera</span>
+              </div>
+              <p className="text-slate-300">
+                O módulo escaneia a LAN usando <strong>WS-Discovery (UDP 3702)</strong> e analisa os primeiros 24 bits do endereço MAC para configurar automaticamente a URL RTSP correta:
+              </p>
+              <div className="space-y-2 text-[11px] font-mono">
+                <div className="p-2.5 rounded-lg bg-slate-950 border border-slate-800">
+                  <div className="text-emerald-400 font-bold mb-0.5 font-sans">Intelbras (XPE / VIP / VHD):</div>
+                  <div className="text-slate-400 truncate">rtsp://user:pass@ip:554/cam/realmonitor?channel=1&subtype=0</div>
+                </div>
+                <div className="p-2.5 rounded-lg bg-slate-950 border border-slate-800">
+                  <div className="text-red-400 font-bold mb-0.5 font-sans">Hikvision (AcuSense / LPR):</div>
+                  <div className="text-slate-400 truncate">rtsp://user:pass@ip:554/Streaming/Channels/101</div>
+                </div>
+                <div className="p-2.5 rounded-lg bg-slate-950 border border-slate-800">
+                  <div className="text-blue-400 font-bold mb-0.5 font-sans">Dahua (Starlight / WizSense):</div>
+                  <div className="text-slate-400 truncate">rtsp://user:pass@ip:554/cam/realmonitor?channel=1&subtype=0</div>
+                </div>
+              </div>
+            </div>
+
+            {/* Seção 4: Operação da Inteligência MaIA */}
+            <div className="p-5 rounded-2xl bg-slate-900 border border-slate-800 space-y-4 shadow-lg">
+              <div className="flex items-center gap-2 text-white font-bold text-sm border-b border-slate-800 pb-2">
+                <Zap className="w-4 h-4 text-amber-400" />
+                <span>4. Inteligência Operacional MaIA</span>
+              </div>
+              <p className="text-slate-300">
+                A MaIA opera com arquitetura híbrida de dupla camada para nunca interromper a portaria:
+              </p>
+              <div className="space-y-2.5 text-[11px]">
+                <div className="p-2.5 rounded-lg bg-slate-950 border border-slate-800">
+                  <div className="text-white font-bold mb-1 flex items-center justify-between">
+                    <span>Camada Nuvem: Gemini 3.8 Flash</span>
+                    <span className="text-[10px] text-emerald-400">Ativa com Internet</span>
+                  </div>
+                  <p className="text-slate-400">
+                    Compreensão de linguagem natural avançada, triagem de visitantes com fotos, resumos de relatórios para o síndico e auditoria conversacional.
+                  </p>
+                </div>
+                <div className="p-2.5 rounded-lg bg-slate-950 border border-slate-800">
+                  <div className="text-white font-bold mb-1 flex items-center justify-between">
+                    <span>Camada Local: Deterministic Rule Engine</span>
+                    <span className="text-[10px] text-cyan-400">Fallback Local Imediato</span>
+                  </div>
+                  <p className="text-slate-400">
+                    Respostas em 0ms mesmo com cabo de internet desconectado: consulta de ramais de moradores, acionamento autorizado de portões e checagem de status dos totens.
+                  </p>
+                </div>
+              </div>
             </div>
           </div>
         </div>

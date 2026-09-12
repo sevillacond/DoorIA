@@ -59,15 +59,29 @@ export const CamerasGrid: React.FC<CamerasGridProps> = ({ cameras }) => {
               </div>
 
               {/* Feed Simulado com visual de alta precisão */}
-              <div className="w-full h-full bg-gradient-to-tr from-slate-950 via-slate-900 to-slate-950 flex flex-col items-center justify-center text-slate-500 relative">
-                <div className="w-16 h-16 rounded-full bg-slate-800/60 border border-slate-700/60 flex items-center justify-center text-cyan-400/80 mb-2">
-                  <Eye className="w-8 h-8" />
+              <div className="w-full h-full bg-slate-950 flex flex-col items-center justify-center text-slate-500 relative">
+
+                {/* Simulação realista de vídeo com elemento HTML5 Video (MOCK para ambiente dev, usaria WebRTCPlayer na prod) */}
+                <video 
+                  autoPlay 
+                  loop 
+                  muted 
+                  playsInline
+                  className="absolute inset-0 w-full h-full object-cover opacity-60 mix-blend-screen"
+                  poster="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='100' height='100'%3E%3Crect width='100' height='100' fill='%23000'/%3E%3C/svg%3E"
+                />
+                
+                {/* O overlay de grid e icones fica por cima do video */}
+                <div className="absolute inset-0 pointer-events-none border border-cyan-500/10 grid grid-cols-3 grid-rows-3 z-20"></div>
+                
+                <div className="z-30 flex flex-col items-center justify-center text-slate-500 pointer-events-none">
+                  <div className="text-[10px] text-cyan-400 font-mono mt-0.5 bg-black/50 px-2 py-0.5 rounded border border-cyan-900/50 backdrop-blur-sm">Conectado via Video Gateway (go2rtc Engine)</div>
                 </div>
-                <div className="text-xs font-semibold text-slate-300">{cam.name}</div>
-                <div className="text-[10px] text-slate-500 font-mono mt-0.5">Stream Seguro H.264 WebRTC</div>
+
+                
 
                 {/* Grade de mira estilo CCTV */}
-                <div className="absolute inset-0 pointer-events-none border border-cyan-500/10 grid grid-cols-3 grid-rows-3"></div>
+                
               </div>
 
               {/* Controles no Hover */}
