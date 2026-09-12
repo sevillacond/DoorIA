@@ -98,6 +98,23 @@ export const Header: React.FC<HeaderProps> = ({
 
           {/* Atalhos Rápidos da Barra Superior */}
           <div className="flex items-center gap-2">
+            {/* Botão de Pânico (SOS) */}
+            <button
+              onClick={() => {
+                if (window.confirm('EMERGÊNCIA: Acionar Botão de Pânico (Coação)? Isso acionará refletores e registrará evento pericial imutável.')) {
+                  fetch('/api/v1/panic/trigger', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ reason: 'Acionamento manual via painel', location: session.role === 'morador' ? `Apto ${session.unitNumber}` : 'Portaria Central' }) })
+                    .then(res => res.json())
+                    .then(data => alert(data.message))
+                    .catch(e => console.error(e));
+                }
+              }}
+              className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-bold rounded-xl bg-red-600 hover:bg-red-500 text-white shadow-md shadow-red-900/30 transition"
+              title="Acionar Botão de Pânico (SOS)"
+            >
+              <ShieldCheck className="w-3.5 h-3.5" />
+              <span className="hidden sm:inline">S.O.S</span>
+            </button>
+
             {/* Simulador XPE Rápido */}
             <button
               onClick={onOpenXpeSimulator}
