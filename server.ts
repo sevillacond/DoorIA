@@ -26,6 +26,7 @@ import type {
   CallRecordingAuditData,
   LprLogEntry,
   DiscoveredCamera,
+  CondominiumConfig,
 } from './src/types.ts';
 import { parametrizeDiscoveredCamera, MANUFACTURER_PROFILES } from './src/services/CameraDiscovery.ts';
 
@@ -35,16 +36,95 @@ const PORT = 3000;
 // BASELINE DE DADOS DO PILOTO (SÃO LUÍS - MA / 12 UNIDADES)
 // ============================================================================
 
-const CONDOMINIUM_INFO = {
+const DEFAULT_CONDOMINIUM_CONFIG: CondominiumConfig = {
+  id: 'condo-slz-01',
   name: 'Condomínio Residencial Solar das Palmeiras',
-  pilotLocation: 'São Luís - MA, Calhau',
+  tradingName: 'Solar das Palmeiras Residencial',
+  cnpj: '34.891.022/0001-85',
+  address: {
+    street: 'Av. dos Holandeses, Quadra 14',
+    number: '250',
+    complement: 'Torre Única',
+    neighborhood: 'Calhau',
+    city: 'São Luís',
+    state: 'MA',
+    zipCode: '65071-380',
+  },
   unitsCount: 12,
   blocks: ['Bloco A'],
+  floorsCount: 3,
+  parkingSpotsCount: 18,
   managementPhone: '(98) 3235-9000',
-  localServerIp: '192.168.1.100',
-  asteriskVersion: 'Asterisk 20.8 LTS Pure (No FreePBX / Vanilla PJSIP)',
-  xpeModel: 'Intelbras XPE-3115-IP (Firmware v3.2.0)',
-  iotGateway: 'NovaDigital HNZ-CB3 Zigbee 3.0 Ethernet (Local-First)',
+  emergencyPhone: '(98) 98112-9900',
+  email: 'administracao@solardaspalmeiras.com.br',
+  sindico: {
+    name: 'Henrique Vasconcelos de Alencar',
+    document: '482.319.403-12',
+    phone: '(98) 98455-2020',
+    email: 'sindico@solardaspalmeiras.com.br',
+    mandateStart: '2025-03-01',
+    mandateEnd: '2027-02-28',
+    apartment: '304',
+  },
+  administrator: {
+    name: 'Enlace Administradora de Condomínios & Soluções Imobiliárias',
+    cnpj: '18.420.981/0001-30',
+    phone: '(98) 3227-4000',
+    email: 'contato@enlacegestao.com.br',
+    contactPerson: 'Dra. Roberta Fontenele',
+  },
+  operationalSettings: {
+    pedestrianGatePulseSeconds: 5,
+    vehicleGatePulseSeconds: 15,
+    openGateAlertSeconds: 60,
+    dtmfPedestrian: '*07',
+    dtmfVehicle: '*08',
+    silencePeriodStart: '22:00',
+    silencePeriodEnd: '08:00',
+    packageDeliveryWindowStart: '08:00',
+    packageDeliveryWindowEnd: '20:00',
+    callTimeoutSeconds: 30,
+    autoUraFallback: true,
+    localFirstOfflineMode: true,
+    requireVisitorPhoto: true,
+  },
+  financialSettings: {
+    dueDay: 10,
+    standardFee: 480.00,
+    reserveFundPercentage: 10,
+    latePenaltyPercentage: 2.0,
+    monthlyInterestPercentage: 1.0,
+    pixKeyType: 'cnpj',
+    pixKey: '34.891.022/0001-85',
+    bankName: 'Banco do Brasil (001)',
+    bankAgency: '1612-8',
+    bankAccount: '48.910-2',
+  },
+  technicalSettings: {
+    localServerIp: '192.168.1.100',
+    asteriskVersion: 'Asterisk 20.8 LTS Pure (No FreePBX / Vanilla PJSIP)',
+    xpeModel: 'Intelbras XPE-3115-IP (Firmware v3.2.0)',
+    xpeIp: '192.168.1.150',
+    iotGateway: 'NovaDigital HNZ-CB3 Zigbee 3.0 Ethernet (Local-First)',
+    iotGatewayIp: '192.168.1.160',
+    subnetRange: '192.168.1.0/24',
+  },
+  updatedAt: new Date().toISOString(),
+  updatedBy: 'Sistema Piloto',
+};
+
+let condominiumConfig: CondominiumConfig = JSON.parse(JSON.stringify(DEFAULT_CONDOMINIUM_CONFIG));
+
+const CONDOMINIUM_INFO = {
+  get name() { return condominiumConfig.name; },
+  get pilotLocation() { return `${condominiumConfig.address.city} - ${condominiumConfig.address.state}, ${condominiumConfig.address.neighborhood}`; },
+  get unitsCount() { return condominiumConfig.unitsCount; },
+  get blocks() { return condominiumConfig.blocks; },
+  get managementPhone() { return condominiumConfig.managementPhone; },
+  get localServerIp() { return condominiumConfig.technicalSettings.localServerIp; },
+  get asteriskVersion() { return condominiumConfig.technicalSettings.asteriskVersion; },
+  get xpeModel() { return condominiumConfig.technicalSettings.xpeModel; },
+  get iotGateway() { return condominiumConfig.technicalSettings.iotGateway; },
 };
 
 // 12 Unidades (101 a 104, 201 a 204, 301 a 304)
@@ -1161,9 +1241,126 @@ async function startServer() {
     res.json({ success: true, session: currentSession });
   });
 
-  // 2. Condomínio & Unidades
+  // 2. Condomínio & Configurações
   app.get('/api/v1/condominium', (req, res) => {
-    res.json(CONDOMINIUM_INFO);
+    res.json({
+      ...condominiumConfig,
+      pilotLocation: `${condominiumConfig.address.city} - ${condominiumConfig.address.state}, ${condominiumConfig.address.neighborhood}`,
+      localServerIp: condominiumConfig.technicalSettings.localServerIp,
+      asteriskVersion: condominiumConfig.technicalSettings.asteriskVersion,
+      xpeModel: condominiumConfig.technicalSettings.xpeModel,
+      iotGateway: condominiumConfig.technicalSettings.iotGateway,
+    });
+  });
+
+  app.put('/api/v1/condominium', express.json(), (req, res) => {
+    // Apenas perfis administrativos podem alterar dados do condomínio
+    if (currentSession.role === 'morador') {
+      return res.status(403).json({ error: 'Permissão negada. Apenas administradores e síndicos podem alterar as configurações do condomínio.' });
+    }
+
+    const updates = req.body;
+    if (!updates || typeof updates !== 'object') {
+      return res.status(400).json({ error: 'Payload de atualização inválido.' });
+    }
+
+    // Merge seguro preservando dados estruturais
+    condominiumConfig = {
+      ...condominiumConfig,
+      name: updates.name || condominiumConfig.name,
+      tradingName: updates.tradingName !== undefined ? updates.tradingName : condominiumConfig.tradingName,
+      cnpj: updates.cnpj || condominiumConfig.cnpj,
+      unitsCount: Number(updates.unitsCount) || condominiumConfig.unitsCount,
+      blocks: Array.isArray(updates.blocks) ? updates.blocks : condominiumConfig.blocks,
+      floorsCount: Number(updates.floorsCount) || condominiumConfig.floorsCount,
+      parkingSpotsCount: Number(updates.parkingSpotsCount) || condominiumConfig.parkingSpotsCount,
+      managementPhone: updates.managementPhone || condominiumConfig.managementPhone,
+      emergencyPhone: updates.emergencyPhone || condominiumConfig.emergencyPhone,
+      email: updates.email || condominiumConfig.email,
+      address: {
+        ...condominiumConfig.address,
+        ...(updates.address || {}),
+      },
+      sindico: {
+        ...condominiumConfig.sindico,
+        ...(updates.sindico || {}),
+      },
+      administrator: {
+        ...condominiumConfig.administrator,
+        ...(updates.administrator || {}),
+      },
+      operationalSettings: {
+        ...condominiumConfig.operationalSettings,
+        ...(updates.operationalSettings || {}),
+      },
+      financialSettings: {
+        ...condominiumConfig.financialSettings,
+        ...(updates.financialSettings || {}),
+      },
+      technicalSettings: {
+        ...condominiumConfig.technicalSettings,
+        ...(updates.technicalSettings || {}),
+      },
+      updatedAt: new Date().toISOString(),
+      updatedBy: `${currentSession.name} (${currentSession.role})`,
+    };
+
+    logAudit(
+      currentSession.name,
+      currentSession.role,
+      'CONFIGURACOES_CONDOMINIO_ATUALIZADAS',
+      condominiumConfig.name,
+      'PERMITIDO',
+      {
+        timestamp: condominiumConfig.updatedAt,
+        updatedFields: Object.keys(updates),
+      },
+      'Parâmetros cadastrais e regras operacionais do condomínio atualizados pelo Administrador'
+    );
+
+    publishEvent('CONDOMINIUM_CONFIG_UPDATED', 'server.ts', {
+      condominiumId: condominiumConfig.id,
+      updatedBy: currentSession.name,
+      timestamp: condominiumConfig.updatedAt,
+    });
+
+    res.json({
+      success: true,
+      data: condominiumConfig,
+      message: 'Configurações e dados do condomínio salvos com sucesso no servidor local.',
+    });
+  });
+
+  app.post('/api/v1/condominium/reset', (req, res) => {
+    if (currentSession.role === 'morador') {
+      return res.status(403).json({ error: 'Permissão negada.' });
+    }
+
+    condominiumConfig = JSON.parse(JSON.stringify(DEFAULT_CONDOMINIUM_CONFIG));
+    condominiumConfig.updatedAt = new Date().toISOString();
+    condominiumConfig.updatedBy = `${currentSession.name} (Restauração Piloto)`;
+
+    logAudit(
+      currentSession.name,
+      currentSession.role,
+      'RESTAURACAO_PADROES_CONDOMINIO',
+      condominiumConfig.name,
+      'PERMITIDO',
+      { timestamp: condominiumConfig.updatedAt },
+      'Configurações do condomínio restauradas para o baseline padrão do piloto'
+    );
+
+    publishEvent('CONDOMINIUM_CONFIG_UPDATED', 'server.ts', {
+      condominiumId: condominiumConfig.id,
+      updatedBy: currentSession.name,
+      action: 'reset_defaults',
+    });
+
+    res.json({
+      success: true,
+      data: condominiumConfig,
+      message: 'Configurações do condomínio restauradas com sucesso para os padrões do Piloto.',
+    });
   });
 
   

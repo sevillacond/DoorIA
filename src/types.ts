@@ -286,7 +286,85 @@ export type EventBusEventType =
   | 'CAMERA_PARAMETRIZED_VIA_DISCOVERY'
   | 'MAIA_ACTION_EXECUTED'
   | 'PUSH_SUBSCRIPTION_REGISTERED'
-  | 'PUSH_NOTIFICATION_DISPATCHED';
+  | 'PUSH_NOTIFICATION_DISPATCHED'
+  | 'CONDOMINIUM_CONFIG_UPDATED';
+
+export interface CondominiumConfig {
+  id: string;
+  name: string;
+  tradingName: string;
+  cnpj: string;
+  address: {
+    street: string;
+    number: string;
+    complement?: string;
+    neighborhood: string;
+    city: string;
+    state: string;
+    zipCode: string;
+  };
+  unitsCount: number;
+  blocks: string[];
+  floorsCount: number;
+  parkingSpotsCount: number;
+  managementPhone: string;
+  emergencyPhone: string;
+  email: string;
+  sindico: {
+    name: string;
+    document: string;
+    phone: string;
+    email: string;
+    mandateStart: string;
+    mandateEnd: string;
+    apartment: string;
+  };
+  administrator: {
+    name: string;
+    cnpj: string;
+    phone: string;
+    email: string;
+    contactPerson: string;
+  };
+  operationalSettings: {
+    pedestrianGatePulseSeconds: number;
+    vehicleGatePulseSeconds: number;
+    openGateAlertSeconds: number;
+    dtmfPedestrian: string;
+    dtmfVehicle: string;
+    silencePeriodStart: string;
+    silencePeriodEnd: string;
+    packageDeliveryWindowStart: string;
+    packageDeliveryWindowEnd: string;
+    callTimeoutSeconds: number;
+    autoUraFallback: boolean;
+    localFirstOfflineMode: boolean;
+    requireVisitorPhoto: boolean;
+  };
+  financialSettings: {
+    dueDay: number;
+    standardFee: number;
+    reserveFundPercentage: number;
+    latePenaltyPercentage: number;
+    monthlyInterestPercentage: number;
+    pixKeyType: 'cnpj' | 'email' | 'telefone' | 'aleatoria';
+    pixKey: string;
+    bankName: string;
+    bankAgency: string;
+    bankAccount: string;
+  };
+  technicalSettings: {
+    localServerIp: string;
+    asteriskVersion: string;
+    xpeModel: string;
+    xpeIp: string;
+    iotGateway: string;
+    iotGatewayIp: string;
+    subnetRange: string;
+  };
+  updatedAt?: string;
+  updatedBy?: string;
+}
 
 export interface EventBusMessage {
   id: string;

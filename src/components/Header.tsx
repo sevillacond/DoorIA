@@ -12,6 +12,7 @@ import {
   Bell,
 } from 'lucide-react';
 import type { UserSession, SystemStatus } from '../types.ts';
+import { ThemeToggle } from './ThemeToggle.tsx';
 
 interface HeaderProps {
   session: UserSession;
@@ -23,7 +24,7 @@ interface HeaderProps {
   onOpenMaia: () => void;
   onOpenNotifications?: () => void;
   activeCallCount: number;
-  currentTab: 'inicio' | 'cameras' | 'financeiro' | 'engenharia' | 'portaria' | 'moradores' | 'dispositivos';
+  currentTab: 'inicio' | 'cameras' | 'financeiro' | 'engenharia' | 'portaria' | 'moradores' | 'dispositivos' | 'condominio';
 }
 
 export const Header: React.FC<HeaderProps> = ({
@@ -54,6 +55,8 @@ export const Header: React.FC<HeaderProps> = ({
         return 'Gestão de Unidades & Moradores';
       case 'dispositivos':
         return 'Gestão de Câmeras, Totens & Relés';
+      case 'condominio':
+        return 'Configurações & Dados do Condomínio';
       default:
         return 'Portaria Autônoma';
     }
@@ -171,6 +174,9 @@ export const Header: React.FC<HeaderProps> = ({
               <Sparkles className="w-3.5 h-3.5" />
               <span className="hidden sm:inline">MaIA</span>
             </button>
+
+            {/* Alternador de Tema Claro / Escuro */}
+            <ThemeToggle />
 
             {/* Central de Notificações Push */}
             {onOpenNotifications && (

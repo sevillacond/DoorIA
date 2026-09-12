@@ -23,12 +23,16 @@ import {
   FileText,
   DoorOpen,
   BellRing,
+  Sun,
+  Moon,
 } from 'lucide-react';
 import type { UserSession, SystemStatus } from '../types.ts';
+import { ThemeToggle } from './ThemeToggle.tsx';
+import { useTheme } from '../context/ThemeContext.tsx';
 
 interface SidebarProps {
-  currentTab: 'inicio' | 'portaria' | 'cameras' | 'financeiro' | 'engenharia' | 'dispositivos' | 'moradores';
-  onSelectTab: (tab: 'inicio' | 'portaria' | 'cameras' | 'financeiro' | 'engenharia' | 'dispositivos' | 'moradores') => void;
+  currentTab: 'inicio' | 'portaria' | 'cameras' | 'financeiro' | 'engenharia' | 'dispositivos' | 'moradores' | 'condominio';
+  onSelectTab: (tab: 'inicio' | 'portaria' | 'cameras' | 'financeiro' | 'engenharia' | 'dispositivos' | 'moradores' | 'condominio') => void;
   session: UserSession;
   systemStatus: SystemStatus | null;
   activeCallCount: number;
@@ -107,6 +111,13 @@ export const Sidebar: React.FC<SidebarProps> = ({
         icon: DollarSign,
         badge: null,
         section: 'gestao',
+      },
+      {
+        id: 'condominio',
+        label: 'Dados do Condomínio',
+        icon: Building2,
+        badge: null,
+        section: 'gestao',
       }
     );
   } else if (session.role === 'super_admin' || session.role === 'admin_sistema') {
@@ -137,6 +148,13 @@ export const Sidebar: React.FC<SidebarProps> = ({
         label: 'Boletos & Financeiro',
         icon: DollarSign,
         badge: null,
+        section: 'gestao',
+      },
+      {
+        id: 'condominio',
+        label: 'Dados do Condomínio',
+        icon: Building2,
+        badge: 'Config',
         section: 'gestao',
       },
       {
@@ -450,6 +468,17 @@ export const Sidebar: React.FC<SidebarProps> = ({
                 {!isCollapsed && <span className="flex-1 text-left truncate">Notificações Push</span>}
               </button>
             )}
+
+            {/* Controle de Tema Claro / Escuro */}
+            <div className="pt-2">
+              {!isCollapsed ? (
+                <ThemeToggle variant="sidebar" />
+              ) : (
+                <div className="flex justify-center px-1">
+                  <ThemeToggle variant="header" />
+                </div>
+              )}
+            </div>
           </div>
         </div>
 

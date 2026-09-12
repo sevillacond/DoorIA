@@ -15,6 +15,11 @@ import {
   Siren,
   Shield,
   XCircle,
+  Building2,
+  Sliders,
+  ChevronRight,
+  MapPin,
+  BadgeCheck,
 } from 'lucide-react';
 import type { UserSession, Unit, Gate, CallLog, FinancialSummary, SystemStatus, AuditLogEntry } from '../types.ts';
 
@@ -100,6 +105,14 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
         </div>
 
         <div className="flex items-center gap-2.5 z-10 flex-wrap">
+          <button
+            onClick={() => onSelectTab('condominio')}
+            className="px-4 py-2.5 rounded-xl bg-[#0a50ff] hover:bg-[#0842cc] text-white text-xs font-bold flex items-center gap-2 border border-[#55b0ff]/30 shadow-md shadow-blue-900/30 transition cursor-pointer"
+          >
+            <Building2 className="w-4 h-4 text-white" />
+            <span>Dados do Condomínio</span>
+          </button>
+
           <button
             onClick={handleTriggerPanic}
             disabled={panicLoading}
@@ -259,6 +272,65 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
                 </div>
               </div>
             ))}
+          </div>
+        </div>
+      </div>
+
+      {/* Resumo Cadastral & Governança do Condomínio */}
+      <div className="p-5 rounded-2xl bg-white border border-[#dde5f0] shadow-xs hover:shadow-md transition space-y-4">
+        <div className="flex items-center justify-between flex-wrap gap-2">
+          <div className="flex items-center gap-2.5">
+            <div className="w-8 h-8 rounded-xl bg-[#ebf2ff] text-[#0a50ff] flex items-center justify-center">
+              <Building2 className="w-4 h-4" />
+            </div>
+            <div>
+              <h3 className="text-sm font-extrabold text-[#0d1b35] font-['Red_Hat_Display'] flex items-center gap-2">
+                Condomínio Residencial Solar das Palmeiras
+                <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-emerald-50 text-emerald-700 border border-emerald-200 flex items-center gap-1">
+                  <BadgeCheck className="w-3 h-3 text-emerald-600" />
+                  Ativo & Regularizado
+                </span>
+              </h3>
+              <p className="text-xs text-[#5a6a85] flex items-center gap-1.5 mt-0.5">
+                <MapPin className="w-3 h-3 text-[#5a6a85]" />
+                Av. dos Holandeses, 1500 - Calhau, São Luís - MA • CNPJ: 34.891.022/0001-85
+              </p>
+            </div>
+          </div>
+
+          <button
+            onClick={() => onSelectTab('condominio')}
+            className="px-3.5 py-1.5 rounded-xl bg-[#ebf2ff] hover:bg-[#dde8ff] text-[#0a50ff] text-xs font-bold transition flex items-center gap-1.5 border border-[#dde8ff] cursor-pointer"
+          >
+            <Sliders className="w-3.5 h-3.5" />
+            <span>Editar Configurações</span>
+            <ChevronRight className="w-3.5 h-3.5" />
+          </button>
+        </div>
+
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3 pt-2">
+          <div className="p-3.5 rounded-xl bg-[#f8fafc] border border-[#dde5f0] space-y-1">
+            <span className="text-[10px] uppercase font-bold text-[#5a6a85] tracking-wider">Síndico Responsável</span>
+            <p className="text-xs font-bold text-[#0d1b35]">Henrique V. Alencar</p>
+            <p className="text-[11px] text-[#5a6a85]">Apto 304 • Mandato até 15/12/2027</p>
+          </div>
+
+          <div className="p-3.5 rounded-xl bg-[#f8fafc] border border-[#dde5f0] space-y-1">
+            <span className="text-[10px] uppercase font-bold text-[#5a6a85] tracking-wider">Administradora</span>
+            <p className="text-xs font-bold text-[#0d1b35]">Enlace Gestão Condominial</p>
+            <p className="text-[11px] text-[#5a6a85]">contato@enlacegestao.com.br</p>
+          </div>
+
+          <div className="p-3.5 rounded-xl bg-[#f8fafc] border border-[#dde5f0] space-y-1">
+            <span className="text-[10px] uppercase font-bold text-[#5a6a85] tracking-wider">Cota & Vencimento</span>
+            <p className="text-xs font-bold text-[#0d1b35]">R$ 480,00 / mês</p>
+            <p className="text-[11px] text-[#5a6a85]">Vencimento dia 10 • Banco Inter</p>
+          </div>
+
+          <div className="p-3.5 rounded-xl bg-[#f8fafc] border border-[#dde5f0] space-y-1">
+            <span className="text-[10px] uppercase font-bold text-[#5a6a85] tracking-wider">Telefonia & Portaria</span>
+            <p className="text-xs font-bold text-[#0d1b35]">Asterisk 20.8 (Local-First)</p>
+            <p className="text-[11px] text-[#5a6a85]">Pedestre DTMF *07 • Veicular *08</p>
           </div>
         </div>
       </div>

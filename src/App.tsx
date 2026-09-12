@@ -31,6 +31,7 @@ import { CallAuditModal } from './components/CallAuditModal.tsx';
 import { PWAInstallBanner } from './components/PWAInstallBanner.tsx';
 import { OfflineIndicator } from './components/OfflineIndicator.tsx';
 import { NotificationCenterModal } from './components/NotificationCenterModal.tsx';
+import { CondominiumSettingsModule } from './components/CondominiumSettingsModule.tsx';
 import type {
   UserSession,
   Unit,
@@ -63,7 +64,7 @@ export default function App() {
     mfaEnabled: true,
   });
 
-  const [activeTab, setActiveTab] = useState<'inicio' | 'portaria' | 'cameras' | 'financeiro' | 'engenharia' | 'dispositivos' | 'moradores'>('inicio');
+  const [activeTab, setActiveTab] = useState<'inicio' | 'portaria' | 'cameras' | 'financeiro' | 'engenharia' | 'dispositivos' | 'moradores' | 'condominio'>('inicio');
 
   // Estados dos Módulos do Sistema
   const [units, setUnits] = useState<Unit[]>([]);
@@ -320,7 +321,7 @@ export default function App() {
   };
 
   return (
-    <div className="min-h-screen bg-[#f5f8ff] text-[#0d1b35] flex selection:bg-[#0a50ff]/20 selection:text-[#0a50ff] font-sans">
+    <div className="min-h-screen bg-[#f5f8ff] dark:bg-[#070d18] text-[#0d1b35] dark:text-[#f1f5f9] flex selection:bg-[#0a50ff]/20 selection:text-[#0a50ff] font-sans transition-colors duration-200">
       {/* MENU SIDEBAR COMPLETO */}
       <Sidebar
         currentTab={activeTab}
@@ -359,8 +360,8 @@ export default function App() {
 
         {/* FEEDBACK GLOBAL */}
         {feedbackMessage && (
-          <div className="bg-[#ebf2ff] border-b border-[#dde8ff] text-[#0a50ff] text-xs px-4 py-2.5 text-center flex items-center justify-center gap-2 animate-fadeIn sticky top-16 z-20 font-semibold shadow-xs">
-            <ShieldCheck className="w-4 h-4 text-[#0a50ff]" />
+          <div className="bg-[#ebf2ff] dark:bg-[#0a2352] border-b border-[#dde8ff] dark:border-[#193b7a] text-[#0a50ff] dark:text-[#60a5fa] text-xs px-4 py-2.5 text-center flex items-center justify-center gap-2 animate-fadeIn sticky top-16 z-20 font-semibold shadow-xs">
+            <ShieldCheck className="w-4 h-4 text-[#0a50ff] dark:text-[#60a5fa]" />
             <span>{feedbackMessage}</span>
           </div>
         )}
@@ -438,6 +439,13 @@ export default function App() {
           
           {activeTab === 'moradores' && session.role !== 'morador' && (
             <UnitManagementModule />
+          )}
+
+          {activeTab === 'condominio' && session.role !== 'morador' && (
+            <CondominiumSettingsModule
+              session={session}
+              onRefreshCondoData={refreshAllData}
+            />
           )}
   
           {activeTab === 'dispositivos' && (session.role === 'super_admin' || session.role === 'admin_sistema') && (
