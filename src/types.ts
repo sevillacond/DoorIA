@@ -85,6 +85,19 @@ export interface PackageDelivery {
   pickedUpAt?: string;
 }
 
+export interface LprLogEntry {
+  id: string;
+  timestamp: string;
+  plate: string;
+  confidence: number;
+  cameraName: string;
+  matchedVehicle?: Vehicle;
+  matchedUnitNumber?: string;
+  action: 'ABERTURA_AUTOMATICA' | 'NEGADO_DESCONHECIDO' | 'ALERTA_SUSPEITO';
+  reason: string;
+  snapshotUrl?: string;
+}
+
 export interface Gate {
   id: string;
   name: string;

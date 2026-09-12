@@ -387,9 +387,12 @@ export default function App() {
           {activeTab === 'portaria' && session.role !== 'morador' && (
             <PortariaModule
               session={session}
+              units={units}
               packages={packages}
               visitorInvites={visitorInvites}
               vehicles={vehicles}
+              gates={gates}
+              onRefreshData={refreshAllData}
             />
           )}
 

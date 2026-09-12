@@ -24,6 +24,7 @@ import type {
   AuditLogEntry,
   SystemStatus,
   CallRecordingAuditData,
+  LprLogEntry,
 } from './src/types.ts';
 
 const PORT = 3000;
@@ -453,6 +454,40 @@ let packageDeliveries: PackageDelivery[] = [
     receivedAt: new Date(Date.now() - 28800000).toISOString(),
     status: 'aguardando_retirada',
     pickupCode: '7230',
+  },
+];
+
+let lprLogs: LprLogEntry[] = [
+  {
+    id: 'lpr-1',
+    timestamp: new Date(Date.now() - 1800000).toISOString(),
+    plate: 'PTA-4A12',
+    confidence: 98.6,
+    cameraName: 'Câmera Portão Garagem (cam-02)',
+    matchedVehicle: vehicles[0],
+    matchedUnitNumber: '101',
+    action: 'ABERTURA_AUTOMATICA',
+    reason: 'Veículo cadastrado na Unidade 101. Vaga 01. Policy Engine liberou acesso.',
+  },
+  {
+    id: 'lpr-2',
+    timestamp: new Date(Date.now() - 7200000).toISOString(),
+    plate: 'ROX-8B90',
+    confidence: 97.4,
+    cameraName: 'Câmera Portão Garagem (cam-02)',
+    matchedVehicle: vehicles[1],
+    matchedUnitNumber: '102',
+    action: 'ABERTURA_AUTOMATICA',
+    reason: 'Veículo cadastrado na Unidade 102. Vaga 02. Policy Engine liberou acesso.',
+  },
+  {
+    id: 'lpr-3',
+    timestamp: new Date(Date.now() - 14400000).toISOString(),
+    plate: 'ABC-1234',
+    confidence: 94.2,
+    cameraName: 'Câmera Portão Garagem (cam-02)',
+    action: 'NEGADO_DESCONHECIDO',
+    reason: 'Placa não cadastrada no condomínio Solar das Palmeiras. Acesso retido.',
   },
 ];
 
@@ -1362,6 +1397,98 @@ async function startServer() {
     res.json(packageDeliveries);
   });
 
+  app.post('/api/v1/packages', (req, res) => {
+    const { unitNumber, courier, trackingCode, description } = req.body;
+    const targetUnit = units.find((u) => u.number === unitNumber) || units[0];
+
+    // Código PIN aleatório de 4 dígitos para retirada segura
+    const pickupCode = Math.floor(1000 + Math.random() * 9000).toString();
+
+    const newPackage: PackageDelivery = {
+      id: `pkg-${Date.now()}`,
+      unitId: targetUnit.id,
+      trackingCode: trackingCode || `REC-${Math.floor(100000 + Math.random() * 900000)}`,
+      courier: courier || 'Transportadora / Encomenda',
+      description: description || 'Pacote recebido na portaria social',
+      receivedAt: new Date().toISOString(),
+      status: 'aguardando_retirada',
+      pickupCode,
+    };
+
+    packageDeliveries.unshift(newPackage);
+
+    publishEvent('PACKAGE_RECEIVED', 'portaria_core', {
+      packageId: newPackage.id,
+      unitNumber: targetUnit.number,
+      courier: newPackage.courier,
+      pickupCode,
+    });
+
+    logAudit(currentSession.name, currentSession.role, 'ENCOMENDA_RECEBIDA', `Unidade ${targetUnit.number}`, 'PERMITIDO', {
+      packageId: newPackage.id,
+      courier: newPackage.courier,
+      trackingCode: newPackage.trackingCode,
+    });
+
+    res.json({ success: true, package: newPackage });
+  });
+
+  app.post('/api/v1/packages/:id/pickup', (req, res) => {
+    const { id } = req.params;
+    const { pickupCode } = req.body;
+    const pkg = packageDeliveries.find((p) => p.id === id);
+
+    if (!pkg) {
+      return res.status(404).json({ error: 'Encomenda não encontrada.' });
+    }
+
+    if (pkg.status === 'entregue') {
+      return res.status(400).json({ error: 'Esta encomenda já foi retirada anteriormente.' });
+    }
+
+    // Se fornecido código, valida correspondência
+    if (pickupCode && pkg.pickupCode !== pickupCode.trim()) {
+      logAudit(currentSession.name, currentSession.role, 'RETIRADA_ENCOMENDA_PIN_INVALIDO', `Encomenda ${id}`, 'NEGADO', {
+        attemptedCode: pickupCode,
+      });
+      return res.status(403).json({ error: 'Código PIN de retirada incorreto.' });
+    }
+
+    pkg.status = 'entregue';
+    pkg.pickedUpAt = new Date().toISOString();
+
+    const targetUnit = units.find((u) => u.id === pkg.unitId);
+
+    logAudit(currentSession.name, currentSession.role, 'RETIRADA_ENCOMENDA_CONCLUIDA', `Unidade ${targetUnit?.number || 'Geral'}`, 'PERMITIDO', {
+      packageId: pkg.id,
+      pickedUpAt: pkg.pickedUpAt,
+      retiradoPor: currentSession.name,
+    });
+
+    res.json({ success: true, package: pkg });
+  });
+
+  app.post('/api/v1/packages/:id/notify', (req, res) => {
+    const { id } = req.params;
+    const pkg = packageDeliveries.find((p) => p.id === id);
+    if (!pkg) return res.status(404).json({ error: 'Encomenda não encontrada.' });
+
+    const targetUnit = units.find((u) => u.id === pkg.unitId);
+
+    publishEvent('PACKAGE_RECEIVED', 'portaria_manual_notify', {
+      packageId: pkg.id,
+      unitNumber: targetUnit?.number,
+      courier: pkg.courier,
+      pickupCode: pkg.pickupCode,
+    });
+
+    logAudit(currentSession.name, currentSession.role, 'NOTIFICACAO_ENCOMENDA_REENVIADA', `Unidade ${targetUnit?.number}`, 'PERMITIDO', {
+      packageId: pkg.id,
+    });
+
+    res.json({ success: true, message: `Morador do Apto ${targetUnit?.number} notificado com sucesso via WebPhone / Interfone.` });
+  });
+
   app.get('/api/v1/visitors/invites', (req, res) => {
     if (currentSession.role === 'morador' && currentSession.unitNumber) {
       const unit = units.find((u) => u.number === currentSession.unitNumber);
@@ -1371,8 +1498,9 @@ async function startServer() {
   });
 
   app.post('/api/v1/visitors/invites', (req, res) => {
-    const { visitorName, type } = req.body;
-    const unit = units.find((u) => u.number === (currentSession.unitNumber || '101')) || units[0];
+    const { visitorName, type, targetUnitNumber } = req.body;
+    const targetNumber = targetUnitNumber || currentSession.unitNumber || '101';
+    const unit = units.find((u) => u.number === targetNumber) || units[0];
 
     const newInvite: VisitorInvite = {
       id: `inv-${Date.now()}`,
@@ -1395,12 +1523,119 @@ async function startServer() {
     res.json({ success: true, invite: newInvite });
   });
 
+  app.delete('/api/v1/visitors/invites/:id', (req, res) => {
+    const { id } = req.params;
+    const invite = visitorInvites.find((v) => v.id === id);
+    if (!invite) return res.status(404).json({ error: 'Convite não encontrado.' });
+
+    invite.status = 'revogado';
+    logAudit(currentSession.name, currentSession.role, 'REVOGACAO_CONVITE_QR', `Convite ${id}`, 'PERMITIDO', {
+      visitorName: invite.visitorName,
+    });
+
+    res.json({ success: true, invite });
+  });
+
   app.get('/api/v1/vehicles', (req, res) => {
     if (currentSession.role === 'morador' && currentSession.unitNumber) {
       const unit = units.find((u) => u.number === currentSession.unitNumber);
       return res.json(vehicles.filter((v) => v.unitId === unit?.id));
     }
     res.json(vehicles);
+  });
+
+  app.get('/api/v1/vehicles/lpr-logs', (req, res) => {
+    res.json(lprLogs);
+  });
+
+  app.post('/api/v1/vehicles/lpr-simulate', (req, res) => {
+    const { plate } = req.body;
+    if (!plate) return res.status(400).json({ error: 'Placa obrigatória.' });
+
+    const cleanPlate = plate.trim().toUpperCase();
+    const matchedVehicle = vehicles.find((v) => v.plate.toUpperCase() === cleanPlate);
+    const matchedUnit = matchedVehicle ? units.find((u) => u.id === matchedVehicle.unitId) : undefined;
+
+    const garageGate = gates.find((g) => g.type === 'garagem')!;
+
+    if (matchedVehicle && matchedUnit) {
+      // Política de acesso: veículo autorizado
+      const newEntry: LprLogEntry = {
+        id: `lpr-${Date.now()}`,
+        timestamp: new Date().toISOString(),
+        plate: cleanPlate,
+        confidence: Number((97.5 + Math.random() * 2.4).toFixed(1)),
+        cameraName: 'Câmera Portão Garagem (cam-02)',
+        matchedVehicle,
+        matchedUnitNumber: matchedUnit.number,
+        action: 'ABERTURA_AUTOMATICA',
+        reason: `Placa reconhecida via OCR ONVIF. ${matchedVehicle.brand} ${matchedVehicle.model} (${matchedVehicle.parkingSpot}) - Apto ${matchedUnit.number}. Portão liberado via DTMF *08.`,
+      };
+
+      lprLogs.unshift(newEntry);
+      if (lprLogs.length > 50) lprLogs.pop();
+
+      // Aciona o portão de garagem
+      garageGate.status = 'aberto';
+      garageGate.lastOpenedAt = new Date().toISOString();
+      garageGate.lastOpenedBy = `LPR Automático (${cleanPlate})`;
+
+      publishEvent('ACCESS_GRANTED', 'lpr_system', {
+        plate: cleanPlate,
+        unitNumber: matchedUnit.number,
+        gate: 'garagem',
+        dtmf: '*08',
+      });
+      publishEvent('GATE_OPENED', 'lpr_controller', { gateId: garageGate.id, plate: cleanPlate });
+
+      logAudit('Sistema LPR / Câmera Garagem', 'sistema', 'LPR_ACESSO_AUTORIZADO', `Portão Garagem`, 'PERMITIDO', {
+        plate: cleanPlate,
+        unitNumber: matchedUnit.number,
+        parkingSpot: matchedVehicle.parkingSpot,
+      }, undefined, '*08');
+
+      setTimeout(() => {
+        garageGate.status = 'fechado';
+        publishEvent('DOOR_OPENED', 'gate_controller', { gateId: garageGate.id, status: 'fechado_apos_timer' });
+      }, 5000);
+
+      return res.json({
+        success: true,
+        authorized: true,
+        lprEntry: newEntry,
+        gate: garageGate,
+      });
+    } else {
+      // Veículo desconhecido / não cadastrado
+      const newEntry: LprLogEntry = {
+        id: `lpr-${Date.now()}`,
+        timestamp: new Date().toISOString(),
+        plate: cleanPlate,
+        confidence: Number((93.0 + Math.random() * 5.0).toFixed(1)),
+        cameraName: 'Câmera Portão Garagem (cam-02)',
+        action: 'NEGADO_DESCONHECIDO',
+        reason: `Placa ${cleanPlate} não vinculada a nenhuma unidade do condomínio. Portão mantido fechado conforme Master PRD.`,
+      };
+
+      lprLogs.unshift(newEntry);
+      if (lprLogs.length > 50) lprLogs.pop();
+
+      publishEvent('ACCESS_DENIED', 'lpr_system', {
+        plate: cleanPlate,
+        reason: 'Veículo não cadastrado na base de dados',
+      });
+
+      logAudit('Sistema LPR / Câmera Garagem', 'sistema', 'LPR_ACESSO_NEGADO', `Portão Garagem`, 'NEGADO', {
+        plate: cleanPlate,
+      });
+
+      return res.json({
+        success: false,
+        authorized: false,
+        lprEntry: newEntry,
+        message: `Veículo com placa ${cleanPlate} não autorizado. Portão de garagem permaneceu fechado.`,
+      });
+    }
   });
 
   // 8. IoT & Automação (NovaDigital HNZ-CB3)
