@@ -320,3 +320,27 @@ export interface SystemStatus {
     ipRange: '192.168.1.0/24';
   };
 }
+
+export interface CallRecordingAuditData {
+  recordingId: string;
+  callId: string;
+  unitNumber: string;
+  origin: CallOrigin;
+  purpose: CallPurpose;
+  startedAt: string;
+  durationSeconds: number;
+  hashSha256: string;
+  audioUrl?: string;
+  answeredBy: string;
+  transcript: {
+    speaker: 'visitante' | 'morador' | 'maia_ura';
+    text: string;
+    timestamp: string;
+  }[];
+  aiAuditSummary: {
+    sentiment: 'pacifico' | 'atencao' | 'suspeito';
+    gateOpened: boolean;
+    authorizedRule: string;
+    observations: string;
+  };
+}

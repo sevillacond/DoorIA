@@ -25,8 +25,8 @@ import {
 import type { UserSession, SystemStatus } from '../types.ts';
 
 interface SidebarProps {
-  currentTab: 'inicio' | 'cameras' | 'financeiro' | 'engenharia';
-  onSelectTab: (tab: 'inicio' | 'cameras' | 'financeiro' | 'engenharia') => void;
+  currentTab: 'inicio' | 'portaria' | 'cameras' | 'financeiro' | 'engenharia';
+  onSelectTab: (tab: 'inicio' | 'portaria' | 'cameras' | 'financeiro' | 'engenharia') => void;
   session: UserSession;
   systemStatus: SystemStatus | null;
   activeCallCount: number;
@@ -86,6 +86,17 @@ export const Sidebar: React.FC<SidebarProps> = ({
       section: 'gestao',
     },
   ];
+
+  // Adiciona Portaria para quem não é morador
+  if (session.role !== 'morador') {
+    navItems.splice(1, 0, {
+      id: 'portaria',
+      label: 'Portaria & Acessos',
+      icon: DoorOpen,
+      badge: null,
+      section: 'seguranca',
+    } as any);
+  }
 
   return (
     <>

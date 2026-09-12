@@ -23,7 +23,9 @@ import { CamerasGrid } from './components/CamerasGrid.tsx';
 import { FinancialModule } from './components/FinancialModule.tsx';
 import { AdminTopologyView } from './components/AdminTopologyView.tsx';
 import { AdminDashboard } from './components/AdminDashboard.tsx';
+import { PortariaModule } from './components/PortariaModule.tsx';
 import { MaiaChatDrawer } from './components/MaiaChatDrawer.tsx';
+import { CallAuditModal } from './components/CallAuditModal.tsx';
 import type {
   UserSession,
   Unit,
@@ -56,7 +58,7 @@ export default function App() {
     mfaEnabled: true,
   });
 
-  const [activeTab, setActiveTab] = useState<'inicio' | 'cameras' | 'financeiro' | 'engenharia'>('inicio');
+  const [activeTab, setActiveTab] = useState<'inicio' | 'portaria' | 'cameras' | 'financeiro' | 'engenharia'>('inicio');
 
   // Estados dos Módulos do Sistema
   const [units, setUnits] = useState<Unit[]>([]);
@@ -83,6 +85,13 @@ export default function App() {
   const [isMaiaOpen, setIsMaiaOpen] = useState(false);
   const [isMobileSidebarOpen, setIsMobileSidebarOpen] = useState(false);
   const [feedbackMessage, setFeedbackMessage] = useState<string | null>(null);
+  const [isAuditModalOpen, setIsAuditModalOpen] = useState(false);
+  const [selectedRecordingId, setSelectedRecordingId] = useState<string | null>(null);
+
+  const handleOpenAuditModal = (recordingId: string) => {
+    setSelectedRecordingId(recordingId);
+    setIsAuditModalOpen(true);
+  };
 
   // Carregar dados iniciais
   const refreshAllData = async () => {
@@ -357,6 +366,7 @@ export default function App() {
               onOpenWebPhone={() => setIsWebPhoneOpen(true)}
               onCreateVisitorInvite={handleCreateVisitorInvite}
               onSelectTab={(tab) => setActiveTab(tab as any)}
+              onOpenAuditModal={handleOpenAuditModal}
             />
           )}
           
@@ -368,7 +378,18 @@ export default function App() {
               callLogs={callLogs}
               financialSummary={financialSummary}
               systemStatus={systemStatus}
+              auditLogs={auditLogs}
               onSelectTab={(tab) => setActiveTab(tab as any)}
+              onOpenAuditModal={handleOpenAuditModal}
+            />
+          )}
+
+          {activeTab === 'portaria' && session.role !== 'morador' && (
+            <PortariaModule
+              session={session}
+              packages={packages}
+              visitorInvites={visitorInvites}
+              vehicles={vehicles}
             />
           )}
 
@@ -438,6 +459,13 @@ export default function App() {
       <MaiaChatDrawer
         isOpen={isMaiaOpen}
         onClose={() => setIsMaiaOpen(false)}
+        session={session}
+      />
+
+      <CallAuditModal
+        isOpen={isAuditModalOpen}
+        onClose={() => setIsAuditModalOpen(false)}
+        recordingId={selectedRecordingId}
         session={session}
       />
     </div>

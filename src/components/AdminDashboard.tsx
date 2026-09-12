@@ -10,9 +10,13 @@ import {
   BarChart3,
   CalendarDays,
   DoorOpen,
-  PhoneCall
+  PhoneCall,
+  FileCheck,
+  Siren,
+  Shield,
+  XCircle,
 } from 'lucide-react';
-import type { UserSession, Unit, Gate, CallLog, FinancialSummary, SystemStatus } from '../types.ts';
+import type { UserSession, Unit, Gate, CallLog, FinancialSummary, SystemStatus, AuditLogEntry } from '../types.ts';
 
 interface AdminDashboardProps {
   session: UserSession;
@@ -21,7 +25,9 @@ interface AdminDashboardProps {
   callLogs: CallLog[];
   financialSummary: FinancialSummary | null;
   systemStatus: SystemStatus | null;
+  auditLogs: AuditLogEntry[];
   onSelectTab: (tab: string) => void;
+  onOpenAuditModal?: (recordingId: string) => void;
 }
 
 export const AdminDashboard: React.FC<AdminDashboardProps> = ({
@@ -31,9 +37,12 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
   callLogs,
   financialSummary,
   systemStatus,
+  auditLogs,
   onSelectTab,
+  onOpenAuditModal,
 }) => {
   const [filterPeriod, setFilterPeriod] = useState<'hoje' | 'semana' | 'mes'>('hoje');
+  const [panicLoading, setPanicLoading] = useState(false);
 
   // Cálculos rápidos para o Síndico
   const activeCalls = callLogs.filter(c => c.status === 'chamando' || c.status === 'em_atendimento').length;
@@ -41,6 +50,30 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
   
   const unidadesInadimplentes = units.filter(u => u.hasDebts).length;
   const taxaInadimplencia = units.length > 0 ? (unidadesInadimplentes / units.length) * 100 : 0;
+
+  const handleTriggerPanic = async () => {
+    if (!confirm('CONFIRMAÇÃO DE EMERGÊNCIA:\nDeseja acionar o Protocolo de Pânico / Coação da Portaria?\nIsso registrará evento imutável, acenderá refletores de segurança e notificará a equipe gestora.')) {
+      return;
+    }
+
+    setPanicLoading(true);
+    try {
+      const res = await fetch('/api/v1/panic/trigger', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          reason: 'Acionamento direto pelo Síndico no Painel Central',
+          location: 'Acesso Social Principal',
+        }),
+      });
+      const data = await res.json();
+      alert(data.message || 'Protocolo de Emergência Ativado com Sucesso!');
+    } catch (err) {
+      alert('Falha ao comunicar alerta de pânico ao barramento local.');
+    } finally {
+      setPanicLoading(false);
+    }
+  };
 
   return (
     <div className="space-y-6">
@@ -61,6 +94,16 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
         </div>
 
         <div className="flex items-center gap-2">
+          <button
+            onClick={handleTriggerPanic}
+            disabled={panicLoading}
+            className="px-3.5 py-2.5 rounded-xl bg-red-600 hover:bg-red-500 active:scale-95 text-white text-xs font-extrabold flex items-center gap-2 shadow-lg shadow-red-950 transition border border-red-400/30"
+            title="Protocolo de Pânico e Coação Silenciosa da Portaria"
+          >
+            <Siren className="w-4 h-4 text-white animate-pulse" />
+            <span>{panicLoading ? 'Acionando...' : 'Pânico Portaria'}</span>
+          </button>
+
           <button
             onClick={() => onSelectTab('engenharia')}
             className="px-4 py-2.5 rounded-xl bg-slate-800 hover:bg-slate-700 text-white text-xs font-bold flex items-center gap-2 border border-slate-700 transition"
@@ -173,12 +216,23 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
                     {log.origin === 'xpe_3115_ip' ? 'Totem Físico' : 'QR Virtual'} • {new Date(log.startedAt).toLocaleTimeString('pt-BR')}
                   </div>
                 </div>
-                <div>
+                <div className="flex items-center gap-2">
                   <span className={`px-2 py-0.5 rounded-full text-[9px] font-bold uppercase ${
                     log.status === 'atendida' ? 'bg-emerald-950 text-emerald-400' : 'bg-red-950 text-red-400'
                   }`}>
                     {log.status}
                   </span>
+
+                  {log.hasRecording && onOpenAuditModal && (
+                    <button
+                      onClick={() => onOpenAuditModal(log.recordingId || log.id)}
+                      className="px-2 py-1 rounded-lg bg-cyan-950 hover:bg-cyan-900 border border-cyan-800 text-cyan-300 text-[10px] font-bold flex items-center gap-1 transition"
+                      title="Auditar Gravação e Transcrição Criptografada"
+                    >
+                      <FileCheck className="w-3 h-3 text-cyan-400" />
+                      <span>Auditar</span>
+                    </button>
+                  )}
                 </div>
               </div>
             ))}
@@ -205,38 +259,39 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
         </div>
 
         <div className="grid grid-cols-1 md:grid-cols-3 gap-3 text-xs">
-          <div className="p-3.5 rounded-xl bg-slate-950 border border-slate-800 space-y-1.5">
-            <div className="flex items-center justify-between">
-              <span className="font-bold text-amber-400">Alerta de Tempo Aberto</span>
-              <span className="text-[10px] text-slate-500 font-mono">Hoje, 08:24</span>
+          {auditLogs.slice(0, 3).map((log) => (
+            <div key={log.id} className="p-3.5 rounded-xl bg-slate-950 border border-slate-800 space-y-1.5 flex flex-col justify-between">
+              <div className="space-y-1.5">
+                <div className="flex items-center justify-between">
+                  <span className={`font-bold flex items-center gap-1.5 ${
+                    log.status === 'PERMITIDO' ? 'text-emerald-400' :
+                    log.status === 'ALERTA' ? 'text-amber-400' : 'text-red-400'
+                  }`}>
+                    {log.status === 'PERMITIDO' && <Shield className="w-3.5 h-3.5" />}
+                    {log.status === 'ALERTA' && <AlertTriangle className="w-3.5 h-3.5" />}
+                    {log.status === 'NEGADO' && <XCircle className="w-3.5 h-3.5" />}
+                    {log.action}
+                  </span>
+                  <span className="text-[10px] text-slate-500 font-mono">
+                    {new Date(log.timestamp).toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' })}
+                  </span>
+                </div>
+                <p className="text-slate-300 text-[11px] leading-relaxed">
+                  {log.reason || 'Execução registrada.'}
+                </p>
+              </div>
+              <div className="text-[10px] text-slate-400 font-mono pt-2 border-t border-slate-800/50 flex justify-between">
+                <span>Alvo: {log.target}</span>
+                <span className="opacity-60">{log.actor}</span>
+              </div>
             </div>
-            <p className="text-slate-300 text-[11px]">
-              Portão Social Pedestre permaneceu aberto por mais de 45 segundos durante entrega. Fechamento automático acionado pela MaIA.
-            </p>
-            <div className="text-[10px] text-cyan-400 font-mono">Dispositivo: Sensor Magnético Portão A</div>
-          </div>
+          ))}
 
-          <div className="p-3.5 rounded-xl bg-slate-950 border border-slate-800 space-y-1.5">
-            <div className="flex items-center justify-between">
-              <span className="font-bold text-emerald-400">Acesso por QR Code</span>
-              <span className="text-[10px] text-slate-500 font-mono">Hoje, 07:45</span>
+          {auditLogs.length === 0 && (
+            <div className="col-span-3 p-6 text-center text-slate-500 font-mono text-xs border border-dashed border-slate-800 rounded-xl">
+              Nenhuma ocorrência registrada no período.
             </div>
-            <p className="text-slate-300 text-[11px]">
-              Prestador de serviço para Apto 101 validou câmera frontal e microfone. Chamada atendida no WebPhone pelo titular.
-            </p>
-            <div className="text-[10px] text-emerald-400 font-mono">Conformidade: Regra 10.1 Aprovada</div>
-          </div>
-
-          <div className="p-3.5 rounded-xl bg-slate-950 border border-slate-800 space-y-1.5">
-            <div className="flex items-center justify-between">
-              <span className="font-bold text-slate-200">Rotina Noturna Concluída</span>
-              <span className="text-[10px] text-slate-500 font-mono">Ontem, 23:00</span>
-            </div>
-            <p className="text-slate-300 text-[11px]">
-              Iluminação perimetral ativada via gateway Zigbee NovaDigital HNZ-CB3. Nenhuma anomalia de barreira perimetral.
-            </p>
-            <div className="text-[10px] text-slate-400 font-mono">Automação: Regra WHEN 23h IF Escuro</div>
-          </div>
+          )}
         </div>
       </div>
     </div>

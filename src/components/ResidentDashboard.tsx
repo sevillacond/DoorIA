@@ -36,6 +36,7 @@ interface ResidentDashboardProps {
   onOpenWebPhone: () => void;
   onCreateVisitorInvite: (name: string, type: 'visitante' | 'entrega' | 'prestador') => void;
   onSelectTab: (tab: string) => void;
+  onOpenAuditModal?: (recordingId: string) => void;
 }
 
 export const ResidentDashboard: React.FC<ResidentDashboardProps> = ({
@@ -48,6 +49,7 @@ export const ResidentDashboard: React.FC<ResidentDashboardProps> = ({
   onOpenWebPhone,
   onCreateVisitorInvite,
   onSelectTab,
+  onOpenAuditModal,
 }) => {
   const [activeSubTab, setActiveSubTab] = useState<'geral' | 'encomendas' | 'visitantes' | 'veiculos' | 'historico'>('geral');
   const [newVisitorName, setNewVisitorName] = useState('');
@@ -454,9 +456,20 @@ export const ResidentDashboard: React.FC<ResidentDashboardProps> = ({
                       </td>
                       <td className="py-3 px-4 text-amber-300">{log.gateOpened || 'Nenhum'}</td>
                       <td className="py-3 px-4 text-right">
-                        <span className="text-[10px] text-slate-400 bg-slate-950 px-2 py-1 rounded border border-slate-800">
-                          {log.hasRecording ? 'Hash SHA-256 Seguro' : 'Sem gravação'}
-                        </span>
+                        {log.hasRecording && onOpenAuditModal ? (
+                          <button
+                            onClick={() => onOpenAuditModal(log.recordingId || log.id)}
+                            className="text-[10px] text-cyan-400 bg-cyan-950/80 hover:bg-cyan-900 px-2 py-1 rounded border border-cyan-800 font-mono transition inline-flex items-center gap-1"
+                            title="Consultar integridade criptográfica da gravação"
+                          >
+                            <ShieldCheck className="w-3 h-3 text-cyan-400" />
+                            <span>Gravação SHA-256</span>
+                          </button>
+                        ) : (
+                          <span className="text-[10px] text-slate-500 bg-slate-950 px-2 py-1 rounded border border-slate-800">
+                            Sem gravação
+                          </span>
+                        )}
                       </td>
                     </tr>
                   ))}

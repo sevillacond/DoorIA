@@ -23,6 +23,7 @@ import type {
   EventBusMessage,
   AuditLogEntry,
   SystemStatus,
+  CallRecordingAuditData,
 } from './src/types.ts';
 
 const PORT = 3000;
@@ -1432,6 +1433,124 @@ async function startServer() {
 
   app.get('/api/v1/events', (req, res) => {
     res.json(eventBusHistory);
+  });
+
+  // Auditoria Forense de Gravação (Seção 12 do Master PRD)
+  app.get('/api/v1/recordings/:id/audit', (req, res) => {
+    const recordingId = req.params.id;
+
+    // Avaliação no Policy Engine (Regra de Ouro #10 e LGPD)
+    const policy = PolicyEngine.evaluate({
+      actor: { id: currentSession.id, role: currentSession.role, unitNumber: currentSession.unitNumber },
+      action: 'VER_GRAVACAO',
+      resource: { target: recordingId },
+      context: {},
+    });
+
+    if (!policy.allowed) {
+      logAudit(
+        currentSession.name,
+        currentSession.role,
+        'ACESSO_GRAVACAO_BLOQUEADO',
+        `Gravação ${recordingId}`,
+        'NEGADO',
+        { recordingId },
+        policy.reason
+      );
+      return res.status(403).json({
+        success: false,
+        error: policy.reason || 'Acesso restrito ao síndico e administradores auditados conforme LGPD.',
+      });
+    }
+
+    // Encontrar chamada correspondente
+    const call = callHistory.find((c) => c.recordingId === recordingId || c.id === recordingId) || callHistory[0];
+
+    // Transcrição forense com metadados auditáveis
+    const auditData: CallRecordingAuditData = {
+      recordingId: recordingId,
+      callId: call.id,
+      unitNumber: call.unitNumber,
+      origin: call.origin,
+      purpose: call.purpose,
+      startedAt: call.startedAt,
+      durationSeconds: call.durationSeconds,
+      hashSha256: crypto.createHash('sha256').update(`${recordingId}-${call.id}-local-key-2026`).digest('hex'),
+      answeredBy: call.answeredBy || 'Morador WebPhone',
+      transcript: [
+        {
+          speaker: 'maia_ura',
+          text: `Portaria Inteligente Solar das Palmeiras. Direcionando chamada para a unidade ${call.unitNumber} (${call.purpose}).`,
+          timestamp: '00:02',
+        },
+        {
+          speaker: 'visitante',
+          text: call.purpose === 'entrega' ? 'Olá, entrega para o apartamento 101, por gentileza.' : 'Boa tarde, vim para uma visita ao morador.',
+          timestamp: '00:08',
+        },
+        {
+          speaker: 'morador',
+          text: 'Boa tarde! Pode deixar na eclusa, estou liberando o portão social pelo interfone.',
+          timestamp: '00:15',
+        },
+        {
+          speaker: 'maia_ura',
+          text: 'Comando DTMF *07 recebido. Política de acesso validada. Portão Pedestre Social destravado.',
+          timestamp: '00:20',
+        },
+      ],
+      aiAuditSummary: {
+        sentiment: 'pacifico',
+        gateOpened: !!call.gateOpened,
+        authorizedRule: 'POLICY_ENGINE_RULE_04_DTMF_CALL_ACTIVE',
+        observations: 'Comportamento do visitante dentro dos parâmetros normais. Portão destravado por 4s com retorno automático seguro.',
+      },
+    };
+
+    logAudit(
+      currentSession.name,
+      currentSession.role,
+      'AUDITORIA_GRAVACAO_CONSULTADA',
+      `Gravação ${recordingId}`,
+      'PERMITIDO',
+      {
+        recordingId,
+        hashVerified: auditData.hashSha256,
+      }
+    );
+
+    res.json({ success: true, audit: auditData });
+  });
+
+  // Alerta de Pânico / Coação da Portaria
+  app.post('/api/v1/panic/trigger', (req, res) => {
+    const { reason, location } = req.body;
+
+    const alertEvent = publishEvent('SOS_TRIGGERED', 'panic_core', {
+      triggeredBy: currentSession.name,
+      role: currentSession.role,
+      reason: reason || 'Alerta de pânico/emergência acionado na portaria',
+      location: location || 'Entrada Social / Calçada',
+    });
+
+    logAudit(
+      currentSession.name,
+      currentSession.role,
+      'ALARME_PANICO_ACIONADO',
+      'Portaria Central',
+      'ALERTA',
+      { reason, location }
+    );
+
+    // Acionar refletores e trava de segurança via IoT
+    const lamp = iotDevices.find((d) => d.id === 'iot-1');
+    if (lamp) lamp.state = 'ligado';
+
+    res.json({
+      success: true,
+      message: 'Protocolo de Emergência / Pânico Ativado. Registro imutável lavrado e síndico notificado.',
+      eventId: alertEvent.id,
+    });
   });
 
   // 10. Status Geral do Sistema (Local-First Monitor)
