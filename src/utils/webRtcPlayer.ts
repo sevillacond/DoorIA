@@ -3,10 +3,12 @@ export class WebRTCPlayer {
   private ws: WebSocket | null = null;
   private pc: RTCPeerConnection | null = null;
   private url: string;
+  private iceServers: string[];
 
-  constructor(videoElement: HTMLVideoElement, url: string) {
+  constructor(videoElement: HTMLVideoElement, url: string, customStunServer?: string) {
     this.videoElement = videoElement;
     this.url = url;
+    this.iceServers = customStunServer ? [customStunServer] : ['stun:stun.l.google.com:19302'];
   }
 
   public async start() {
@@ -40,7 +42,7 @@ export class WebRTCPlayer {
 
   private initPeerConnection() {
     this.pc = new RTCPeerConnection({
-      iceServers: [{ urls: 'stun:stun.l.google.com:19302' }]
+      iceServers: [{ urls: this.iceServers }]
     });
 
     this.pc.onicecandidate = (event) => {

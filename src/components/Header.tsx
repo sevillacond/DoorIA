@@ -10,6 +10,8 @@ import {
   Menu,
   Sparkles,
   Bell,
+  Wifi,
+  WifiOff,
 } from 'lucide-react';
 import type { UserSession, SystemStatus } from '../types.ts';
 import { ThemeToggle } from './ThemeToggle.tsx';
@@ -92,17 +94,22 @@ export const Header: React.FC<HeaderProps> = ({
 
           {/* Status Asterisk & Local-First (Central/Direita) */}
           <div className="hidden xl:flex items-center gap-3 bg-[#f5f8ff] px-3.5 py-1.5 rounded-xl border border-[#dde5f0] text-xs font-mono">
-            <div className="flex items-center gap-1.5 text-emerald-700 font-semibold">
+            <div className="flex items-center gap-1.5 text-emerald-700 font-semibold" title="PBX Asterisk puro em execução local na portaria">
               <span className="w-2 h-2 rounded-full bg-[#18c7a8] animate-pulse"></span>
               <span>Asterisk 20 PJSIP: Online</span>
             </div>
             <span className="text-slate-300">|</span>
-            <div className="flex items-center gap-1.5 text-[#0a50ff] font-semibold">
+            <div className="flex items-center gap-1.5 text-[#0a50ff] font-semibold" title="Operação 100% autônoma em rede local sem dependência de nuvem externa">
               <Radio className="w-3.5 h-3.5" />
               <span>Local-First Ativo</span>
             </div>
             <span className="text-slate-300">|</span>
-            <div className="flex items-center gap-1.5 text-amber-700 font-medium">
+            <div className="flex items-center gap-1.5 text-emerald-700 font-semibold" title="Sobrevivência de rede local: acionamento e interfonia ativos mesmo com link WAN/Internet offline">
+              <Wifi className="w-3.5 h-3.5 text-emerald-600" />
+              <span>LAN 100% Resiliente</span>
+            </div>
+            <span className="text-slate-300">|</span>
+            <div className="flex items-center gap-1.5 text-amber-700 font-medium" title="Totem IP frontal de controle de acesso e interfonia">
               <Server className="w-3.5 h-3.5" />
               <span>XPE: 192.168.1.150</span>
             </div>

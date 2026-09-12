@@ -14,6 +14,9 @@ import {
   AlertCircle,
   Radio,
   X,
+  Timer,
+  MessageSquare,
+  Check,
 } from 'lucide-react';
 import type { ActiveCall, UserSession } from '../types.ts';
 import { audioSystem } from '../utils/audioSystem.ts';
@@ -42,6 +45,12 @@ export const WebPhoneModal: React.FC<WebPhoneModalProps> = ({
   const [dialedNumber, setDialedNumber] = useState('');
   const [isMuted, setIsMuted] = useState(false);
   const [callDuration, setCallDuration] = useState(0);
+
+  // Cronômetro regressivo de segurança do portão aberto (Policy Engine)
+  const [gateCountdown, setGateCountdown] = useState<{ gate: string; seconds: number } | null>(null);
+
+  // Respostas rápidas pré-gravadas / TTS sintetizado para o visitante no XPE
+  const [quickMessageSent, setQuickMessageSent] = useState<string | null>(null);
 
   useEffect(() => {
     let timer: NodeJS.Timeout | null = null;
@@ -101,6 +110,22 @@ export const WebPhoneModal: React.FC<WebPhoneModalProps> = ({
     onHangupCall();
   };
 
+  // Efeito do Cronômetro Regressivo do Portão
+  useEffect(() => {
+    let interval: NodeJS.Timeout | null = null;
+    if (gateCountdown && gateCountdown.seconds > 0) {
+      interval = setInterval(() => {
+        setGateCountdown((prev) => {
+          if (!prev || prev.seconds <= 1) return null;
+          return { ...prev, seconds: prev.seconds - 1 };
+        });
+      }, 1000);
+    }
+    return () => {
+      if (interval) clearInterval(interval);
+    };
+  }, [gateCountdown?.gate]); // Only trigger when a new gate sequence starts
+
   const handleDtmfWrapper = (dtmf: '*07' | '*08') => {
     audioSystem.playDtmf('*');
     setTimeout(() => audioSystem.playDtmf('0'), 60);
@@ -108,7 +133,18 @@ export const WebPhoneModal: React.FC<WebPhoneModalProps> = ({
       audioSystem.playDtmf(dtmf === '*07' ? '7' : '8');
       audioSystem.playRelayClick();
       onSendDtmf(dtmf);
+      // Iniciar contagem regressiva de segurança (7 segundos)
+      setGateCountdown({
+        gate: dtmf === '*07' ? 'Portão de Pedestre' : 'Portão da Garagem',
+        seconds: 7,
+      });
     }, 120);
+  };
+
+  const handleSendQuickAudio = (phrase: string) => {
+    audioSystem.playRelayClick();
+    setQuickMessageSent(phrase);
+    setTimeout(() => setQuickMessageSent(null), 4000);
   };
 
   return (
@@ -243,6 +279,64 @@ export const WebPhoneModal: React.FC<WebPhoneModalProps> = ({
                       <span>Liberar Garagem (*08)</span>
                       <span className="text-[10px] font-normal text-blue-100/80">Acesso Veicular</span>
                     </button>
+                  </div>
+
+                  {/* CRONÔMETRO REGRESSIVO DE SEGURANÇA DO PORTÃO */}
+                  {gateCountdown && (
+                    <div className="p-3 rounded-xl bg-emerald-950/80 border border-emerald-600/60 text-emerald-200 flex items-center justify-between animate-fadeIn">
+                      <div className="flex items-center gap-2">
+                        <Timer className="w-4 h-4 text-emerald-400 animate-spin" />
+                        <div>
+                          <div className="text-xs font-bold text-white">
+                            {gateCountdown.gate} Aberto
+                          </div>
+                          <div className="text-[10px] text-emerald-300">
+                            Trava eletromagnética temporizada (Policy Engine)
+                          </div>
+                        </div>
+                      </div>
+                      <div className="text-center px-3 py-1 rounded-lg bg-emerald-900/90 border border-emerald-700">
+                        <span className="text-xs text-emerald-300 block font-mono">Fecha em</span>
+                        <span className="text-base font-extrabold text-white font-mono">
+                          {gateCountdown.seconds}s
+                        </span>
+                      </div>
+                    </div>
+                  )}
+
+                  {/* RESPOSTAS RÁPIDAS DE ÁUDIO / TTS PARA O INTERFONE */}
+                  <div className="p-3 rounded-xl bg-slate-950/80 border border-slate-800 space-y-2">
+                    <div className="text-[10px] font-bold uppercase tracking-wider text-slate-400 flex items-center justify-between">
+                      <span className="flex items-center gap-1.5">
+                        <MessageSquare className="w-3.5 h-3.5 text-cyan-400" />
+                        <span>Respostas Rápidas de Voz (TTS)</span>
+                      </span>
+                      <span className="text-[10px] text-slate-500">Enviar ao XPE</span>
+                    </div>
+
+                    <div className="grid grid-cols-2 gap-1.5">
+                      {[
+                        'Já estou descendo, aguarde um instante.',
+                        'Por favor, pode deixar com o vizinho.',
+                        'Pode deixar na caixa de encomendas.',
+                        'Não estou disponível no momento.',
+                      ].map((frase) => (
+                        <button
+                          key={frase}
+                          onClick={() => handleSendQuickAudio(frase)}
+                          className="p-2 rounded-lg bg-slate-800/90 hover:bg-slate-700 text-slate-200 text-left text-[11px] font-medium border border-slate-700/60 transition active:scale-95 leading-tight"
+                        >
+                          "{frase}"
+                        </button>
+                      ))}
+                    </div>
+
+                    {quickMessageSent && (
+                      <div className="mt-1 p-2 rounded-lg bg-cyan-950/70 border border-cyan-700/60 text-cyan-200 text-[11px] flex items-center gap-1.5 animate-fadeIn">
+                        <Check className="w-3.5 h-3.5 text-cyan-400 shrink-0" />
+                        <span>Áudio enviado ao visitante: "{quickMessageSent}"</span>
+                      </div>
+                    )}
                   </div>
 
                   <div className="flex items-center justify-between pt-2 border-t border-slate-800">

@@ -1,0 +1,23 @@
+import type { CapacitorConfig } from '@capacitor/cli';
+
+const config: CapacitorConfig = {
+  appId: 'br.com.enlace.dooria',
+  appName: 'Enlace-DoorIA',
+  webDir: 'dist',
+  server: {
+    cleartext: true,
+    androidScheme: 'https',
+    allowNavigation: [
+      '192.168.1.*',
+      'localhost',
+      '*.enlace.com.br'
+    ]
+  },
+  plugins: {
+    PushNotifications: {
+      presentationOptions: ['badge', 'sound', 'alert']
+    }
+  }
+};
+
+export default config;

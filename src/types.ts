@@ -361,6 +361,11 @@ export interface CondominiumConfig {
     iotGateway: string;
     iotGatewayIp: string;
     subnetRange: string;
+    publicDomain?: string; // New field for public domain (e.g. pwa.meucondominio.com.br)
+    stunTurnServer?: string; // New field for ICE servers
+    asteriskWssPort?: number; // E.g., 8089 for secure websockets
+    allowSelfSignedCerts?: boolean; // Accept invalid SSL for local networks
+    localIpRange?: string; // E.g. 192.168.1.0/24
   };
   updatedAt?: string;
   updatedBy?: string;

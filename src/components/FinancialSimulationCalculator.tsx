@@ -12,6 +12,8 @@ import {
   Copy,
   CheckCircle2,
   Sparkles,
+  Printer,
+  FileText,
 } from 'lucide-react';
 
 interface SimulationResult {
@@ -52,8 +54,18 @@ export const FinancialSimulationCalculator: React.FC = () => {
   const [numParcelas, setNumParcelas] = useState<number>(3);
   const [entradaSimulada, setEntradaSimulada] = useState<number>(200.0);
 
-  // Estado de cópia
+  // Comparação de Cenários (Simulação A vs Simulação B)
+  const [showComparison, setShowComparison] = useState(false);
+  const [descontoCenarioB, setDescontoCenarioB] = useState<number>(5.0); // % para quitação à vista
+  const [numParcelasB, setNumParcelasB] = useState<number>(6);
+
+  // Estado de cópia e impressão
   const [copiedSummary, setCopiedSummary] = useState(false);
+  const [showPrintModal, setShowPrintModal] = useState(false);
+  const [printDocType, setPrintDocType] = useState<'simulation' | 'agreement'>('simulation');
+  const [debtorName, setDebtorName] = useState<string>('João da Silva');
+  const [debtorUnit, setDebtorUnit] = useState<string>('Apto 101');
+  const [debtorDoc, setDebtorDoc] = useState<string>('000.000.000-00');
 
   // Cálculo reativo memoizado
   const resultado: SimulationResult = useMemo(() => {
@@ -127,6 +139,26 @@ export const FinancialSimulationCalculator: React.FC = () => {
     };
   }, [resultado.totalFinal, entradaSimulada, numParcelas]);
 
+  // Cenário B Comparativo (Quitação à vista com bonificação ou Parcelamento Estendido)
+  const cenarioB = useMemo(() => {
+    // Opção B1: À Vista com Desconto Extra
+    const valorAVistaComDesconto = Math.max(0, resultado.totalFinal * (1 - (descontoCenarioB / 100)));
+    const economiaAVista = Math.max(0, resultado.totalFinal - valorAVistaComDesconto);
+
+    // Opção B2: Parcelamento Estendido
+    const saldoEstendido = Math.max(0, resultado.totalFinal - Math.min(resultado.totalFinal, entradaSimulada));
+    const nB = Math.max(1, numParcelasB);
+    const valorParcelaB = saldoEstendido / nB;
+
+    return {
+      valorAVistaComDesconto,
+      economiaAVista,
+      qtdParcelasB: nB,
+      valorParcelaB,
+      saldoEstendido,
+    };
+  }, [resultado.totalFinal, descontoCenarioB, entradaSimulada, numParcelasB]);
+
   // Redefinir para valores padrões de consulta
   const handleReset = () => {
     setValorOriginal(650.0);
@@ -184,7 +216,38 @@ export const FinancialSimulationCalculator: React.FC = () => {
           </div>
         </div>
 
-        <div className="flex items-center gap-2 shrink-0">
+        <div className="flex items-center gap-2 shrink-0 flex-wrap">
+          <button
+            onClick={() => setShowComparison(!showComparison)}
+            className={`px-3 py-1.5 rounded-xl text-xs font-bold flex items-center gap-1.5 border transition cursor-pointer ${
+              showComparison
+                ? 'bg-cyan-50 dark:bg-cyan-950 text-cyan-700 dark:text-cyan-300 border-cyan-300 dark:border-cyan-800'
+                : 'bg-white dark:bg-slate-800 text-[#5a6a85] dark:text-slate-300 border-[#dde5f0] dark:border-slate-700 hover:bg-slate-100'
+            }`}
+            title="Comparar Cenário À Vista vs Parcelado Estendido"
+          >
+            <Sparkles className="w-3.5 h-3.5 text-cyan-600 dark:text-cyan-400" />
+            <span>{showComparison ? 'Ocultar Comparação' : 'Comparar Cenários'}</span>
+          </button>
+
+          <button
+            onClick={() => { setPrintDocType('simulation'); setShowPrintModal(true); }}
+            className="px-3 py-1.5 rounded-xl bg-white dark:bg-slate-800 hover:bg-slate-100 dark:hover:bg-slate-700 text-[#5a6a85] dark:text-slate-300 text-xs font-bold flex items-center gap-1.5 border border-[#dde5f0] dark:border-slate-700 transition cursor-pointer"
+            title="Gerar Memória de Cálculo para Impressão ou PDF"
+          >
+            <Printer className="w-3.5 h-3.5 text-[#0a50ff]" />
+            <span>Simulação A4</span>
+          </button>
+          
+          <button
+            onClick={() => { setPrintDocType('agreement'); setShowPrintModal(true); }}
+            className="px-3 py-1.5 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-bold flex items-center gap-1.5 border border-transparent transition cursor-pointer shadow-sm shadow-emerald-600/20"
+            title="Gerar Termo Extrajudicial de Confissão de Dívida"
+          >
+            <FileText className="w-3.5 h-3.5" />
+            <span>Gerar Acordo (PDF)</span>
+          </button>
+
           <button
             onClick={handleReset}
             className="px-3 py-1.5 rounded-xl bg-white dark:bg-slate-800 hover:bg-slate-100 dark:hover:bg-slate-700 text-[#5a6a85] dark:text-slate-300 text-xs font-bold flex items-center gap-1.5 border border-[#dde5f0] dark:border-slate-700 transition cursor-pointer"
@@ -507,6 +570,331 @@ export const FinancialSimulationCalculator: React.FC = () => {
           </div>
         </div>
       </div>
+
+      {/* BLOCO DE COMPARAÇÃO DE CENÁRIOS (Cenário A Proposto vs Cenário B Alternativo) */}
+      {showComparison && (
+        <div className="p-5 rounded-2xl bg-white dark:bg-slate-900 border border-cyan-200 dark:border-cyan-900 shadow-sm space-y-4 animate-fadeIn">
+          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 border-b border-slate-200 dark:border-slate-800 pb-3">
+            <div>
+              <span className="text-[10px] font-extrabold uppercase tracking-wider text-cyan-600 dark:text-cyan-400">
+                Análise Comparativa de Cenários de Negociação
+              </span>
+              <h4 className="text-sm font-extrabold text-[#0d1b35] dark:text-white font-['Red_Hat_Display']">
+                Comparativo: Cenário Padrão (A) vs. Cenários Alternativos (B)
+              </h4>
+            </div>
+            <span className="text-xs text-[#5a6a85] dark:text-slate-400">
+              Permite simular bonificações por pontualidade ou prazos estendidos
+            </span>
+          </div>
+
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+            {/* Cenário A: Parcelamento Base */}
+            <div className="p-4 rounded-xl bg-slate-50 dark:bg-slate-800/80 border border-slate-200 dark:border-slate-700 space-y-2">
+              <div className="flex items-center justify-between">
+                <span className="text-xs font-bold text-slate-700 dark:text-slate-200">Cenário A: Base</span>
+                <span className="text-[10px] px-2 py-0.5 rounded bg-blue-100 dark:bg-blue-950 text-blue-800 dark:text-blue-300 font-bold">
+                  {parcelamento.qtdParcelas}x Parcelas
+                </span>
+              </div>
+              <div className="space-y-1 text-xs">
+                <div className="flex justify-between text-[#5a6a85] dark:text-slate-400">
+                  <span>Total Atualizado:</span>
+                  <span className="font-mono font-bold text-[#0d1b35] dark:text-white">R$ {resultado.totalFinal.toFixed(2)}</span>
+                </div>
+                <div className="flex justify-between text-[#5a6a85] dark:text-slate-400">
+                  <span>Entrada:</span>
+                  <span className="font-mono font-bold text-[#0d1b35] dark:text-white">R$ {parcelamento.entradaEfetiva.toFixed(2)}</span>
+                </div>
+                <div className="flex justify-between text-[#5a6a85] dark:text-slate-400">
+                  <span>Parcelas:</span>
+                  <span className="font-mono font-bold text-emerald-600 dark:text-emerald-400">
+                    {parcelamento.qtdParcelas}x R$ {parcelamento.valorParcela.toFixed(2)}
+                  </span>
+                </div>
+              </div>
+            </div>
+
+            {/* Cenário B1: Quitação à Vista com Bonificação */}
+            <div className="p-4 rounded-xl bg-emerald-50/70 dark:bg-emerald-950/40 border border-emerald-200 dark:border-emerald-800 space-y-2">
+              <div className="flex items-center justify-between">
+                <span className="text-xs font-bold text-emerald-900 dark:text-emerald-200">Cenário B1: À Vista</span>
+                <div className="flex items-center gap-1">
+                  <span className="text-[10px] text-emerald-700 dark:text-emerald-300 font-semibold">Desc:</span>
+                  <input
+                    type="number"
+                    min="0"
+                    max="20"
+                    step="1"
+                    value={descontoCenarioB}
+                    onChange={(e) => setDescontoCenarioB(parseFloat(e.target.value) || 0)}
+                    className="w-12 px-1 py-0.5 text-[10px] font-mono font-bold rounded bg-white dark:bg-slate-900 border border-emerald-300 dark:border-emerald-700 text-center"
+                  />
+                  <span className="text-[10px] font-bold text-emerald-700 dark:text-emerald-300">%</span>
+                </div>
+              </div>
+              <div className="space-y-1 text-xs">
+                <div className="flex justify-between text-emerald-800 dark:text-emerald-300">
+                  <span>Valor com Bonificação:</span>
+                  <span className="font-mono font-bold text-emerald-950 dark:text-emerald-100">
+                    R$ {cenarioB.valorAVistaComDesconto.toFixed(2)}
+                  </span>
+                </div>
+                <div className="flex justify-between text-emerald-700 dark:text-emerald-400">
+                  <span>Economia Proposta:</span>
+                  <span className="font-mono font-bold text-emerald-600 dark:text-emerald-300">
+                    - R$ {cenarioB.economiaAVista.toFixed(2)}
+                  </span>
+                </div>
+                <div className="text-[11px] text-emerald-800 dark:text-emerald-400 pt-1">
+                  Liquidação imediata em parcela única com desconto condicional.
+                </div>
+              </div>
+            </div>
+
+            {/* Cenário B2: Parcelamento Alongado */}
+            <div className="p-4 rounded-xl bg-cyan-50/70 dark:bg-cyan-950/40 border border-cyan-200 dark:border-cyan-800 space-y-2">
+              <div className="flex items-center justify-between">
+                <span className="text-xs font-bold text-cyan-900 dark:text-cyan-200">Cenário B2: Alongado</span>
+                <div className="flex items-center gap-1">
+                  <span className="text-[10px] text-cyan-700 dark:text-cyan-300 font-semibold">Qtd:</span>
+                  <select
+                    value={numParcelasB}
+                    onChange={(e) => setNumParcelasB(parseInt(e.target.value) || 6)}
+                    className="px-1.5 py-0.5 text-[10px] font-mono font-bold rounded bg-white dark:bg-slate-900 border border-cyan-300 dark:border-cyan-700"
+                  >
+                    {[4, 5, 6, 8, 10, 12].map((n) => (
+                      <option key={n} value={n}>{n}x</option>
+                    ))}
+                  </select>
+                </div>
+              </div>
+              <div className="space-y-1 text-xs">
+                <div className="flex justify-between text-cyan-800 dark:text-cyan-300">
+                  <span>Entrada Mantida:</span>
+                  <span className="font-mono font-bold">R$ {parcelamento.entradaEfetiva.toFixed(2)}</span>
+                </div>
+                <div className="flex justify-between text-cyan-800 dark:text-cyan-300">
+                  <span>Parcela Alongada:</span>
+                  <span className="font-mono font-bold text-cyan-700 dark:text-cyan-200">
+                    {cenarioB.qtdParcelasB}x R$ {cenarioB.valorParcelaB.toFixed(2)}
+                  </span>
+                </div>
+                <div className="text-[11px] text-cyan-800 dark:text-cyan-400 pt-1">
+                  Parcelas mais brandas para facilitar adesão e regularização.
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* MODAL DE IMPRESSÃO / RELATÓRIO A4 DE SIMULAÇÃO FINANCEIRA */}
+      {showPrintModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/75 backdrop-blur-sm animate-fadeIn print:bg-transparent print:p-0 print:absolute print:inset-0">
+          <style>{`
+            @media print {
+              body * {
+                visibility: hidden;
+              }
+              .print-container, .print-container * {
+                visibility: visible;
+              }
+              .print-container {
+                position: absolute;
+                left: 0;
+                top: 0;
+                width: 100%;
+              }
+            }
+          `}</style>
+          <div className="print-container w-full max-w-2xl bg-white text-slate-900 rounded-2xl shadow-2xl overflow-hidden border border-slate-300 flex flex-col max-h-[90vh] print:max-h-none print:shadow-none print:border-none print:rounded-none">
+            {/* Topo do Modal */}
+            <div className="px-6 py-4 bg-slate-100 border-b border-slate-200 flex items-center justify-between print:hidden">
+              <div className="flex items-center gap-2">
+                <FileText className={`w-5 h-5 ${printDocType === 'agreement' ? 'text-emerald-600' : 'text-[#0a50ff]'}`} />
+                <h3 className="font-bold text-slate-900 text-sm">
+                  {printDocType === 'agreement' ? 'Emissão de Termo de Confissão de Dívida' : 'Memória de Cálculo de Simulação'}
+                </h3>
+              </div>
+              <div className="flex items-center gap-2">
+                <button
+                  onClick={() => window.print()}
+                  className={`px-3 py-1.5 rounded-xl text-white text-xs font-bold flex items-center gap-1.5 transition cursor-pointer ${printDocType === 'agreement' ? 'bg-emerald-600 hover:bg-emerald-700' : 'bg-[#0a50ff] hover:bg-[#0842cc]'}`}
+                >
+                  <Printer className="w-3.5 h-3.5" />
+                  <span>Imprimir Folha</span>
+                </button>
+                <button
+                  onClick={() => setShowPrintModal(false)}
+                  className="px-3 py-1.5 rounded-xl bg-slate-200 hover:bg-slate-300 text-slate-700 text-xs font-bold transition cursor-pointer"
+                >
+                  Fechar
+                </button>
+              </div>
+            </div>
+
+            {/* Inputs Opcionais (Apenas para Acordo, não saem na impressão) */}
+            {printDocType === 'agreement' && (
+              <div className="px-6 py-4 bg-white border-b border-slate-200 grid grid-cols-1 sm:grid-cols-3 gap-4 print:hidden">
+                <div className="space-y-1">
+                  <label className="text-[10px] font-bold text-slate-500 uppercase tracking-wider">Devedor (Nome/Razão Social)</label>
+                  <input type="text" value={debtorName} onChange={e => setDebtorName(e.target.value)} className="w-full text-xs p-2 border border-slate-300 rounded-lg focus:border-emerald-500 focus:outline-none" />
+                </div>
+                <div className="space-y-1">
+                  <label className="text-[10px] font-bold text-slate-500 uppercase tracking-wider">Unidade Relacionada</label>
+                  <input type="text" value={debtorUnit} onChange={e => setDebtorUnit(e.target.value)} className="w-full text-xs p-2 border border-slate-300 rounded-lg focus:border-emerald-500 focus:outline-none" />
+                </div>
+                <div className="space-y-1">
+                  <label className="text-[10px] font-bold text-slate-500 uppercase tracking-wider">CPF / CNPJ</label>
+                  <input type="text" value={debtorDoc} onChange={e => setDebtorDoc(e.target.value)} className="w-full text-xs p-2 border border-slate-300 rounded-lg focus:border-emerald-500 focus:outline-none" />
+                </div>
+              </div>
+            )}
+
+            {/* Conteúdo Imprimível */}
+            <div className="p-6 sm:p-8 overflow-y-auto print:overflow-visible space-y-5 text-slate-900 font-sans">
+              <div className="border-b-2 border-slate-800 pb-4">
+                <div className="flex items-start justify-between">
+                  <div>
+                    <h2 className="text-xl font-extrabold text-slate-900 uppercase tracking-tight">
+                      Condomínio Residencial Solar das Palmeiras
+                    </h2>
+                    <p className="text-xs text-slate-600 mt-0.5">
+                      CNPJ: 34.891.022/0001-85 • Av. dos Holandeses, Quadra 14 - Calhau, São Luís - MA
+                    </p>
+                  </div>
+                  {printDocType === 'simulation' && (
+                    <span className="text-[10px] font-bold px-2 py-1 rounded bg-slate-100 text-slate-800 border border-slate-300 uppercase">
+                      Documento Consultivo
+                    </span>
+                  )}
+                </div>
+                <div className={`mt-3 text-xs font-bold uppercase tracking-wider ${printDocType === 'agreement' ? 'text-slate-900 text-center text-lg mt-6' : 'text-[#0a50ff]'}`}>
+                  {printDocType === 'agreement' ? 'TERMO DE ACORDO EXTRAJUDICIAL E CONFISSÃO DE DÍVIDA' : 'Memória de Cálculo & Simulação de Encargos Moratórios'}
+                </div>
+              </div>
+
+              {printDocType === 'agreement' ? (
+                <div className="space-y-6 text-sm text-slate-800 leading-relaxed text-justify">
+                  <p>
+                    Pelo presente instrumento, de um lado o credor <strong>CONDOMÍNIO RESIDENCIAL SOLAR DAS PALMEIRAS</strong>, já qualificado no cabeçalho, e de outro lado o(a) devedor(a) <strong>{debtorName || '_________________________________'}</strong>, inscrito(a) no CPF/CNPJ sob o nº <strong>{debtorDoc || '___________________'}</strong>, titular/responsável pela unidade <strong>{debtorUnit || '________'}</strong>, firmam o presente termo.
+                  </p>
+                  <p>
+                    CLÁUSULA 1 - DA CONFISSÃO DE DÍVIDA: O(A) DEVEDOR(A) reconhece e confessa ser devedor(a) da quantia líquida, certa e exigível de <strong>R$ {resultado.totalFinal.toFixed(2)}</strong>, correspondente às cotas condominiais e encargos legais (multa de {resultado.multaPercent}%, juros de {resultado.jurosPercentMes}% a.m. e correção), já abatido eventual desconto concedido de R$ {resultado.descontoConcedido.toFixed(2)}.
+                  </p>
+                  <p>
+                    CLÁUSULA 2 - DA FORMA DE PAGAMENTO: O credor concorda em receber o débito confessado de forma parcelada, da seguinte maneira: uma entrada/sinal no valor de <strong>R$ {parcelamento.entradaEfetiva.toFixed(2)}</strong>, seguida de <strong>{parcelamento.qtdParcelas} parcela(s) mensais e sucessivas no valor de R$ {parcelamento.valorParcela.toFixed(2)}</strong>.
+                  </p>
+                  <p>
+                    CLÁUSULA 3 - DA INADIMPLÊNCIA: O não pagamento de qualquer parcela no vencimento acarretará o vencimento antecipado do saldo remanescente, acrescido de multa de 10% e honorários advocatícios (20%), além de imediato protesto e/ou execução judicial deste título.
+                  </p>
+                  <p>
+                    Por estarem justos e contratados, assinam o presente em duas vias de igual teor.
+                  </p>
+                  
+                  <div className="pt-16 grid grid-cols-2 gap-8 text-center text-xs">
+                    <div>
+                      <div className="border-t border-slate-900 mx-8 mb-2"></div>
+                      <strong>CONDOMÍNIO RESIDENCIAL SOLAR DAS PALMEIRAS</strong><br/>
+                      (Credor / Síndico)
+                    </div>
+                    <div>
+                      <div className="border-t border-slate-900 mx-8 mb-2"></div>
+                      <strong>{debtorName || 'Devedor'}</strong><br/>
+                      (Devedor)
+                    </div>
+                  </div>
+                </div>
+              ) : (
+                <>
+                  {/* Tabela de Composição */}
+              <div className="space-y-3">
+                <div className="text-xs font-bold text-slate-700 uppercase tracking-wider">
+                  1. Detalhamento dos Encargos Financeiros Simulados
+                </div>
+                <table className="w-full text-xs text-left border border-slate-200 rounded-lg overflow-hidden">
+                  <thead className="bg-slate-100 text-slate-700 font-bold border-b border-slate-200">
+                    <tr>
+                      <th className="p-2.5">Item / Descrição</th>
+                      <th className="p-2.5 text-center">Referência</th>
+                      <th className="p-2.5 text-right">Valor Calculado</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-slate-200 font-mono">
+                    <tr>
+                      <td className="p-2.5 font-sans font-medium text-slate-800">Valor Principal Original</td>
+                      <td className="p-2.5 text-center text-slate-600">Venc. {new Date(resultado.dataVencimento + 'T00:00:00').toLocaleDateString('pt-BR')}</td>
+                      <td className="p-2.5 text-right font-bold text-slate-900">R$ {resultado.valorOriginal.toFixed(2)}</td>
+                    </tr>
+                    <tr>
+                      <td className="p-2.5 font-sans font-medium text-slate-800">Multa Moratória Convencionada</td>
+                      <td className="p-2.5 text-center text-slate-600">{resultado.multaPercent}%</td>
+                      <td className="p-2.5 text-right text-slate-800">+ R$ {resultado.multaValor.toFixed(2)}</td>
+                    </tr>
+                    <tr>
+                      <td className="p-2.5 font-sans font-medium text-slate-800">Juros de Mora (Pro-rata die)</td>
+                      <td className="p-2.5 text-center text-slate-600">{resultado.jurosPercentMes}% a.m. ({resultado.diasAtraso} dias)</td>
+                      <td className="p-2.5 text-right text-slate-800">+ R$ {resultado.jurosValor.toFixed(2)}</td>
+                    </tr>
+                    <tr>
+                      <td className="p-2.5 font-sans font-medium text-slate-800">Atualização / Correção Monetária</td>
+                      <td className="p-2.5 text-center text-slate-600">{resultado.correcaoIndicePercent}%</td>
+                      <td className="p-2.5 text-right text-slate-800">+ R$ {resultado.correcaoValor.toFixed(2)}</td>
+                    </tr>
+                    {resultado.descontoConcedido > 0 && (
+                      <tr className="text-emerald-700 font-bold">
+                        <td className="p-2.5 font-sans">Desconto de Pontualidade / Acordo</td>
+                        <td className="p-2.5 text-center">Bonificação</td>
+                        <td className="p-2.5 text-right">- R$ {resultado.descontoConcedido.toFixed(2)}</td>
+                      </tr>
+                    )}
+                    <tr className="bg-slate-50 font-bold text-sm">
+                      <td className="p-2.5 font-sans text-slate-900">TOTAL SIMULADO ATUALIZADO</td>
+                      <td className="p-2.5 text-center font-sans text-xs text-slate-600">Base em {new Date(resultado.dataCalculo + 'T00:00:00').toLocaleDateString('pt-BR')}</td>
+                      <td className="p-2.5 text-right text-[#0a50ff]">R$ {resultado.totalFinal.toFixed(2)}</td>
+                    </tr>
+                  </tbody>
+                </table>
+              </div>
+
+              {/* Proposta de Parcelamento Sugerida */}
+              <div className="p-4 rounded-xl bg-slate-50 border border-slate-200 space-y-2 text-xs">
+                <div className="font-bold text-slate-800 uppercase tracking-wide">
+                  2. Sugestão de Composição de Acordo / Parcelamento
+                </div>
+                <div className="grid grid-cols-3 gap-3 font-mono">
+                  <div className="p-2 rounded bg-white border border-slate-200">
+                    <span className="text-[10px] text-slate-500 block font-sans">Entrada Simulada</span>
+                    <span className="font-bold text-slate-900">R$ {parcelamento.entradaEfetiva.toFixed(2)}</span>
+                  </div>
+                  <div className="p-2 rounded bg-white border border-slate-200">
+                    <span className="text-[10px] text-slate-500 block font-sans">Plano de Parcelamento</span>
+                    <span className="font-bold text-emerald-700">{parcelamento.qtdParcelas}x de R$ {parcelamento.valorParcela.toFixed(2)}</span>
+                  </div>
+                  <div className="p-2 rounded bg-white border border-slate-200">
+                    <span className="text-[10px] text-slate-500 block font-sans">Saldo a Parcelar</span>
+                    <span className="font-bold text-slate-900">R$ {parcelamento.saldoRestante.toFixed(2)}</span>
+                  </div>
+                </div>
+              </div>
+
+              {/* Nota de Isenção e Não Vinculação */}
+              <div className="border-t border-slate-200 pt-3 text-[11px] text-slate-500 leading-relaxed space-y-1">
+                <p>
+                  <strong>AVISO LEGAL IMPORTANTE:</strong> Este documento constitui estritamente uma memória de cálculo simulatória para fins de consulta e orientação. Os valores aqui apurados não representam cobrança formal, confissão de dívida ou renúncia a direitos creditórios pelo condomínio, não possuindo vinculação cadastral direta com nenhuma fração ideal.
+                </p>
+                <div className="flex justify-between items-center pt-2 text-[10px] text-slate-400">
+                  <span>Emitido via Sistema Enlace-DoorIA (Módulo Financeiro Avulso)</span>
+                  <span>Data/Hora: {new Date().toLocaleString('pt-BR')}</span>
+                </div>
+              </div>
+              </>
+              )}
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 };

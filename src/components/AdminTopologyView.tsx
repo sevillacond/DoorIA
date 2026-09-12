@@ -443,11 +443,10 @@ export const AdminTopologyView: React.FC<AdminTopologyViewProps> = ({
         </div>
       )}
 
-      {/* ABA 5: MANUAL E DOCUMENTAÇÃO TÉCNICA DO SISTEMA */}
+      {/* ABA 5: REGRAS DE NEGÓCIO E VALIDAÇÃO BACKEND/FRONTEND */}
       {activeTab === 'documentacao' && (
         <div className="space-y-6">
-          {/* Banner de Introdução Técnica */}
-          <div className="p-6 rounded-2xl bg-gradient-to-r from-slate-900 via-slate-900 to-cyan-950/40 border border-slate-800 shadow-xl space-y-3">
+          <div className="p-6 rounded-2xl bg-gradient-to-r from-slate-900 via-slate-900 to-emerald-950/40 border border-slate-800 shadow-xl space-y-3">
             <div className="flex items-center gap-3">
               <div className="w-10 h-10 rounded-xl bg-cyan-950 border border-cyan-800 flex items-center justify-center text-cyan-400">
                 <FileText className="w-5 h-5" />

@@ -326,19 +326,41 @@ export const ResidentDashboard: React.FC<ResidentDashboardProps> = ({
                   </div>
 
                   <div className="flex items-center gap-3">
-                    <div className="bg-[#ebf2ff] px-3.5 py-1.5 rounded-xl border border-[#dde8ff] text-center font-mono">
-                      <div className="text-[10px] text-[#5a6a85]">Código de Retirada</div>
-                      <div className="text-base font-bold text-[#0a50ff] tracking-wider">{pkg.pickupCode}</div>
-                    </div>
-                    <span
-                      className={`px-3 py-1 rounded-full text-[10px] font-bold uppercase ${
-                        pkg.status === 'aguardando_retirada'
-                          ? 'bg-amber-100 text-amber-800 border border-amber-300'
-                          : 'bg-emerald-50 text-emerald-700 border border-emerald-200'
-                      }`}
-                    >
-                      {pkg.status === 'aguardando_retirada' ? 'Aguardando Retirada' : 'Entregue'}
-                    </span>
+                    {pkg.status === 'aguardando_retirada' ? (
+                      <div className="bg-[#ebf2ff] px-3.5 py-1.5 rounded-xl border border-[#dde8ff] text-center font-mono">
+                        <div className="text-[10px] text-[#5a6a85]">Código de Retirada</div>
+                        <div className="text-base font-bold text-[#0a50ff] tracking-wider">{pkg.pickupCode}</div>
+                      </div>
+                    ) : (
+                      <div className="text-[11px] text-[#5a6a85] font-mono pr-2">
+                        Retirado em {new Date(pkg.pickedUpAt || Date.now()).toLocaleString('pt-BR')}
+                      </div>
+                    )}
+                    
+                    {pkg.status === 'aguardando_retirada' ? (
+                       <button
+                         onClick={() => {
+                           if (window.confirm('Confirmar retirada desta encomenda? Isso notificará a portaria e removerá o pacote dos pendentes.')) {
+                             fetch(`/api/v1/packages/${pkg.id}/pickup`, {
+                               method: 'POST',
+                               headers: { 'Content-Type': 'application/json' },
+                               body: JSON.stringify({ pickupCode: pkg.pickupCode })
+                             }).then(res => res.json())
+                               .then(data => {
+                                 if (data.error) alert(data.error);
+                                 else alert('Encomenda marcada como retirada com sucesso!');
+                               });
+                           }
+                         }}
+                         className="px-3 py-1.5 rounded-xl bg-[#18c7a8] hover:bg-emerald-500 text-white text-[10px] font-bold shadow-md shadow-emerald-500/20 transition"
+                       >
+                         Marcar Retirada
+                       </button>
+                    ) : (
+                      <span className="px-3 py-1.5 rounded-full text-[10px] font-bold uppercase bg-emerald-50 text-emerald-700 border border-emerald-200">
+                        Entregue
+                      </span>
+                    )}
                   </div>
                 </div>
               ))}

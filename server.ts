@@ -108,6 +108,11 @@ const DEFAULT_CONDOMINIUM_CONFIG: CondominiumConfig = {
     iotGateway: 'NovaDigital HNZ-CB3 Zigbee 3.0 Ethernet (Local-First)',
     iotGatewayIp: '192.168.1.160',
     subnetRange: '192.168.1.0/24',
+    publicDomain: 'https://pwa.condominio-solar.com.br',
+    stunTurnServer: 'stun:stun.l.google.com:19302',
+    asteriskWssPort: 8089,
+    allowSelfSignedCerts: true,
+    localIpRange: '192.168.1.0/24'
   },
   updatedAt: new Date().toISOString(),
   updatedBy: 'Sistema Piloto',
@@ -1095,7 +1100,7 @@ async function executeMaiaPrompt(
   // Se Gemini estiver disponível, utilizamos geração com function calling estruturado
   if (aiClient && process.env.GEMINI_API_KEY) {
     try {
-      const response = await aiClient.models.generateContent({
+      const geminiPromise = aiClient.models.generateContent({
         model: 'gemini-3.8-flash',
         contents: prompt,
         config: {
@@ -1104,12 +1109,18 @@ async function executeMaiaPrompt(
         },
       });
 
+      const timeoutPromise = new Promise<never>((_, reject) =>
+        setTimeout(() => reject(new Error('Tempo limite excedido na resposta do modelo remoto')), 8000)
+      );
+
+      const response = await Promise.race([geminiPromise, timeoutPromise]);
+
       return {
         reply: response.text || 'MaIA operacional. Solicitação processada com sucesso.',
         toolCallsExecuted: executedTools,
       };
     } catch (apiError: any) {
-      console.warn('[MaIA] Falha no provedor principal Gemini, ativando Fallback Local-First:', apiError?.message || apiError);
+      console.warn('[MaIA] Falha ou timeout no provedor principal Gemini, ativando Fallback Local-First:', apiError?.message || apiError);
     }
   }
 
@@ -1183,6 +1194,16 @@ async function executeMaiaPrompt(
 async function startServer() {
   const app = express();
   app.use(express.json());
+
+  // Health check endpoint para monitoramento de infraestrutura
+  app.get('/api/health', (req, res) => {
+    res.json({
+      status: 'ok',
+      service: 'Enlace-DoorIA',
+      timestamp: new Date().toISOString(),
+      pilot: 'São Luís - MA (12 Unidades)',
+    });
+  });
 
   // Middleware simples de sessão simulada (pode ser alternada para testes de RBAC)
   let currentSession: UserSession = {
@@ -1366,16 +1387,28 @@ async function startServer() {
   
   app.post('/api/v1/units/:unitId/residents', express.json(), (req, res) => {
     const { unitId } = req.params;
+
+    // RBAC: Morador só pode adicionar moradores à sua própria unidade
+    if (currentSession.role === 'morador' && currentSession.unitId !== unitId) {
+      logAudit(currentSession.name, currentSession.role, 'TENTATIVA_ADICAO_MORADOR_TERCEIROS', `Unidade ${unitId}`, 'NEGADO', {});
+      return res.status(403).json({ error: 'Permissão negada. Você só pode gerenciar moradores da sua própria unidade.' });
+    }
+
     const unit = units.find(u => u.id === unitId);
     if (!unit) return res.status(404).json({ error: 'Unidade não encontrada' });
     
+    // Validação de inputs
+    if (!req.body.name || !req.body.document || !req.body.phone) {
+      return res.status(400).json({ error: 'Nome, documento e telefone são obrigatórios.' });
+    }
+
     const newResident = {
       id: `r-${unitId}-${Date.now()}`,
       unitId,
       name: req.body.name,
       document: req.body.document,
       phone: req.body.phone,
-      email: req.body.email,
+      email: req.body.email || '',
       isMainContact: req.body.isMainContact || false,
       sipDevice: {
         extension: unit.sipExtension,
@@ -1385,15 +1418,30 @@ async function startServer() {
     };
     
     unit.residents.push(newResident);
+    logAudit(currentSession.name, currentSession.role, 'MORADOR_ADICIONADO', `Unidade ${unit.number} - ${newResident.name}`, 'PERMITIDO', {});
     res.json({ success: true, resident: newResident });
   });
 
   app.delete('/api/v1/units/:unitId/residents/:residentId', (req, res) => {
     const { unitId, residentId } = req.params;
+
+    // RBAC: Morador só pode remover moradores da sua própria unidade
+    if (currentSession.role === 'morador' && currentSession.unitId !== unitId) {
+      logAudit(currentSession.name, currentSession.role, 'TENTATIVA_REMOCAO_MORADOR_TERCEIROS', `Unidade ${unitId}`, 'NEGADO', {});
+      return res.status(403).json({ error: 'Permissão negada. Você só pode gerenciar moradores da sua própria unidade.' });
+    }
+
     const unit = units.find(u => u.id === unitId);
     if (!unit) return res.status(404).json({ error: 'Unidade não encontrada' });
     
+    const initialLength = unit.residents.length;
     unit.residents = unit.residents.filter(r => r.id !== residentId);
+    
+    if (unit.residents.length === initialLength) {
+      return res.status(404).json({ error: 'Morador não encontrado na unidade especificada' });
+    }
+
+    logAudit(currentSession.name, currentSession.role, 'MORADOR_REMOVIDO', `Unidade ${unit.number} - ID ${residentId}`, 'PERMITIDO', {});
     res.json({ success: true });
   });
 
@@ -1531,7 +1579,7 @@ async function startServer() {
 
   // Enviar DTMF durante a chamada (*07 para pedestre, *08 para garagem)
   app.post('/api/v1/calls/dtmf', (req, res) => {
-    const { dtmf } = req.body; // "*07" ou "*08"
+    const dtmf = req.body.dtmf || req.body.digit || req.body.code; // "*07" ou "*08"
 
     if (!['*07', '*08'].includes(dtmf)) {
       return res.status(400).json({ error: 'Código DTMF não suportado. Utilize *07 (Pedestre) ou *08 (Garagem).' });
@@ -1700,8 +1748,22 @@ async function startServer() {
   });
 
   app.post('/api/v1/packages', (req, res) => {
+    // Validação de RBAC: Morador não pode registrar encomenda (isso é papel da Portaria)
+    if (currentSession.role === 'morador') {
+      return res.status(403).json({ error: 'Permissão negada. Apenas a Portaria pode registrar o recebimento de encomendas.' });
+    }
+
     const { unitNumber, courier, trackingCode, description } = req.body;
-    const targetUnit = units.find((u) => u.number === unitNumber) || units[0];
+    
+    // Validação de inputs
+    if (!unitNumber || !courier || !description) {
+      return res.status(400).json({ error: 'Dados incompletos. Unidade, transportadora e descrição são obrigatórios.' });
+    }
+
+    const targetUnit = units.find((u) => u.number === unitNumber);
+    if (!targetUnit) {
+      return res.status(404).json({ error: 'Unidade de destino não encontrada no cadastro.' });
+    }
 
     // Código PIN aleatório de 4 dígitos para retirada segura
     const pickupCode = Math.floor(1000 + Math.random() * 9000).toString();
@@ -1710,8 +1772,8 @@ async function startServer() {
       id: `pkg-${Date.now()}`,
       unitId: targetUnit.id,
       trackingCode: trackingCode || `REC-${Math.floor(100000 + Math.random() * 900000)}`,
-      courier: courier || 'Transportadora / Encomenda',
-      description: description || 'Pacote recebido na portaria social',
+      courier,
+      description,
       receivedAt: new Date().toISOString(),
       status: 'aguardando_retirada',
       pickupCode,
@@ -1748,7 +1810,14 @@ async function startServer() {
       return res.status(400).json({ error: 'Esta encomenda já foi retirada anteriormente.' });
     }
 
-    // Se fornecido código, valida correspondência
+    // RBAC: Se for morador, só pode retirar encomendas da própria unidade
+    if (currentSession.role === 'morador' && pkg.unitId !== currentSession.unitId) {
+      logAudit(currentSession.name, currentSession.role, 'TENTATIVA_RETIRADA_UNIDADE_TERCEIROS', `Encomenda ${id}`, 'NEGADO', {});
+      return res.status(403).json({ error: 'Você não tem permissão para retirar encomendas de outra unidade.' });
+    }
+
+    // Se fornecido código (Geralmente validado na portaria), valida correspondência
+    // Se o morador estiver logado em seu próprio app, o código pode ser omitido caso o app permita "auto-baixa"
     if (pickupCode && pkg.pickupCode !== pickupCode.trim()) {
       logAudit(currentSession.name, currentSession.role, 'RETIRADA_ENCOMENDA_PIN_INVALIDO', `Encomenda ${id}`, 'NEGADO', {
         attemptedCode: pickupCode,
@@ -1801,14 +1870,32 @@ async function startServer() {
 
   app.post('/api/v1/visitors/invites', (req, res) => {
     const { visitorName, type, targetUnitNumber } = req.body;
-    const targetNumber = targetUnitNumber || currentSession.unitNumber || '101';
-    const unit = units.find((u) => u.number === targetNumber) || units[0];
+    
+    if (!visitorName || !type) {
+      return res.status(400).json({ error: 'Nome do visitante e tipo são obrigatórios.' });
+    }
+
+    // RBAC: Morador só pode convidar para a própria unidade
+    let finalTargetUnitNumber = targetUnitNumber;
+    if (currentSession.role === 'morador') {
+      finalTargetUnitNumber = currentSession.unitNumber;
+    } else {
+      // Se for portaria ou síndico, precisa especificar para qual unidade é o convite
+      if (!targetUnitNumber) {
+        return res.status(400).json({ error: 'Número da unidade de destino é obrigatório para este perfil.' });
+      }
+    }
+
+    const unit = units.find((u) => u.number === finalTargetUnitNumber);
+    if (!unit) {
+      return res.status(404).json({ error: 'Unidade de destino não encontrada.' });
+    }
 
     const newInvite: VisitorInvite = {
       id: `inv-${Date.now()}`,
       unitId: unit.id,
-      visitorName: visitorName || 'Visitante Autorizado',
-      type: type || 'visitante',
+      visitorName,
+      type,
       qrToken: `door_qr_sec_${crypto.randomBytes(4).toString('hex')}`,
       validFrom: new Date().toISOString(),
       validUntil: new Date(Date.now() + 86400000).toISOString(), // 24h
@@ -1829,6 +1916,12 @@ async function startServer() {
     const { id } = req.params;
     const invite = visitorInvites.find((v) => v.id === id);
     if (!invite) return res.status(404).json({ error: 'Convite não encontrado.' });
+
+    // RBAC: Morador só pode excluir convites da sua própria unidade
+    if (currentSession.role === 'morador' && invite.unitId !== currentSession.unitId) {
+      logAudit(currentSession.name, currentSession.role, 'TENTATIVA_EXCLUSAO_CONVITE_TERCEIROS', `Convite ${id}`, 'NEGADO', {});
+      return res.status(403).json({ error: 'Você só pode excluir convites da sua própria unidade.' });
+    }
 
     invite.status = 'revogado';
     logAudit(currentSession.name, currentSession.role, 'REVOGACAO_CONVITE_QR', `Convite ${id}`, 'PERMITIDO', {

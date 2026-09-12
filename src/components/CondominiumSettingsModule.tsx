@@ -1083,6 +1083,74 @@ export const CondominiumSettingsModule: React.FC<CondominiumSettingsModuleProps>
                 </div>
               </div>
 
+              {/* WebRTC & PWA Domain Configuration */}
+              <div className="mt-6 border-t border-[#dde5f0] dark:border-[#1c2e4e] pt-5">
+                <div className="flex items-center gap-2 mb-4">
+                  <ShieldCheck className="w-4 h-4 text-emerald-500" />
+                  <h4 className="text-xs font-bold text-[#0d1b35] dark:text-slate-100 uppercase tracking-wider">
+                    Configurações de Domínio, WebRTC (WebPhone) e PWA
+                  </h4>
+                </div>
+                
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                  <div className="space-y-1.5">
+                    <label className="text-xs font-bold text-[#0d1b35] dark:text-slate-200">Domínio Público PWA (FQDN)</label>
+                    <input
+                      type="text"
+                      value={formData.technicalSettings.publicDomain || ''}
+                      onChange={(e) => handleUpdate('technicalSettings', 'publicDomain', e.target.value)}
+                      className="w-full px-3.5 py-2 text-xs rounded-xl border border-[#dde5f0] dark:border-[#1c2e4e] bg-[#f8fafc] dark:bg-[#091223] text-[#0d1b35] dark:text-slate-100 font-mono font-bold focus:border-[#18c7a8]"
+                      placeholder="https://pwa.condominio-solar.com.br"
+                    />
+                    <span className="text-[10px] text-[#5a6a85] dark:text-[#94a3b8]">Necessário para SSL Válido (Let's Encrypt) e Service Workers do PWA</span>
+                  </div>
+
+                  <div className="space-y-1.5">
+                    <label className="text-xs font-bold text-[#0d1b35] dark:text-slate-200">Servidores ICE (STUN / TURN)</label>
+                    <input
+                      type="text"
+                      value={formData.technicalSettings.stunTurnServer || ''}
+                      onChange={(e) => handleUpdate('technicalSettings', 'stunTurnServer', e.target.value)}
+                      className="w-full px-3.5 py-2 text-xs rounded-xl border border-[#dde5f0] dark:border-[#1c2e4e] bg-[#f8fafc] dark:bg-[#091223] text-[#0d1b35] dark:text-slate-100 font-mono focus:border-[#18c7a8]"
+                      placeholder="stun:stun.l.google.com:19302"
+                    />
+                    <span className="text-[10px] text-[#5a6a85] dark:text-[#94a3b8]">Crucial para NAT Traversal do WebPhone fora da rede local</span>
+                  </div>
+
+                  <div className="space-y-1.5">
+                    <label className="text-xs font-bold text-[#0d1b35] dark:text-slate-200">Porta WSS Asterisk (WebSockets Secure)</label>
+                    <input
+                      type="number"
+                      value={formData.technicalSettings.asteriskWssPort || 8089}
+                      onChange={(e) => handleUpdate('technicalSettings', 'asteriskWssPort', Number(e.target.value))}
+                      className="w-full px-3.5 py-2 text-xs rounded-xl border border-[#dde5f0] dark:border-[#1c2e4e] bg-[#f8fafc] dark:bg-[#091223] text-[#0d1b35] dark:text-slate-100 font-mono focus:border-[#18c7a8]"
+                      placeholder="8089"
+                    />
+                  </div>
+
+                  <div className="flex items-center gap-3 pt-5">
+                    <label className="flex items-center gap-3 cursor-pointer group">
+                      <div className="relative">
+                        <input
+                          type="checkbox"
+                          className="sr-only"
+                          checked={formData.technicalSettings.allowSelfSignedCerts || false}
+                          onChange={(e) => handleUpdate('technicalSettings', 'allowSelfSignedCerts', e.target.checked)}
+                        />
+                        <div className={`block w-10 h-6 rounded-full transition ${formData.technicalSettings.allowSelfSignedCerts ? 'bg-amber-500' : 'bg-slate-300 dark:bg-slate-700'}`}></div>
+                        <div className={`absolute left-1 top-1 bg-white w-4 h-4 rounded-full transition transform ${formData.technicalSettings.allowSelfSignedCerts ? 'translate-x-4' : ''}`}></div>
+                      </div>
+                      <div>
+                        <div className="text-xs font-bold text-amber-700 dark:text-amber-500">Permitir SSL Auto-assinado (LAN Only)</div>
+                        <div className="text-[11px] text-[#5a6a85] dark:text-[#94a3b8] mt-0.5">
+                          Aceitar certificados locais no PJSIP (Pode desabilitar PWA offline e forçar avisos no navegador)
+                        </div>
+                      </div>
+                    </label>
+                  </div>
+                </div>
+              </div>
+
               <div className="p-4 rounded-xl bg-[#ebf2ff] dark:bg-[#0a2352] border border-[#dde8ff] dark:border-[#193b7a] flex items-center justify-between flex-wrap gap-3">
                 <div className="flex items-center gap-2.5">
                   <div className="w-2.5 h-2.5 rounded-full bg-[#18c7a8] animate-pulse"></div>

@@ -1,0 +1,48 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" width="512" height="512">
+  <defs>
+    <linearGradient id="bgGradMask" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#0f172a" />
+      <stop offset="50%" stop-color="#020617" />
+      <stop offset="100%" stop-color="#082f49" />
+    </linearGradient>
+    <linearGradient id="cyanGradMask" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#38bdf8" />
+      <stop offset="100%" stop-color="#0284c7" />
+    </linearGradient>
+    <linearGradient id="emeraldGradMask" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#34d399" />
+      <stop offset="100%" stop-color="#059669" />
+    </linearGradient>
+  </defs>
+
+  <!-- Full-bleed background for maskable -->
+  <rect width="512" height="512" fill="url(#bgGradMask)" />
+
+  <!-- Centered scaled group for 15% safe margin (scale 0.72, translate to center) -->
+  <g transform="translate(71.68, 71.68) scale(0.72)">
+    <!-- Outer Shield Crest -->
+    <path d="M256 70 C345 70 410 102 410 102 C410 270 345 375 256 442 C167 375 102 270 102 102 C102 102 167 70 256 70 Z" 
+          fill="#091428" stroke="url(#cyanGradMask)" stroke-width="12" stroke-linejoin="round" />
+
+    <!-- Smart Portal / Door Arch -->
+    <path d="M185 360 L185 220 C185 175 215 145 256 145 C297 145 327 175 327 220 L327 360" 
+          fill="none" stroke="url(#cyanGradMask)" stroke-width="14" stroke-linecap="round" />
+
+    <!-- Shield Core Doorway Fill -->
+    <path d="M196 360 L196 225 C196 188 220 160 256 160 C292 160 316 188 316 225 L316 360 Z" 
+          fill="#041830" opacity="0.8" />
+
+    <!-- Intelligent Keyhole & Waveform -->
+    <circle cx="256" cy="235" r="22" fill="url(#emeraldGradMask)" />
+    <path d="M246 250 L266 250 L272 310 L240 310 Z" fill="url(#emeraldGradMask)" />
+    <circle cx="256" cy="235" r="8" fill="#ffffff" />
+    
+    <path d="M210 200 C222 188 238 180 256 180 C274 180 290 188 302 200" 
+          fill="none" stroke="#38bdf8" stroke-width="6" stroke-linecap="round" opacity="0.8" />
+    <path d="M192 178 C210 160 232 150 256 150 C280 150 302 160 320 178" 
+          fill="none" stroke="#38bdf8" stroke-width="5" stroke-linecap="round" opacity="0.5" />
+
+    <!-- Bottom Check -->
+    <path d="M225 385 L247 407 L292 362" fill="none" stroke="#10b981" stroke-width="10" stroke-linecap="round" stroke-linejoin="round" />
+  </g>
+</svg>
