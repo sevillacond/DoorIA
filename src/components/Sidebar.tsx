@@ -22,6 +22,7 @@ import {
   CheckCircle2,
   FileText,
   DoorOpen,
+  BellRing,
 } from 'lucide-react';
 import type { UserSession, SystemStatus } from '../types.ts';
 
@@ -35,6 +36,7 @@ interface SidebarProps {
   onOpenQrSimulator: () => void;
   onToggleWebPhone: () => void;
   onOpenMaia: () => void;
+  onOpenNotifications?: () => void;
   onSwitchRole: (role: 'morador' | 'sindico' | 'super_admin', unitNumber?: string) => void;
   isOpenMobile: boolean;
   onCloseMobile: () => void;
@@ -50,6 +52,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
   onOpenQrSimulator,
   onToggleWebPhone,
   onOpenMaia,
+  onOpenNotifications,
   onSwitchRole,
   isOpenMobile,
   onCloseMobile,
@@ -423,6 +426,23 @@ export const Sidebar: React.FC<SidebarProps> = ({
               <QrCode className="w-4 h-4 text-cyan-400 shrink-0" />
               {!isCollapsed && <span className="flex-1 text-left truncate">QR Intercom Smartphone</span>}
             </button>
+
+            {/* Central de Notificações Push */}
+            {onOpenNotifications && (
+              <button
+                onClick={() => {
+                  onOpenNotifications();
+                  onCloseMobile();
+                }}
+                className={`w-full flex items-center gap-3 px-3 py-2 rounded-xl text-xs font-semibold text-slate-300 hover:text-white hover:bg-slate-800 transition ${
+                  isCollapsed ? 'justify-center px-2' : ''
+                }`}
+                title="Configurar Notificações Push"
+              >
+                <BellRing className="w-4 h-4 text-emerald-400 shrink-0" />
+                {!isCollapsed && <span className="flex-1 text-left truncate">Notificações Push</span>}
+              </button>
+            )}
           </div>
         </div>
 

@@ -190,3 +190,17 @@ npm start
    - *VLAN 20 - Moradores/Wi-Fi*: Tráfego residencial isolado da infraestrutura de controle de acesso.
 2. **Nobreak Senoidal com Autonomia**: O Mini PC do servidor e o switch PoE das câmeras e totens devem ser alimentados por nobreak dedicado para suportar quedas de energia elétrica mantendo a portaria operacional.
 3. **Isolamento Galvânico de Relés**: Utilizar módulos de relé optoacoplados e diodos de roda livre (snubbers) para acionamento de fechaduras eletroímã e motores de portão, protegendo a placa controladora contra transientes elétricos.
+
+---
+
+## 8. PWA Mobile, Notificações Push & Compilação em APK Android
+
+O **Enlace-DoorIA** é uma **Progressive Web App (PWA) instalável** de ponta com suporte nativo a:
+- **Instalação Direta no Celular (Add to Home Screen)**: Banner de instalação guiado para Android (Chrome) e iOS (Safari).
+- **Trabalho Offline & Cache Workbox**: Funcionalidades essenciais operam mesmo durante interrupções temporárias de rede.
+- **Notificações Push Prioritárias**: Alertas visuais e sonoros para chamadas de interfone (totem XPE 3115-IP), avisos de encomendas recebidas e registros de abertura de portões.
+- **Compilação em APK Android Nativo**: Empacotamento completo usando **Capacitor 6+** para geração de instalador `.apk` ou `.aab` para distribuição direta no condomínio ou na Google Play Store.
+
+Consulte o manual detalhado com comandos passo a passo em:
+👉 **[`DOCS_APK_BUILD.md`](./DOCS_APK_BUILD.md)**
+

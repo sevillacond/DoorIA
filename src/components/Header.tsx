@@ -9,6 +9,7 @@ import {
   Building2,
   Menu,
   Sparkles,
+  Bell,
 } from 'lucide-react';
 import type { UserSession, SystemStatus } from '../types.ts';
 
@@ -20,8 +21,9 @@ interface HeaderProps {
   onOpenQrSimulator: () => void;
   onToggleWebPhone: () => void;
   onOpenMaia: () => void;
+  onOpenNotifications?: () => void;
   activeCallCount: number;
-  currentTab: 'inicio' | 'cameras' | 'financeiro' | 'engenharia';
+  currentTab: 'inicio' | 'cameras' | 'financeiro' | 'engenharia' | 'portaria' | 'moradores' | 'dispositivos';
 }
 
 export const Header: React.FC<HeaderProps> = ({
@@ -32,6 +34,7 @@ export const Header: React.FC<HeaderProps> = ({
   onOpenQrSimulator,
   onToggleWebPhone,
   onOpenMaia,
+  onOpenNotifications,
   activeCallCount,
   currentTab,
 }) => {
@@ -45,6 +48,12 @@ export const Header: React.FC<HeaderProps> = ({
         return 'Gestão Financeira & Boletos Condominiais';
       case 'engenharia':
         return 'Engenharia, Topologia LAN & Auditoria';
+      case 'portaria':
+        return 'Operação da Portaria & Acessos';
+      case 'moradores':
+        return 'Gestão de Unidades & Moradores';
+      case 'dispositivos':
+        return 'Gestão de Câmeras, Totens & Relés';
       default:
         return 'Portaria Autônoma';
     }
@@ -162,6 +171,18 @@ export const Header: React.FC<HeaderProps> = ({
               <Sparkles className="w-3.5 h-3.5" />
               <span className="hidden sm:inline">MaIA</span>
             </button>
+
+            {/* Central de Notificações Push */}
+            {onOpenNotifications && (
+              <button
+                onClick={onOpenNotifications}
+                className="p-2 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-300 hover:text-white border border-slate-700 transition"
+                title="Configurar Notificações Push"
+                aria-label="Notificações Push"
+              >
+                <Bell className="w-4 h-4 text-cyan-400" />
+              </button>
+            )}
           </div>
         </div>
       </div>

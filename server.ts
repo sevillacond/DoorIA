@@ -2092,6 +2092,64 @@ async function startServer() {
     }
   });
 
+  // Endpoints de Notificações Push PWA
+  const pushSubscriptions: Array<{ endpoint: string; userAgent: string; timestamp: number }> = [];
+
+  app.post('/api/v1/notifications/subscribe', (req, res) => {
+    const { endpoint, userAgent } = req.body;
+    pushSubscriptions.push({
+      endpoint: endpoint || 'browser-native-pwa',
+      userAgent: userAgent || 'unknown',
+      timestamp: Date.now(),
+    });
+
+    publishEvent('PUSH_SUBSCRIPTION_REGISTERED', 'pwa_service_worker', {
+      totalSubscribers: pushSubscriptions.length,
+      userAgent,
+    });
+
+    res.json({
+      success: true,
+      message: 'Dispositivo registrado com sucesso no serviço de Notificações Push da Portaria.',
+      totalSubscribers: pushSubscriptions.length,
+    });
+  });
+
+  app.get('/api/v1/notifications/status', (req, res) => {
+    res.json({
+      activeSubscribers: pushSubscriptions.length,
+      channels: ['intercom_calls', 'packages', 'gates', 'sos'],
+      serviceWorkerSupport: true,
+    });
+  });
+
+  app.post('/api/v1/notifications/test', (req, res) => {
+    const { type } = req.body;
+    let title = '🔔 Chamada de Interfone: Portaria Social';
+    let body = 'Visitante aguardando no XPE 3115-IP (Portaria Externa). Toque para atender.';
+
+    if (type === 'package') {
+      title = '📦 Encomenda Recebida na Portaria';
+      body = 'Um novo pacote da Amazon/Mercado Livre foi registrado para seu apartamento.';
+    } else if (type === 'gate') {
+      title = '🚪 Abertura de Portão Registrada';
+      body = 'Portão Pedestre Social acionado com sucesso via comando autorizado DTMF (*07).';
+    }
+
+    publishEvent('PUSH_NOTIFICATION_DISPATCHED', 'push_gateway', {
+      type: type || 'intercom',
+      title,
+      subscribersCount: Math.max(1, pushSubscriptions.length),
+    });
+
+    res.json({
+      success: true,
+      title,
+      body,
+      timestamp: Date.now(),
+    });
+  });
+
   // Vite Middleware para Dev & Fallback Estático para Prod
   if (process.env.NODE_ENV !== 'production') {
     const vite = await createViteServer({

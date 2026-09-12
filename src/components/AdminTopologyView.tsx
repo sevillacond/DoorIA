@@ -17,6 +17,9 @@ import {
   FileText,
   Network,
   Video,
+  Smartphone,
+  Download,
+  BellRing,
 } from 'lucide-react';
 import type { SystemStatus, AuditLogEntry, EventBusMessage, IoTDevice, AutomationRule } from '../types.ts';
 
@@ -599,6 +602,58 @@ export const AdminTopologyView: React.FC<AdminTopologyViewProps> = ({
                   <p className="text-slate-400">
                     Respostas em 0ms mesmo com cabo de internet desconectado: consulta de ramais de moradores, acionamento autorizado de portões e checagem de status dos totens.
                   </p>
+                </div>
+              </div>
+            </div>
+
+            {/* Seção 5: PWA Mobile, Notificações Push & Compilação em APK Android */}
+            <div className="p-5 rounded-2xl bg-slate-900 border border-slate-800 space-y-4 shadow-lg">
+              <div className="flex items-center gap-2 text-white font-bold text-sm border-b border-slate-800 pb-2">
+                <Smartphone className="w-4 h-4 text-emerald-400" />
+                <span>5. PWA Mobile, Notificações Push & Compilação em APK Android</span>
+              </div>
+              <p className="text-slate-300">
+                O DoorIA foi desenvolvido como uma <strong>Progressive Web App (PWA) instalável</strong> com cache offline Workbox, suporte a WebRTC e Notificações Push nativas. Caso o condomínio necessite distribuir um aplicativo nativo Android (.APK) via sideload ou Google Play, utilize o <strong>Capacitor 6+</strong>:
+              </p>
+
+              {/* Guia Rápido de Compilação do APK */}
+              <div className="space-y-3 text-[11px]">
+                <div className="p-3 bg-slate-950 rounded-xl border border-slate-800 space-y-1.5 font-mono">
+                  <div className="text-emerald-400 font-bold font-sans flex items-center justify-between">
+                    <span>Comandos para Gerar o APK (CLI):</span>
+                    <span className="text-[10px] text-slate-400">DOCS_APK_BUILD.md</span>
+                  </div>
+                  <div className="text-slate-300"># 1. Instalar Capacitor e adicionar plataforma Android</div>
+                  <div className="text-cyan-300">npm install @capacitor/core && npm install -D @capacitor/cli @capacitor/android</div>
+                  <div className="text-cyan-300">npx cap init "Enlace-DoorIA" "br.com.enlace.dooria" --web-dir dist</div>
+                  <div className="text-cyan-300">npx cap add android</div>
+                  <div className="text-slate-300 mt-2"># 2. Compilar aplicação e sincronizar com o projeto Android</div>
+                  <div className="text-cyan-300">npm run build && npx cap sync android</div>
+                  <div className="text-slate-300 mt-2"># 3. Gerar o arquivo APK instalável</div>
+                  <div className="text-cyan-300">cd android && ./gradlew assembleDebug</div>
+                  <div className="text-emerald-400"># APK gerado: android/app/build/outputs/apk/debug/app-debug.apk</div>
+                </div>
+
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 font-sans">
+                  <div className="p-3 bg-slate-950 rounded-xl border border-slate-800 space-y-1">
+                    <div className="font-bold text-white flex items-center gap-1.5">
+                      <BellRing className="w-3.5 h-3.5 text-cyan-400" />
+                      <span>Notificações Push no Celular</span>
+                    </div>
+                    <p className="text-slate-400 text-[11px]">
+                      Suporta tanto Web Push (VAPID/Service Worker) para PWA quanto Firebase Cloud Messaging (FCM) para APK nativo. Notifica chamadas do XPE 3115-IP e encomendas recebidas.
+                    </p>
+                  </div>
+
+                  <div className="p-3 bg-slate-950 rounded-xl border border-slate-800 space-y-1">
+                    <div className="font-bold text-white flex items-center gap-1.5">
+                      <Download className="w-3.5 h-3.5 text-emerald-400" />
+                      <span>Distribuição Sideload LAN</span>
+                    </div>
+                    <p className="text-slate-400 text-[11px]">
+                      O arquivo APK pode ser hospedado no próprio mini-PC da portaria e baixado pelos moradores via Wi-Fi interno através de QR Code fixado no mural do condomínio.
+                    </p>
+                  </div>
                 </div>
               </div>
             </div>

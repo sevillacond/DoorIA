@@ -1,0 +1,52 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" width="512" height="512">
+  <defs>
+    <linearGradient id="bgGrad" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#0f172a" />
+      <stop offset="50%" stop-color="#020617" />
+      <stop offset="100%" stop-color="#082f49" />
+    </linearGradient>
+    <linearGradient id="cyanGrad" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#38bdf8" />
+      <stop offset="100%" stop-color="#0284c7" />
+    </linearGradient>
+    <linearGradient id="emeraldGrad" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#34d399" />
+      <stop offset="100%" stop-color="#059669" />
+    </linearGradient>
+    <filter id="glow" x="-20%" y="-20%" width="140%" height="140%">
+      <feGaussianBlur stdDeviation="12" result="blur" />
+      <feComposite in="SourceGraphic" in2="blur" operator="over" />
+    </filter>
+  </defs>
+
+  <!-- Background Base -->
+  <rect width="512" height="512" rx="112" fill="url(#bgGrad)" />
+  <rect width="504" height="504" x="4" y="4" rx="108" fill="none" stroke="#0ea5e9" stroke-width="4" stroke-opacity="0.35" />
+
+  <!-- Outer Shield Crest -->
+  <path d="M256 70 C345 70 410 102 410 102 C410 270 345 375 256 442 C167 375 102 270 102 102 C102 102 167 70 256 70 Z" 
+        fill="#091428" stroke="url(#cyanGrad)" stroke-width="10" stroke-linejoin="round" />
+
+  <!-- Smart Portal / Door Arch -->
+  <path d="M185 360 L185 220 C185 175 215 145 256 145 C297 145 327 175 327 220 L327 360" 
+        fill="none" stroke="url(#cyanGrad)" stroke-width="14" stroke-linecap="round" />
+
+  <!-- Shield Core Doorway Fill -->
+  <path d="M196 360 L196 225 C196 188 220 160 256 160 C292 160 316 188 316 225 L316 360 Z" 
+        fill="#041830" opacity="0.8" />
+
+  <!-- Intelligent Keyhole & Waveform -->
+  <circle cx="256" cy="235" r="22" fill="url(#emeraldGrad)" />
+  <path d="M246 250 L266 250 L272 310 L240 310 Z" fill="url(#emeraldGrad)" />
+
+  <!-- AI Connection Dots / Intercom Signal Waves -->
+  <circle cx="256" cy="235" r="8" fill="#ffffff" />
+  
+  <path d="M210 200 C222 188 238 180 256 180 C274 180 290 188 302 200" 
+        fill="none" stroke="#38bdf8" stroke-width="5" stroke-linecap="round" opacity="0.8" />
+  <path d="M192 178 C210 160 232 150 256 150 C280 150 302 160 320 178" 
+        fill="none" stroke="#38bdf8" stroke-width="4" stroke-linecap="round" opacity="0.5" />
+
+  <!-- Bottom Verification Accent Badge -->
+  <path d="M225 385 L247 407 L292 362" fill="none" stroke="#10b981" stroke-width="9" stroke-linecap="round" stroke-linejoin="round" filter="url(#glow)" />
+</svg>

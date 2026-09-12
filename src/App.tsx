@@ -28,6 +28,9 @@ import { AdminDashboard } from './components/AdminDashboard.tsx';
 import { PortariaModule } from './components/PortariaModule.tsx';
 import { MaiaChatDrawer } from './components/MaiaChatDrawer.tsx';
 import { CallAuditModal } from './components/CallAuditModal.tsx';
+import { PWAInstallBanner } from './components/PWAInstallBanner.tsx';
+import { OfflineIndicator } from './components/OfflineIndicator.tsx';
+import { NotificationCenterModal } from './components/NotificationCenterModal.tsx';
 import type {
   UserSession,
   Unit,
@@ -85,6 +88,7 @@ export default function App() {
   const [isXpeOpen, setIsXpeOpen] = useState(false);
   const [isQrOpen, setIsQrOpen] = useState(false);
   const [isMaiaOpen, setIsMaiaOpen] = useState(false);
+  const [isNotificationsOpen, setIsNotificationsOpen] = useState(false);
   const [isMobileSidebarOpen, setIsMobileSidebarOpen] = useState(false);
   const [feedbackMessage, setFeedbackMessage] = useState<string | null>(null);
   const [isAuditModalOpen, setIsAuditModalOpen] = useState(false);
@@ -328,6 +332,7 @@ export default function App() {
         onOpenQrSimulator={() => setIsQrOpen(true)}
         onToggleWebPhone={() => setIsWebPhoneOpen(!isWebPhoneOpen)}
         onOpenMaia={() => setIsMaiaOpen(true)}
+        onOpenNotifications={() => setIsNotificationsOpen(true)}
         onSwitchRole={handleSwitchRole}
         isOpenMobile={isMobileSidebarOpen}
         onCloseMobile={() => setIsMobileSidebarOpen(false)}
@@ -335,6 +340,9 @@ export default function App() {
 
       {/* ÁREA PRINCIPAL COM HEADER E CONTEÚDO */}
       <div className="flex-1 flex flex-col min-w-0 lg:pl-72 transition-all duration-300">
+        {/* BANNER INSTALAÇÃO PWA */}
+        <PWAInstallBanner />
+
         {/* HEADER SUPERIOR */}
         <Header
           session={session}
@@ -344,6 +352,7 @@ export default function App() {
           onOpenQrSimulator={() => setIsQrOpen(true)}
           onToggleWebPhone={() => setIsWebPhoneOpen(!isWebPhoneOpen)}
           onOpenMaia={() => setIsMaiaOpen(true)}
+          onOpenNotifications={() => setIsNotificationsOpen(true)}
           activeCallCount={activeCall && activeCall.state === 'chamando' ? 1 : 0}
           currentTab={activeTab}
         />
@@ -483,6 +492,15 @@ export default function App() {
         recordingId={selectedRecordingId}
         session={session}
       />
+
+      {/* MODAL CENTRAL DE NOTIFICAÇÕES PUSH */}
+      <NotificationCenterModal
+        isOpen={isNotificationsOpen}
+        onClose={() => setIsNotificationsOpen(false)}
+      />
+
+      {/* INDICADOR DE CONECTIVIDADE LOCAL-FIRST / OFFLINE */}
+      <OfflineIndicator />
     </div>
   );
 }
