@@ -408,7 +408,12 @@ export default function App() {
             />
           )}
 
-          {activeTab === 'cameras' && session.role !== 'morador' && <CamerasGrid cameras={cameras} />}
+          {activeTab === 'cameras' && session.role !== 'morador' && (
+            <CamerasGrid
+              cameras={cameras}
+              onOpenDiscovery={() => setActiveTab('dispositivos')}
+            />
+          )}
 
           {activeTab === 'financeiro' && (
             <FinancialModule
