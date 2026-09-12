@@ -1,0 +1,7 @@
+{
+  "name": "Enlace-DoorIA - Portaria Autônoma Inteligente",
+  "description": "Plataforma de portaria autônoma inteligente local-first com Asterisk, WebRTC, XPE 3115-IP, QR Virtual Intercom, Policy Engine e MaIA.",
+  "requestFramePermissions": ["camera", "microphone"],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
+
