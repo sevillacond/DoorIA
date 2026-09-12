@@ -60,14 +60,14 @@ export const Header: React.FC<HeaderProps> = ({
   };
 
   return (
-    <header className="sticky top-0 z-30 bg-slate-900/95 backdrop-blur border-b border-slate-800">
+    <header className="sticky top-0 z-30 bg-white/95 backdrop-blur-md border-b border-[#dde5f0] shadow-xs">
       <div className="px-4 sm:px-6 lg:px-8">
         <div className="flex items-center justify-between h-16 gap-3">
           {/* Lado Esquerdo: Botão Menu Mobile & Breadcrumb do Módulo Atual */}
           <div className="flex items-center gap-3">
             <button
               onClick={onOpenMobileMenu}
-              className="lg:hidden p-2 rounded-xl bg-slate-800 text-slate-300 hover:text-white hover:bg-slate-700 transition"
+              className="lg:hidden p-2 rounded-xl bg-slate-100 text-slate-700 hover:text-[#0a50ff] hover:bg-slate-200 transition"
               title="Abrir Menu Lateral"
             >
               <Menu className="w-5 h-5" />
@@ -75,33 +75,33 @@ export const Header: React.FC<HeaderProps> = ({
 
             <div>
               <div className="flex items-center gap-2">
-                <span className="text-xs text-slate-400 font-medium">Condomínio Solar das Palmeiras</span>
-                <span className="text-slate-600">/</span>
-                <span className="text-xs font-mono px-2 py-0.2 rounded bg-cyan-950 text-cyan-300 border border-cyan-800">
+                <span className="text-xs text-[#5a6a85] font-medium">Condomínio Solar das Palmeiras</span>
+                <span className="text-slate-300">/</span>
+                <span className="text-xs font-semibold px-2 py-0.5 rounded-full bg-[#ebf2ff] text-[#0a50ff] border border-[#dde8ff]">
                   Piloto São Luís - MA
                 </span>
               </div>
-              <h1 className="text-sm sm:text-base font-bold text-white tracking-tight leading-tight">
+              <h1 className="text-sm sm:text-base font-extrabold text-[#0d1b35] tracking-tight leading-tight font-['Red_Hat_Display']">
                 {getTabTitle()}
               </h1>
             </div>
           </div>
 
           {/* Status Asterisk & Local-First (Central/Direita) */}
-          <div className="hidden xl:flex items-center gap-3 bg-slate-950/80 px-3 py-1.5 rounded-lg border border-slate-800 text-xs font-mono">
-            <div className="flex items-center gap-1.5 text-emerald-400">
-              <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse"></span>
+          <div className="hidden xl:flex items-center gap-3 bg-[#f5f8ff] px-3.5 py-1.5 rounded-xl border border-[#dde5f0] text-xs font-mono">
+            <div className="flex items-center gap-1.5 text-emerald-700 font-semibold">
+              <span className="w-2 h-2 rounded-full bg-[#18c7a8] animate-pulse"></span>
               <span>Asterisk 20 PJSIP: Online</span>
             </div>
-            <span className="text-slate-600">|</span>
-            <div className="flex items-center gap-1.5 text-cyan-400">
+            <span className="text-slate-300">|</span>
+            <div className="flex items-center gap-1.5 text-[#0a50ff] font-semibold">
               <Radio className="w-3.5 h-3.5" />
               <span>Local-First Ativo</span>
             </div>
-            <span className="text-slate-600">|</span>
-            <div className="flex items-center gap-1.5 text-amber-300">
+            <span className="text-slate-300">|</span>
+            <div className="flex items-center gap-1.5 text-amber-700 font-medium">
               <Server className="w-3.5 h-3.5" />
-              <span>XPE-3115-IP: 192.168.1.150</span>
+              <span>XPE: 192.168.1.150</span>
             </div>
           </div>
 
@@ -117,7 +117,7 @@ export const Header: React.FC<HeaderProps> = ({
                     .catch(e => console.error(e));
                 }
               }}
-              className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-bold rounded-xl bg-red-600 hover:bg-red-500 text-white shadow-md shadow-red-900/30 transition"
+              className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-bold rounded-xl bg-[#ff5c7a] hover:bg-[#ff4264] text-white shadow-md shadow-rose-500/20 transition active:scale-95"
               title="Acionar Botão de Pânico (SOS)"
             >
               <ShieldCheck className="w-3.5 h-3.5" />
@@ -127,20 +127,20 @@ export const Header: React.FC<HeaderProps> = ({
             {/* Simulador XPE Rápido */}
             <button
               onClick={onOpenXpeSimulator}
-              className="hidden md:inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-200 border border-slate-700 transition"
+              className="hidden md:inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold rounded-xl bg-[#f5f8ff] hover:bg-slate-100 text-slate-700 border border-[#dde5f0] transition shadow-xs"
               title="Testar Totem Intelbras XPE-3115-IP"
             >
-              <Radio className="w-3.5 h-3.5 text-amber-400" />
+              <Radio className="w-3.5 h-3.5 text-[#ffb21a]" />
               <span>Totem XPE</span>
             </button>
 
             {/* Simulador QR Intercom Rápido */}
             <button
               onClick={onOpenQrSimulator}
-              className="hidden md:inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-200 border border-slate-700 transition"
+              className="hidden md:inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold rounded-xl bg-[#f5f8ff] hover:bg-slate-100 text-slate-700 border border-[#dde5f0] transition shadow-xs"
               title="Testar QR Virtual Intercom"
             >
-              <QrCode className="w-3.5 h-3.5 text-cyan-400" />
+              <QrCode className="w-3.5 h-3.5 text-[#0a50ff]" />
               <span>QR Intercom</span>
             </button>
 
@@ -149,23 +149,23 @@ export const Header: React.FC<HeaderProps> = ({
               onClick={onToggleWebPhone}
               className={`inline-flex items-center gap-1.5 px-3.5 py-1.5 text-xs font-bold rounded-xl transition shadow-md ${
                 activeCallCount > 0
-                  ? 'bg-red-600 hover:bg-red-500 text-white animate-bounce'
-                  : 'bg-cyan-600 hover:bg-cyan-500 text-white'
+                  ? 'bg-[#ff5c7a] hover:bg-[#ff4264] text-white animate-bounce shadow-rose-500/30'
+                  : 'bg-[#0a50ff] hover:bg-[#0842cc] text-white shadow-blue-500/20'
               }`}
             >
               <PhoneCall className="w-3.5 h-3.5" />
               <span className="hidden sm:inline">WebPhone</span>
               {activeCallCount > 0 && (
-                <span className="px-1.5 py-0.2 bg-white text-red-600 rounded-full text-[10px] font-extrabold">
+                <span className="px-1.5 py-0.2 bg-white text-[#ff5c7a] rounded-full text-[10px] font-extrabold">
                   {activeCallCount}
                 </span>
               )}
             </button>
 
-            {/* Assistente MaIA */}
+            {/* Assistente MaIA com Gradiente Digify */}
             <button
               onClick={onOpenMaia}
-              className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-gradient-to-r from-cyan-600 to-blue-600 text-white text-xs font-bold shadow-md shadow-cyan-900/30 hover:opacity-90 transition"
+              className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-gradient-to-r from-[#0a50ff] to-[#55b0ff] text-white text-xs font-bold shadow-md shadow-blue-500/20 hover:opacity-95 transition"
               title="Abrir Assistente MaIA"
             >
               <Sparkles className="w-3.5 h-3.5" />
@@ -176,11 +176,11 @@ export const Header: React.FC<HeaderProps> = ({
             {onOpenNotifications && (
               <button
                 onClick={onOpenNotifications}
-                className="p-2 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-300 hover:text-white border border-slate-700 transition"
+                className="p-2 rounded-xl bg-[#f5f8ff] hover:bg-slate-100 text-slate-600 hover:text-[#0a50ff] border border-[#dde5f0] transition shadow-xs"
                 title="Configurar Notificações Push"
                 aria-label="Notificações Push"
               >
-                <Bell className="w-4 h-4 text-cyan-400" />
+                <Bell className="w-4 h-4 text-[#0a50ff]" />
               </button>
             )}
           </div>

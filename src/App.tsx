@@ -320,7 +320,7 @@ export default function App() {
   };
 
   return (
-    <div className="min-h-screen bg-slate-950 text-slate-100 flex selection:bg-cyan-500/30 selection:text-cyan-200 font-sans">
+    <div className="min-h-screen bg-[#f5f8ff] text-[#0d1b35] flex selection:bg-[#0a50ff]/20 selection:text-[#0a50ff] font-sans">
       {/* MENU SIDEBAR COMPLETO */}
       <Sidebar
         currentTab={activeTab}
@@ -359,8 +359,8 @@ export default function App() {
 
         {/* FEEDBACK GLOBAL */}
         {feedbackMessage && (
-          <div className="bg-cyan-950/90 border-b border-cyan-800 text-cyan-200 text-xs px-4 py-2 text-center flex items-center justify-center gap-2 animate-fadeIn sticky top-16 z-20">
-            <ShieldCheck className="w-4 h-4 text-cyan-400" />
+          <div className="bg-[#ebf2ff] border-b border-[#dde8ff] text-[#0a50ff] text-xs px-4 py-2.5 text-center flex items-center justify-center gap-2 animate-fadeIn sticky top-16 z-20 font-semibold shadow-xs">
+            <ShieldCheck className="w-4 h-4 text-[#0a50ff]" />
             <span>{feedbackMessage}</span>
           </div>
         )}

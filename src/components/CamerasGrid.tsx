@@ -95,32 +95,32 @@ export const CamerasGrid: React.FC<CamerasGridProps> = ({ cameras, onOpenDiscove
   return (
     <div className="space-y-4 animate-fadeIn">
       {/* Barra de Ferramentas do CFTV */}
-      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 bg-slate-900 border border-slate-800 p-4 rounded-2xl shadow-lg">
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 bg-white border border-[#dde5f0] p-5 rounded-2xl shadow-xs">
         <div>
-          <h2 className="text-base sm:text-lg font-bold text-white flex items-center gap-2">
-            <Camera className="w-5 h-5 text-cyan-400" />
+          <h2 className="text-base sm:text-xl font-extrabold text-[#0d1b35] flex items-center gap-2 font-['Red_Hat_Display']">
+            <Camera className="w-5 h-5 text-[#0a50ff]" />
             <span>Mesa de Vídeo CFTV • Gateway go2rtc</span>
           </h2>
-          <p className="text-xs text-slate-400">
+          <p className="text-xs text-[#5a6a85] mt-0.5">
             Acesso RTSP/WebRTC direto da LAN da guarita (Sem NVR centralizado obrigatório • Sub-50ms)
           </p>
         </div>
 
-        <div className="flex flex-wrap items-center gap-2">
+        <div className="flex flex-wrap items-center gap-2.5">
           {/* Seletor de Modo Grade vs Foco */}
-          <div className="bg-slate-950 p-1 rounded-xl border border-slate-800 flex items-center gap-1 text-xs">
+          <div className="bg-[#f8fafc] p-1 rounded-xl border border-[#dde5f0] flex items-center gap-1 text-xs">
             <button
               onClick={() => setViewMode('grid')}
-              className={`px-3 py-1.5 rounded-lg font-semibold transition ${
-                viewMode === 'grid' ? 'bg-cyan-600 text-white shadow' : 'text-slate-400 hover:text-white'
+              className={`px-3 py-1.5 rounded-lg font-bold transition ${
+                viewMode === 'grid' ? 'bg-[#0a50ff] text-white shadow-xs' : 'text-[#5a6a85] hover:text-[#0d1b35]'
               }`}
             >
               Grade 2x2
             </button>
             <button
               onClick={() => setViewMode('single')}
-              className={`px-3 py-1.5 rounded-lg font-semibold transition ${
-                viewMode === 'single' ? 'bg-cyan-600 text-white shadow' : 'text-slate-400 hover:text-white'
+              className={`px-3 py-1.5 rounded-lg font-bold transition ${
+                viewMode === 'single' ? 'bg-[#0a50ff] text-white shadow-xs' : 'text-[#5a6a85] hover:text-[#0d1b35]'
               }`}
             >
               Foco Único
@@ -128,17 +128,17 @@ export const CamerasGrid: React.FC<CamerasGridProps> = ({ cameras, onOpenDiscove
           </div>
 
           {/* Status do go2rtc Gateway */}
-          <span className="text-xs font-mono text-emerald-400 bg-emerald-950/60 border border-emerald-800/80 px-2.5 py-1.5 rounded-xl flex items-center gap-1.5">
-            <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse"></span>
+          <span className="text-xs font-bold font-mono text-[#18c7a8] bg-[#ebfbf8] border border-[#18c7a8]/30 px-3 py-1.5 rounded-xl flex items-center gap-1.5">
+            <span className="w-2 h-2 rounded-full bg-[#18c7a8] animate-pulse"></span>
             go2rtc Online (Porta 1984)
           </span>
 
           {onOpenDiscovery && (
             <button
               onClick={onOpenDiscovery}
-              className="px-3 py-1.5 bg-slate-800 hover:bg-slate-700 text-cyan-300 rounded-xl text-xs font-semibold border border-slate-700 transition flex items-center gap-1.5"
+              className="px-3.5 py-1.5 bg-[#ebf2ff] hover:bg-[#dde8ff] text-[#0a50ff] rounded-xl text-xs font-bold border border-[#dde8ff] transition flex items-center gap-1.5 cursor-pointer shadow-xs"
             >
-              <RefreshCw className="w-3.5 h-3.5" />
+              <RefreshCw className="w-3.5 h-3.5 text-[#0a50ff]" />
               <span>Descobrir Câmeras (ONVIF)</span>
             </button>
           )}
@@ -147,23 +147,23 @@ export const CamerasGrid: React.FC<CamerasGridProps> = ({ cameras, onOpenDiscove
 
       {/* Alerta de Feedback de Acionamento de Portão */}
       {gateActionFeedback && (
-        <div className="p-3 bg-cyan-950/90 border border-cyan-800 rounded-xl text-cyan-200 text-xs flex items-center gap-2 animate-fadeIn shadow-lg">
-          <CheckCircle2 className="w-4 h-4 text-cyan-400 shrink-0" />
+        <div className="p-3.5 bg-[#ebfbf8] border border-[#18c7a8]/30 rounded-xl text-[#0b6353] text-xs flex items-center gap-2 animate-fadeIn shadow-xs font-medium">
+          <CheckCircle2 className="w-4 h-4 text-[#18c7a8] shrink-0" />
           <span>{gateActionFeedback}</span>
         </div>
       )}
 
       {/* Snapshot Notificação */}
       {snapshotCaptured && (
-        <div className="p-3 bg-emerald-950/90 border border-emerald-800 rounded-xl text-emerald-200 text-xs flex items-center justify-between animate-fadeIn shadow-lg">
+        <div className="p-3.5 bg-[#ebfbf8] border border-[#18c7a8]/30 rounded-xl text-[#0b6353] text-xs flex items-center justify-between animate-fadeIn shadow-xs">
           <div className="flex items-center gap-2">
-            <CameraIcon className="w-4 h-4 text-emerald-400 shrink-0" />
+            <CameraIcon className="w-4 h-4 text-[#18c7a8] shrink-0" />
             <div>
               <strong>{snapshotCaptured.url}</strong>
-              <span className="text-slate-400 ml-2 font-mono text-[11px]">{snapshotCaptured.time}</span>
+              <span className="text-slate-500 ml-2 font-mono text-[11px]">{snapshotCaptured.time}</span>
             </div>
           </div>
-          <span className="font-mono text-[10px] text-emerald-300 bg-emerald-900/60 px-2 py-0.5 rounded">
+          <span className="font-mono text-[10px] text-[#18c7a8] bg-white px-2 py-0.5 rounded border border-[#18c7a8]/20 font-bold">
             {snapshotCaptured.hash}
           </span>
         </div>
@@ -174,24 +174,24 @@ export const CamerasGrid: React.FC<CamerasGridProps> = ({ cameras, onOpenDiscove
         {cameras.map((cam) => (
           <div
             key={cam.id}
-            className="bg-slate-900 border border-slate-800 rounded-2xl overflow-hidden shadow-xl hover:border-slate-700 transition flex flex-col group"
+            className="bg-white border border-[#dde5f0] rounded-2xl overflow-hidden shadow-xs hover:shadow-md transition flex flex-col group"
           >
             {/* Cabeçalho da Câmera */}
-            <div className="px-4 py-2.5 bg-slate-950 border-b border-slate-800 flex items-center justify-between text-xs">
+            <div className="px-4 py-3 bg-[#f8fafc] border-b border-[#dde5f0] flex items-center justify-between text-xs">
               <div className="flex items-center gap-2">
-                <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse"></span>
-                <span className="font-bold text-white">{cam.name}</span>
+                <span className="w-2 h-2 rounded-full bg-[#18c7a8] animate-pulse"></span>
+                <span className="font-bold text-[#0d1b35]">{cam.name}</span>
                 {cam.isXpeIntegrated && (
-                  <span className="px-1.5 py-0.2 rounded bg-amber-950 text-amber-300 border border-amber-800 text-[10px] font-mono">
+                  <span className="px-2 py-0.5 rounded-full bg-[#fff8eb] text-[#ffb21a] border border-[#ffb21a]/30 text-[10px] font-bold font-mono">
                     Totem XPE
                   </span>
                 )}
               </div>
               <div className="flex items-center gap-2">
-                <span className="font-mono text-[10px] text-slate-400 bg-slate-900 px-2 py-0.5 rounded border border-slate-800">
+                <span className="font-mono text-[10px] text-[#5a6a85] bg-white px-2 py-0.5 rounded border border-[#dde5f0]">
                   {cam.location}
                 </span>
-                <span className="font-mono text-[10px] text-cyan-400 bg-cyan-950/60 px-2 py-0.5 rounded border border-cyan-800/50">
+                <span className="font-mono text-[10px] text-[#0a50ff] bg-[#ebf2ff] px-2 py-0.5 rounded border border-[#dde8ff] font-semibold">
                   {cam.profile}
                 </span>
               </div>
@@ -284,14 +284,14 @@ export const CamerasGrid: React.FC<CamerasGridProps> = ({ cameras, onOpenDiscove
             </div>
 
             {/* Rodapé Técnico com RTSP String e Diagnóstico */}
-            <div className="px-4 py-2 bg-slate-950/80 border-t border-slate-800/80 flex items-center justify-between text-[11px] text-slate-400 font-mono">
+            <div className="px-4 py-2.5 bg-[#f8fafc] border-t border-[#dde5f0] flex items-center justify-between text-[11px] text-[#5a6a85] font-mono">
               <span className="truncate max-w-[220px]" title={cam.rtspUrl}>
                 {cam.rtspUrl}
               </span>
               <div className="flex items-center gap-2 shrink-0">
-                <span className="text-emerald-400 font-semibold">32ms</span>
-                <span className="text-slate-600">•</span>
-                <span className="text-slate-400">4.2 Mbps</span>
+                <span className="text-[#18c7a8] font-bold">32ms</span>
+                <span className="text-slate-300">•</span>
+                <span className="text-[#5a6a85]">4.2 Mbps</span>
               </div>
             </div>
           </div>
@@ -300,35 +300,35 @@ export const CamerasGrid: React.FC<CamerasGridProps> = ({ cameras, onOpenDiscove
 
       {/* Modal de Câmera Expandida com Controles PTZ e Seletor de Protocolo */}
       {selectedCamera && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-6 bg-black/90 backdrop-blur-md animate-fadeIn">
-          <div className="relative w-full max-w-5xl bg-slate-900 border border-slate-700 rounded-3xl overflow-hidden shadow-2xl flex flex-col max-h-[95vh]">
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-6 bg-[#0d1b35]/70 backdrop-blur-md animate-fadeIn">
+          <div className="relative w-full max-w-5xl bg-white border border-[#dde5f0] rounded-3xl overflow-hidden shadow-2xl flex flex-col max-h-[95vh]">
             {/* Topo do Modal */}
-            <div className="px-5 py-3.5 bg-slate-950 border-b border-slate-800 flex items-center justify-between">
+            <div className="px-5 py-4 bg-[#f8fafc] border-b border-[#dde5f0] flex items-center justify-between">
               <div className="flex items-center gap-3">
-                <div className="w-8 h-8 rounded-xl bg-cyan-950 border border-cyan-800 flex items-center justify-center text-cyan-400">
+                <div className="w-9 h-9 rounded-xl bg-[#ebf2ff] flex items-center justify-center text-[#0a50ff]">
                   <Camera className="w-4 h-4" />
                 </div>
                 <div>
-                  <h3 className="text-sm font-bold text-white flex items-center gap-2">
+                  <h3 className="text-sm font-extrabold text-[#0d1b35] flex items-center gap-2 font-['Red_Hat_Display']">
                     {selectedCamera.name}
-                    <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse"></span>
+                    <span className="w-2 h-2 rounded-full bg-[#18c7a8] animate-pulse"></span>
                   </h3>
-                  <p className="text-[11px] text-slate-400 font-mono">
+                  <p className="text-[11px] text-[#5a6a85] font-mono">
                     {selectedCamera.location} • RTSP RTSP/1.0 H.264
                   </p>
                 </div>
               </div>
 
               {/* Protocol Selector no Topo */}
-              <div className="hidden sm:flex items-center gap-1.5 bg-slate-900 p-1 rounded-xl border border-slate-800 text-[11px]">
+              <div className="hidden sm:flex items-center gap-1.5 bg-white p-1 rounded-xl border border-[#dde5f0] text-[11px]">
                 {(['webrtc', 'mse', 'hls', 'mjpeg'] as const).map((proto) => (
                   <button
                     key={proto}
                     onClick={() => setStreamProtocol(proto)}
                     className={`px-2.5 py-1 rounded-lg uppercase font-mono font-bold transition ${
                       streamProtocol === proto
-                        ? 'bg-cyan-600 text-white shadow'
-                        : 'text-slate-400 hover:text-white'
+                        ? 'bg-[#0a50ff] text-white shadow-xs'
+                        : 'text-[#5a6a85] hover:text-[#0d1b35]'
                     }`}
                   >
                     {proto}
@@ -341,7 +341,7 @@ export const CamerasGrid: React.FC<CamerasGridProps> = ({ cameras, onOpenDiscove
                   setSelectedCamera(null);
                   resetPtz();
                 }}
-                className="text-slate-400 hover:text-white p-1.5 rounded-xl hover:bg-slate-800 transition"
+                className="text-slate-400 hover:text-[#0d1b35] p-1.5 rounded-xl hover:bg-slate-100 transition"
               >
                 <X className="w-5 h-5" />
               </button>
@@ -362,7 +362,7 @@ export const CamerasGrid: React.FC<CamerasGridProps> = ({ cameras, onOpenDiscove
               >
                 <div className="w-full h-full bg-gradient-to-br from-slate-950 via-slate-900 to-black flex flex-col items-center justify-center text-slate-500 relative">
                   <div className="absolute inset-0 grid grid-cols-4 grid-rows-4 opacity-15 border border-cyan-500/20"></div>
-                  <Eye className="w-16 h-16 text-cyan-400 mb-3 animate-pulse" />
+                  <Eye className="w-16 h-16 text-[#55b0ff] mb-3 animate-pulse" />
                   <div className="text-sm font-bold text-white">
                     Transmissão go2rtc [{streamProtocol.toUpperCase()}]
                   </div>
@@ -414,7 +414,7 @@ export const CamerasGrid: React.FC<CamerasGridProps> = ({ cameras, onOpenDiscove
                 </button>
                 <button
                   onClick={() => handleCaptureSnapshot(selectedCamera)}
-                  className="p-2 rounded-xl bg-cyan-600 hover:bg-cyan-500 text-white transition shadow"
+                  className="p-2 rounded-xl bg-[#0a50ff] hover:bg-[#0842cc] text-white transition shadow"
                   title="Capturar Foto Pericial (Snapshot)"
                 >
                   <CameraIcon className="w-4 h-4" />
@@ -423,16 +423,16 @@ export const CamerasGrid: React.FC<CamerasGridProps> = ({ cameras, onOpenDiscove
             </div>
 
             {/* Rodapé do Modal: Acionamentos de Segurança & Comandos */}
-            <div className="p-4 bg-slate-950 border-t border-slate-800 flex flex-col sm:flex-row items-center justify-between gap-3">
-              <div className="text-xs text-slate-400 flex items-center gap-2">
-                <Shield className="w-4 h-4 text-cyan-400" />
+            <div className="p-4 bg-[#f8fafc] border-t border-[#dde5f0] flex flex-col sm:flex-row items-center justify-between gap-3">
+              <div className="text-xs text-[#5a6a85] flex items-center gap-2">
+                <Shield className="w-4 h-4 text-[#18c7a8]" />
                 <span>Policy Engine: Acionamentos auditados com trilha criptográfica SHA-256.</span>
               </div>
 
               <div className="flex items-center gap-2.5 w-full sm:w-auto">
                 <button
                   onClick={() => handleTriggerGate('*07')}
-                  className="flex-1 sm:flex-initial px-4 py-2 bg-emerald-600 hover:bg-emerald-500 text-white font-bold text-xs rounded-xl flex items-center justify-center gap-2 shadow transition active:scale-95"
+                  className="flex-1 sm:flex-initial px-4 py-2.5 bg-emerald-600 hover:bg-emerald-500 text-white font-bold text-xs rounded-xl flex items-center justify-center gap-2 shadow-xs transition active:scale-95 cursor-pointer"
                 >
                   <Unlock className="w-4 h-4" />
                   <span>Liberar Pedestre (*07)</span>
@@ -440,7 +440,7 @@ export const CamerasGrid: React.FC<CamerasGridProps> = ({ cameras, onOpenDiscove
 
                 <button
                   onClick={() => handleTriggerGate('*08')}
-                  className="flex-1 sm:flex-initial px-4 py-2 bg-blue-600 hover:bg-blue-500 text-white font-bold text-xs rounded-xl flex items-center justify-center gap-2 shadow transition active:scale-95"
+                  className="flex-1 sm:flex-initial px-4 py-2.5 bg-[#0a50ff] hover:bg-[#0842cc] text-white font-bold text-xs rounded-xl flex items-center justify-center gap-2 shadow-xs shadow-blue-500/20 transition active:scale-95 cursor-pointer"
                 >
                   <Unlock className="w-4 h-4" />
                   <span>Liberar Garagem (*08)</span>
