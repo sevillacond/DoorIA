@@ -16,6 +16,10 @@ import {
   Share2,
   ShieldCheck,
   Building2,
+  Eye,
+  Trash2,
+  X,
+  ExternalLink,
 } from 'lucide-react';
 import type {
   UserSession,
@@ -56,6 +60,7 @@ export const ResidentDashboard: React.FC<ResidentDashboardProps> = ({
   const [newVisitorType, setNewVisitorType] = useState<'visitante' | 'entrega' | 'prestador'>('visitante');
   const [inviteModalOpen, setInviteModalOpen] = useState(false);
   const [copiedToken, setCopiedToken] = useState<string | null>(null);
+  const [viewingQrInvite, setViewingQrInvite] = useState<VisitorInvite | null>(null);
 
   const pendingPackages = packages.filter((p) => p.status === 'aguardando_retirada');
 
@@ -67,8 +72,19 @@ export const ResidentDashboard: React.FC<ResidentDashboardProps> = ({
     setInviteModalOpen(false);
   };
 
+  const handleRevokeInvite = async (inviteId: string) => {
+    if (!confirm('Deseja realmente revogar este convite? O visitante não conseguirá mais usá-lo.')) return;
+    try {
+      await fetch(`/api/v1/visitors/invites/${inviteId}`, { method: 'DELETE' });
+      window.location.reload();
+    } catch (e) {
+      console.error(e);
+    }
+  };
+
   const copyQrToken = (token: string) => {
-    navigator.clipboard.writeText(`https://door.solar.lan/invite/${token}`);
+    const url = `${window.location.origin}/?qr_token=${token}`;
+    navigator.clipboard.writeText(url);
     setCopiedToken(token);
     setTimeout(() => setCopiedToken(null), 3000);
   };
@@ -350,27 +366,56 @@ export const ResidentDashboard: React.FC<ResidentDashboardProps> = ({
                     <h4 className="text-sm font-bold text-white">{inv.visitorName}</h4>
                     <span className="text-[11px] text-cyan-400 font-mono capitalize">{inv.type}</span>
                   </div>
-                  <span className="px-2 py-0.5 rounded-full text-[10px] font-bold uppercase bg-emerald-950 text-emerald-300 border border-emerald-800">
+                  <span
+                    className={`px-2 py-0.5 rounded-full text-[10px] font-bold uppercase ${
+                      inv.status === 'ativo'
+                        ? 'bg-emerald-950 text-emerald-300 border border-emerald-800'
+                        : 'bg-slate-800 text-slate-400 border border-slate-700'
+                    }`}
+                  >
                     {inv.status}
                   </span>
                 </div>
 
-                <div className="p-3 bg-slate-950 rounded-xl border border-slate-800/80 flex items-center justify-between">
-                  <div className="font-mono text-xs text-slate-300 truncate max-w-[200px]">
+                <div className="p-3 bg-slate-950 rounded-xl border border-slate-800/80 flex items-center justify-between gap-2">
+                  <div className="font-mono text-xs text-slate-300 truncate max-w-[180px]">
                     {inv.qrToken}
                   </div>
-                  <button
-                    onClick={() => copyQrToken(inv.qrToken)}
-                    className="p-1.5 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-300 text-xs flex items-center gap-1 transition"
-                  >
-                    <Copy className="w-3.5 h-3.5" />
-                    <span>{copiedToken === inv.qrToken ? 'Copiado!' : 'Copiar Link'}</span>
-                  </button>
+                  <div className="flex items-center gap-1">
+                    <button
+                      onClick={() => setViewingQrInvite(inv)}
+                      className="p-1.5 rounded-lg bg-slate-800 hover:bg-slate-700 text-cyan-300 text-xs flex items-center gap-1 transition"
+                      title="Visualizar QR Code"
+                    >
+                      <Eye className="w-3.5 h-3.5" />
+                      <span>QR</span>
+                    </button>
+                    <button
+                      onClick={() => copyQrToken(inv.qrToken)}
+                      className="p-1.5 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-300 text-xs flex items-center gap-1 transition"
+                      title="Copiar Link para WhatsApp"
+                    >
+                      <Copy className="w-3.5 h-3.5" />
+                      <span>{copiedToken === inv.qrToken ? 'Copiado!' : 'Copiar'}</span>
+                    </button>
+                  </div>
                 </div>
 
-                <div className="text-[11px] text-slate-400 flex items-center justify-between">
-                  <span>Validade: 24 horas</span>
-                  <span>Acessos registrados: {inv.entryCount}</span>
+                <div className="text-[11px] text-slate-400 flex items-center justify-between pt-1">
+                  <span>Validade: 24h ({new Date(inv.validUntil).toLocaleDateString('pt-BR')})</span>
+                  <div className="flex items-center gap-3">
+                    <span>Acessos: {inv.entryCount}</span>
+                    {inv.status === 'ativo' && (
+                      <button
+                        onClick={() => handleRevokeInvite(inv.id)}
+                        className="text-red-400 hover:text-red-300 text-[11px] flex items-center gap-0.5 font-semibold"
+                        title="Revogar convite imediatamente"
+                      >
+                        <Trash2 className="w-3 h-3" />
+                        Revogar
+                      </button>
+                    )}
+                  </div>
                 </div>
               </div>
             ))}
@@ -531,6 +576,67 @@ export const ResidentDashboard: React.FC<ResidentDashboardProps> = ({
                 </button>
               </div>
             </form>
+          </div>
+        </div>
+      )}
+      {/* MODAL PARA VISUALIZAR QR CODE DO CONVITE */}
+      {viewingQrInvite && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/80 backdrop-blur-sm animate-fadeIn">
+          <div className="w-full max-w-sm bg-slate-900 border border-slate-700 rounded-2xl shadow-2xl p-6 text-center space-y-4">
+            <div className="flex items-center justify-between">
+              <span className="text-xs font-mono font-bold text-cyan-400 uppercase tracking-wider">
+                Passaporte Virtual de Acesso
+              </span>
+              <button
+                onClick={() => setViewingQrInvite(null)}
+                className="p-1 rounded-lg text-slate-400 hover:text-white"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+
+            <div className="space-y-1">
+              <h3 className="text-base font-bold text-white">{viewingQrInvite.visitorName}</h3>
+              <p className="text-xs text-slate-400">
+                Unidade {session.unitNumber || '101'} • Solar das Palmeiras
+              </p>
+            </div>
+
+            {/* Simulação Visual do QR Code Autônomo */}
+            <div className="p-4 bg-white rounded-2xl inline-block shadow-inner mx-auto">
+              <img
+                src={`https://api.qrserver.com/v1/create-qr-code/?size=180x180&data=${encodeURIComponent(
+                  `${window.location.origin}/?qr_token=${viewingQrInvite.qrToken}`
+                )}`}
+                alt="QR Code Convite"
+                className="w-44 h-44 mx-auto rounded-lg"
+                referrerPolicy="no-referrer"
+              />
+            </div>
+
+            <div className="p-2.5 rounded-xl bg-slate-950 border border-slate-800 text-[11px] font-mono text-cyan-400 truncate">
+              {viewingQrInvite.qrToken}
+            </div>
+
+            <div className="text-[11px] text-slate-400">
+              Aponte este QR Code para o totem da portaria ou envie o link seguro para o visitante.
+            </div>
+
+            <div className="flex gap-2 pt-2">
+              <button
+                onClick={() => copyQrToken(viewingQrInvite.qrToken)}
+                className="flex-1 py-2 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-200 text-xs font-bold flex items-center justify-center gap-1.5 transition"
+              >
+                <Copy className="w-4 h-4 text-cyan-400" />
+                <span>{copiedToken === viewingQrInvite.qrToken ? 'Link Copiado!' : 'Copiar Link'}</span>
+              </button>
+              <button
+                onClick={() => setViewingQrInvite(null)}
+                className="flex-1 py-2 rounded-xl bg-cyan-600 hover:bg-cyan-500 text-white text-xs font-bold transition shadow-md"
+              >
+                Fechar
+              </button>
+            </div>
           </div>
         </div>
       )}

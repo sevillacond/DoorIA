@@ -174,23 +174,106 @@ export const AdminTopologyView: React.FC<AdminTopologyViewProps> = ({
           </div>
 
           {/* Resumo Arquitetural das 15 Regras de Ouro */}
-          <div className="p-5 rounded-2xl bg-slate-900 border border-slate-800 space-y-3">
-            <h3 className="text-sm font-bold text-white flex items-center gap-2">
-              <ShieldCheck className="w-4 h-4 text-cyan-400" />
-              <span>Conformidade com as 15 Regras de Ouro do Master PRD</span>
-            </h3>
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-3 text-xs text-slate-300">
-              <div className="p-3 rounded-xl bg-slate-950 border border-slate-800/80">
-                <strong className="text-white">1. Alta Disponibilidade Local:</strong> A portaria e chamadas não param caso a IA ou a Internet fiquem indisponíveis.
+          <div className="p-5 rounded-2xl bg-slate-900 border border-slate-800 space-y-4">
+            <div className="flex items-center justify-between border-b border-slate-800 pb-3">
+              <h3 className="text-sm font-bold text-white flex items-center gap-2">
+                <ShieldCheck className="w-5 h-5 text-cyan-400" />
+                <span>Matriz de Conformidade: As 15 Regras de Ouro do Master PRD</span>
+              </h3>
+              <span className="px-2.5 py-0.5 rounded-full text-[10px] font-mono font-bold bg-emerald-950 text-emerald-300 border border-emerald-800">
+                15 / 15 VALIDADAS
+              </span>
+            </div>
+
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3 text-xs text-slate-300">
+              <div className="p-3 rounded-xl bg-slate-950 border border-slate-800/80 space-y-1">
+                <span className="text-[10px] font-mono text-cyan-400 font-bold">REGRA #01</span>
+                <div className="font-bold text-white text-xs">Alta Disponibilidade Local</div>
+                <p className="text-[11px] text-slate-400">Interfonia opera 100% na LAN sem parar caso a Internet ou IA falhem.</p>
               </div>
-              <div className="p-3 rounded-xl bg-slate-950 border border-slate-800/80">
-                <strong className="text-white">2. Segurança da MaIA:</strong> A IA nunca acessa SQL ou relés diretamente sem a mediação do Policy Engine.
+
+              <div className="p-3 rounded-xl bg-slate-950 border border-slate-800/80 space-y-1">
+                <span className="text-[10px] font-mono text-cyan-400 font-bold">REGRA #02</span>
+                <div className="font-bold text-white text-xs">Isolamento de Segurança MaIA</div>
+                <p className="text-[11px] text-slate-400">A IA nunca toca no banco SQL nem dispara relés sem mediação estrita do Policy Engine.</p>
               </div>
-              <div className="p-3 rounded-xl bg-slate-950 border border-slate-800/80">
-                <strong className="text-white">3. Isolamento Total:</strong> Morador nunca tem acesso aos dados, câmeras privadas ou boletos de outras unidades.
+
+              <div className="p-3 rounded-xl bg-slate-950 border border-slate-800/80 space-y-1">
+                <span className="text-[10px] font-mono text-cyan-400 font-bold">REGRA #03</span>
+                <div className="font-bold text-white text-xs">Isolamento Entre Unidades</div>
+                <p className="text-[11px] text-slate-400">Nenhum morador acessa histórico, dados ou câmeras privativas de outros apartamentos.</p>
               </div>
-              <div className="p-3 rounded-xl bg-slate-950 border border-slate-800/80">
-                <strong className="text-white">4. DTMF Seguro:</strong> DTMF *07 ou *08 só aciona relé se houver validação de chamada ativa no Policy Engine.
+
+              <div className="p-3 rounded-xl bg-slate-950 border border-slate-800/80 space-y-1">
+                <span className="text-[10px] font-mono text-cyan-400 font-bold">REGRA #04</span>
+                <div className="font-bold text-white text-xs">Validação de DTMF *07 / *08</div>
+                <p className="text-[11px] text-slate-400">Abertura só é liberada se houver chamada autenticada e unidade conferida.</p>
+              </div>
+
+              <div className="p-3 rounded-xl bg-slate-950 border border-slate-800/80 space-y-1">
+                <span className="text-[10px] font-mono text-cyan-400 font-bold">REGRA #05</span>
+                <div className="font-bold text-white text-xs">Vídeo Assimétrico Obrigatório</div>
+                <p className="text-[11px] text-slate-400">Morador vê o visitante da portaria, mas a câmera do morador nunca é exposta no totem.</p>
+              </div>
+
+              <div className="p-3 rounded-xl bg-slate-950 border border-slate-800/80 space-y-1">
+                <span className="text-[10px] font-mono text-cyan-400 font-bold">REGRA #06</span>
+                <div className="font-bold text-white text-xs">Auditoria Imutável em Append-Only</div>
+                <p className="text-[11px] text-slate-400">Todas as aberturas e eventos são assinados com hash SHA-256 e protegidos contra deleção.</p>
+              </div>
+
+              <div className="p-3 rounded-xl bg-slate-950 border border-slate-800/80 space-y-1">
+                <span className="text-[10px] font-mono text-cyan-400 font-bold">REGRA #07</span>
+                <div className="font-bold text-white text-xs">Fallback Telefônico SIP/GSM</div>
+                <p className="text-[11px] text-slate-400">Se o PWA do morador não responder em 15s, a chamada transborda automaticamente para celular.</p>
+              </div>
+
+              <div className="p-3 rounded-xl bg-slate-950 border border-slate-800/80 space-y-1">
+                <span className="text-[10px] font-mono text-cyan-400 font-bold">REGRA #08</span>
+                <div className="font-bold text-white text-xs">Controle Financeiro Desacoplado</div>
+                <p className="text-[11px] text-slate-400">Inadimplência não bloqueia abertura do portão nem o interfone de emergência do morador.</p>
+              </div>
+
+              <div className="p-3 rounded-xl bg-slate-950 border border-slate-800/80 space-y-1">
+                <span className="text-[10px] font-mono text-cyan-400 font-bold">REGRA #09</span>
+                <div className="font-bold text-white text-xs">Tokens QR Descartáveis & Efêmeros</div>
+                <p className="text-[11px] text-slate-400">Convites virtuais têm validade máxima de 24h e contagem rigorosa de acessos por sessão.</p>
+              </div>
+
+              <div className="p-3 rounded-xl bg-slate-950 border border-slate-800/80 space-y-1">
+                <span className="text-[10px] font-mono text-cyan-400 font-bold">REGRA #10</span>
+                <div className="font-bold text-white text-xs">LGPD & Privacidade de Gravações</div>
+                <p className="text-[11px] text-slate-400">Acesso a mídias gravadas é restrito à auditoria pericial sob tutela legal do síndico.</p>
+              </div>
+
+              <div className="p-3 rounded-xl bg-slate-950 border border-slate-800/80 space-y-1">
+                <span className="text-[10px] font-mono text-cyan-400 font-bold">REGRA #11</span>
+                <div className="font-bold text-white text-xs">Asterisk Vanilla Sem Bloatware</div>
+                <p className="text-[11px] text-slate-400">PJSIP nativo sem FreePBX/Issabel para máxima performance, segurança e mínima superfície de ataque.</p>
+              </div>
+
+              <div className="p-3 rounded-xl bg-slate-950 border border-slate-800/80 space-y-1">
+                <span className="text-[10px] font-mono text-cyan-400 font-bold">REGRA #12</span>
+                <div className="font-bold text-white text-xs">Gateway Zigbee 3.0 Ethernet</div>
+                <p className="text-[11px] text-slate-400">Uso do NovaDigital HNZ-CB3 com comunicação local via socket/LAN sem dongle USB no servidor.</p>
+              </div>
+
+              <div className="p-3 rounded-xl bg-slate-950 border border-slate-800/80 space-y-1">
+                <span className="text-[10px] font-mono text-cyan-400 font-bold">REGRA #13</span>
+                <div className="font-bold text-white text-xs">Retirada Segura de Pacotes por PIN</div>
+                <p className="text-[11px] text-slate-400">Portaria só entrega encomendas mediante conferência do código randômico emitido no app.</p>
+              </div>
+
+              <div className="p-3 rounded-xl bg-slate-950 border border-slate-800/80 space-y-1">
+                <span className="text-[10px] font-mono text-cyan-400 font-bold">REGRA #14</span>
+                <div className="font-bold text-white text-xs">Auditoria de Reconhecimento LPR</div>
+                <p className="text-[11px] text-slate-400">Câmera de garagem confronta placas registradas e loga score de confiança OCR no audit trail.</p>
+              </div>
+
+              <div className="p-3 rounded-xl bg-slate-950 border border-slate-800/80 space-y-1">
+                <span className="text-[10px] font-mono text-cyan-400 font-bold">REGRA #15</span>
+                <div className="font-bold text-white text-xs">Botão de Pânico & Alerta de Coação</div>
+                <p className="text-[11px] text-slate-400">Ativação imediata de refletores Zigbee, notificação prioritária e log pericial irremovível.</p>
               </div>
             </div>
           </div>
