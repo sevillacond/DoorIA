@@ -14,6 +14,7 @@ import {
   HelpCircle,
 } from 'lucide-react';
 import type { CallPurpose, Unit } from '../types.ts';
+import { audioSystem } from '../utils/audioSystem.ts';
 
 interface XpeIntercomSimulatorProps {
   isOpen: boolean;
@@ -34,10 +35,12 @@ export const XpeIntercomSimulator: React.FC<XpeIntercomSimulatorProps> = ({
   const [selectedUnit, setSelectedUnit] = useState<string>('101');
   const [selectedPurpose, setSelectedPurpose] = useState<CallPurpose>('visitante');
   const [keypadInput, setKeypadInput] = useState<string>('');
+  const [voiceMuted, setVoiceMuted] = useState<boolean>(false);
 
   if (!isOpen) return null;
 
   const handleKeypadPress = (val: string) => {
+    audioSystem.playDtmf(val);
     if (step === 'standby') {
       setStep('selecionar_unidade');
     }
@@ -47,19 +50,36 @@ export const XpeIntercomSimulator: React.FC<XpeIntercomSimulatorProps> = ({
   };
 
   const handlePressMainButton = () => {
-    // Pressionar botão de portaria / chamada do XPE
+    audioSystem.playDtmf('0');
     setStep('selecionar_unidade');
     setKeypadInput('');
+    if (!voiceMuted) {
+      audioSystem.speakUra(
+        'Olá! Bem-vindo à Portaria Inteligente do Condomínio Solar das Palmeiras. Por favor, selecione a sua unidade de destino.'
+      );
+    }
   };
 
   const handleConfirmUnit = (unitNum: string) => {
+    audioSystem.playDtmf('#');
     setSelectedUnit(unitNum);
     setStep('classificar_finalidade');
+    if (!voiceMuted) {
+      audioSystem.speakUra(
+        `Qual a finalidade da visita ao Apartamento ${unitNum}? Escolha entre entrega, visitante ou prestador.`
+      );
+    }
   };
 
   const handleConfirmPurposeAndDial = (purpose: CallPurpose) => {
+    audioSystem.playDtmf('*');
     setSelectedPurpose(purpose);
     setStep('discando');
+    if (!voiceMuted) {
+      audioSystem.speakUra(
+        `Aguarde um instante. O sistema está contatando os moradores do Apartamento ${selectedUnit}.`
+      );
+    }
     onStartCall(selectedUnit, purpose);
   };
 
@@ -104,9 +124,21 @@ export const XpeIntercomSimulator: React.FC<XpeIntercomSimulatorProps> = ({
               <div className="absolute top-2 right-4 w-2 h-2 rounded-full bg-red-500 animate-ping"></div>
             </div>
 
-            <div className="text-[11px] font-mono text-slate-400 flex items-center gap-1.5 mb-2">
-              <Volume2 className="w-3.5 h-3.5 text-cyan-400" />
-              <span>Alto-Falante & URA MaIA Ativa</span>
+            <div className="text-[11px] font-mono text-slate-400 flex items-center justify-between w-full px-2 mb-2">
+              <span className="flex items-center gap-1.5">
+                <Volume2 className="w-3.5 h-3.5 text-cyan-400" />
+                <span>URA MaIA Ativa</span>
+              </span>
+              <button
+                onClick={() => setVoiceMuted(!voiceMuted)}
+                className={`text-[10px] px-2 py-0.5 rounded border ${
+                  voiceMuted
+                    ? 'bg-amber-950 text-amber-300 border-amber-800'
+                    : 'bg-slate-800 text-slate-300 border-slate-700'
+                }`}
+              >
+                {voiceMuted ? 'Voz Desativada' : 'Voz Ligada'}
+              </button>
             </div>
 
             {/* Display Digital do Interfone */}

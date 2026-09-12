@@ -14,6 +14,7 @@ import {
   Building,
 } from 'lucide-react';
 import { Header } from './components/Header.tsx';
+import { Sidebar } from './components/Sidebar.tsx';
 import { WebPhoneModal } from './components/WebPhoneModal.tsx';
 import { XpeIntercomSimulator } from './components/XpeIntercomSimulator.tsx';
 import { QrVirtualIntercomModal } from './components/QrVirtualIntercomModal.tsx';
@@ -80,6 +81,7 @@ export default function App() {
   const [isXpeOpen, setIsXpeOpen] = useState(false);
   const [isQrOpen, setIsQrOpen] = useState(false);
   const [isMaiaOpen, setIsMaiaOpen] = useState(false);
+  const [isMobileSidebarOpen, setIsMobileSidebarOpen] = useState(false);
   const [feedbackMessage, setFeedbackMessage] = useState<string | null>(null);
 
   // Carregar dados iniciais
@@ -302,153 +304,109 @@ export default function App() {
   };
 
   return (
-    <div className="min-h-screen bg-slate-950 text-slate-100 flex flex-col selection:bg-cyan-500/30 selection:text-cyan-200 font-sans">
-      {/* HEADER SUPERIOR */}
-      <Header
+    <div className="min-h-screen bg-slate-950 text-slate-100 flex selection:bg-cyan-500/30 selection:text-cyan-200 font-sans">
+      {/* MENU SIDEBAR COMPLETO */}
+      <Sidebar
+        currentTab={activeTab}
+        onSelectTab={(tab) => setActiveTab(tab)}
         session={session}
         systemStatus={systemStatus}
-        onSwitchRole={handleSwitchRole}
+        activeCallCount={activeCall && activeCall.state === 'chamando' ? 1 : 0}
         onOpenXpeSimulator={() => setIsXpeOpen(true)}
         onOpenQrSimulator={() => setIsQrOpen(true)}
         onToggleWebPhone={() => setIsWebPhoneOpen(!isWebPhoneOpen)}
-        activeCallCount={activeCall && activeCall.state === 'chamando' ? 1 : 0}
+        onOpenMaia={() => setIsMaiaOpen(true)}
+        onSwitchRole={handleSwitchRole}
+        isOpenMobile={isMobileSidebarOpen}
+        onCloseMobile={() => setIsMobileSidebarOpen(false)}
       />
 
-      {/* FEEDBACK GLOBAL */}
-      {feedbackMessage && (
-        <div className="bg-cyan-950/90 border-b border-cyan-800 text-cyan-200 text-xs px-4 py-2 text-center flex items-center justify-center gap-2 animate-fadeIn sticky top-16 z-30">
-          <ShieldCheck className="w-4 h-4 text-cyan-400" />
-          <span>{feedbackMessage}</span>
-        </div>
-      )}
+      {/* ÁREA PRINCIPAL COM HEADER E CONTEÚDO */}
+      <div className="flex-1 flex flex-col min-w-0 lg:pl-72 transition-all duration-300">
+        {/* HEADER SUPERIOR */}
+        <Header
+          session={session}
+          systemStatus={systemStatus}
+          onOpenMobileMenu={() => setIsMobileSidebarOpen(true)}
+          onOpenXpeSimulator={() => setIsXpeOpen(true)}
+          onOpenQrSimulator={() => setIsQrOpen(true)}
+          onToggleWebPhone={() => setIsWebPhoneOpen(!isWebPhoneOpen)}
+          onOpenMaia={() => setIsMaiaOpen(true)}
+          activeCallCount={activeCall && activeCall.state === 'chamando' ? 1 : 0}
+          currentTab={activeTab}
+        />
 
-      {/* BARRA DE NAVEGAÇÃO PRINCIPAL (PORTAL PWA) */}
-      <div className="bg-slate-900 border-b border-slate-800">
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-          <nav className="flex items-center gap-1 sm:gap-2 py-2 overflow-x-auto">
-            <button
-              onClick={() => setActiveTab('inicio')}
-              className={`px-3.5 py-2 rounded-xl text-xs font-bold flex items-center gap-2 transition ${
-                activeTab === 'inicio'
-                  ? 'bg-cyan-600 text-white shadow-sm'
-                  : 'text-slate-400 hover:text-white hover:bg-slate-800'
-              }`}
-            >
-              <Home className="w-4 h-4" />
-              <span>{session.role === 'morador' ? 'Portal do Morador' : 'Painel Central'}</span>
-            </button>
+        {/* FEEDBACK GLOBAL */}
+        {feedbackMessage && (
+          <div className="bg-cyan-950/90 border-b border-cyan-800 text-cyan-200 text-xs px-4 py-2 text-center flex items-center justify-center gap-2 animate-fadeIn sticky top-16 z-20">
+            <ShieldCheck className="w-4 h-4 text-cyan-400" />
+            <span>{feedbackMessage}</span>
+          </div>
+        )}
 
-            <button
-              onClick={() => setActiveTab('cameras')}
-              className={`px-3.5 py-2 rounded-xl text-xs font-bold flex items-center gap-2 transition ${
-                activeTab === 'cameras'
-                  ? 'bg-cyan-600 text-white shadow-sm'
-                  : 'text-slate-400 hover:text-white hover:bg-slate-800'
-              }`}
-            >
-              <Camera className="w-4 h-4" />
-              <span>Câmeras IP ({cameras.length})</span>
-            </button>
+        {/* ÁREA DE CONTEÚDO PRINCIPAL */}
+        <main className="flex-1 max-w-7xl w-full mx-auto px-4 sm:px-6 lg:px-8 py-6">
+          {activeTab === 'inicio' && session.role === 'morador' && (
+            <ResidentDashboard
+              session={session}
+              gates={gates}
+              packages={packages}
+              visitorInvites={visitorInvites}
+              vehicles={vehicles}
+              callLogs={callLogs}
+              onOpenWebPhone={() => setIsWebPhoneOpen(true)}
+              onCreateVisitorInvite={handleCreateVisitorInvite}
+              onSelectTab={(tab) => setActiveTab(tab as any)}
+            />
+          )}
+          
+          {activeTab === 'inicio' && session.role !== 'morador' && (
+            <AdminDashboard
+              session={session}
+              units={units}
+              gates={gates}
+              callLogs={callLogs}
+              financialSummary={financialSummary}
+              systemStatus={systemStatus}
+              onSelectTab={(tab) => setActiveTab(tab as any)}
+            />
+          )}
 
-            <button
-              onClick={() => setActiveTab('financeiro')}
-              className={`px-3.5 py-2 rounded-xl text-xs font-bold flex items-center gap-2 transition ${
-                activeTab === 'financeiro'
-                  ? 'bg-cyan-600 text-white shadow-sm'
-                  : 'text-slate-400 hover:text-white hover:bg-slate-800'
-              }`}
-            >
-              <DollarSign className="w-4 h-4" />
-              <span>Boletos & Financeiro</span>
-            </button>
+          {activeTab === 'cameras' && <CamerasGrid cameras={cameras} />}
 
-            <button
-              onClick={() => setActiveTab('engenharia')}
-              className={`px-3.5 py-2 rounded-xl text-xs font-bold flex items-center gap-2 transition ${
-                activeTab === 'engenharia'
-                  ? 'bg-cyan-600 text-white shadow-sm'
-                  : 'text-slate-400 hover:text-white hover:bg-slate-800'
-              }`}
-            >
-              <Server className="w-4 h-4" />
-              <span>Engenharia & Auditoria</span>
-            </button>
+          {activeTab === 'financeiro' && (
+            <FinancialModule
+              bills={bills}
+              summary={financialSummary}
+              agreements={agreements}
+              session={session}
+            />
+          )}
 
-            <div className="ml-auto flex items-center gap-2">
-              <button
-                onClick={() => setIsMaiaOpen(true)}
-                className="px-3 py-1.5 rounded-xl bg-gradient-to-r from-cyan-600 to-blue-600 text-white text-xs font-bold flex items-center gap-1.5 shadow-md shadow-cyan-900/30 hover:opacity-90 transition"
-              >
-                <Sparkles className="w-3.5 h-3.5" />
-                <span className="hidden sm:inline">Assistente</span> MaIA
-              </button>
+          {activeTab === 'engenharia' && (
+            <AdminTopologyView
+              systemStatus={systemStatus}
+              auditLogs={auditLogs}
+              events={events}
+              iotDevices={iotDevices}
+              automations={automations}
+              onToggleIoTDevice={handleToggleIoTDevice}
+            />
+          )}
+        </main>
+
+        {/* RODAPÉ DO SISTEMA */}
+        <footer className="bg-slate-950 border-t border-slate-800 py-4 text-center text-xs text-slate-500 font-mono">
+          <div className="max-w-7xl mx-auto px-4 flex flex-col sm:flex-row items-center justify-between gap-2">
+            <div>
+              Enlace-DoorIA v1.0 • Piloto São Luís - MA • Asterisk 20.8 LTS Pure • XPE-3115-IP • NovaDigital Zigbee 3.0
             </div>
-          </nav>
-        </div>
+            <div className="text-cyan-400">
+              Regra Principal: Operação Local-First Ativa (Sem Nuvem Obrigatória)
+            </div>
+          </div>
+        </footer>
       </div>
-
-      {/* ÁREA DE CONTEÚDO PRINCIPAL */}
-      <main className="flex-1 max-w-7xl w-full mx-auto px-4 sm:px-6 lg:px-8 py-6">
-        {activeTab === 'inicio' && session.role === 'morador' && (
-          <ResidentDashboard
-            session={session}
-            gates={gates}
-            packages={packages}
-            visitorInvites={visitorInvites}
-            vehicles={vehicles}
-            callLogs={callLogs}
-            onOpenWebPhone={() => setIsWebPhoneOpen(true)}
-            onCreateVisitorInvite={handleCreateVisitorInvite}
-            onSelectTab={(tab) => setActiveTab(tab as any)}
-          />
-        )}
-        
-        {activeTab === 'inicio' && session.role !== 'morador' && (
-          <AdminDashboard
-            session={session}
-            units={units}
-            gates={gates}
-            callLogs={callLogs}
-            financialSummary={financialSummary}
-            systemStatus={systemStatus}
-            onSelectTab={(tab) => setActiveTab(tab as any)}
-          />
-        )}
-
-        {activeTab === 'cameras' && <CamerasGrid cameras={cameras} />}
-
-        {activeTab === 'financeiro' && (
-          <FinancialModule
-            bills={bills}
-            summary={financialSummary}
-            agreements={agreements}
-            session={session}
-          />
-        )}
-
-        {activeTab === 'engenharia' && (
-          <AdminTopologyView
-            systemStatus={systemStatus}
-            auditLogs={auditLogs}
-            events={events}
-            iotDevices={iotDevices}
-            automations={automations}
-            onToggleIoTDevice={handleToggleIoTDevice}
-          />
-        )}
-      </main>
-
-      {/* RODAPÉ DO SISTEMA */}
-      <footer className="bg-slate-950 border-t border-slate-800 py-4 text-center text-xs text-slate-500 font-mono">
-        <div className="max-w-7xl mx-auto px-4 flex flex-col sm:flex-row items-center justify-between gap-2">
-          <div>
-            Enlace-DoorIA v1.0 • Piloto São Luís - MA • Asterisk 20.8 LTS Pure • XPE-3115-IP • NovaDigital Zigbee 3.0
-          </div>
-          <div className="text-cyan-400">
-            Regra Principal: Operação Local-First Ativa (Sem Nuvem Obrigatória)
-          </div>
-        </div>
-      </footer>
 
       {/* MODAIS DO SISTEMA */}
       <WebPhoneModal

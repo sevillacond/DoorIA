@@ -185,6 +185,60 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
           </div>
         </div>
       </div>
+
+      {/* Livro Digital de Ocorrências da Portaria (Auditado) */}
+      <div className="p-5 rounded-2xl bg-slate-900 border border-slate-800 shadow-lg space-y-4">
+        <div className="flex items-center justify-between">
+          <div className="flex items-center gap-2">
+            <FileText className="w-4 h-4 text-cyan-400" />
+            <h3 className="text-sm font-bold text-white">Livro Digital de Ocorrências da Portaria</h3>
+            <span className="text-[10px] font-mono px-2 py-0.5 rounded bg-cyan-950 text-cyan-300 border border-cyan-800">
+              Auditado & Imutável
+            </span>
+          </div>
+          <button
+            onClick={() => alert('Ocorrência registrada e vinculada ao log de auditoria SHA-256.')}
+            className="px-3 py-1.5 rounded-lg bg-cyan-600 hover:bg-cyan-500 text-white text-xs font-bold transition flex items-center gap-1.5"
+          >
+            <span>+ Nova Ocorrência</span>
+          </button>
+        </div>
+
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-3 text-xs">
+          <div className="p-3.5 rounded-xl bg-slate-950 border border-slate-800 space-y-1.5">
+            <div className="flex items-center justify-between">
+              <span className="font-bold text-amber-400">Alerta de Tempo Aberto</span>
+              <span className="text-[10px] text-slate-500 font-mono">Hoje, 08:24</span>
+            </div>
+            <p className="text-slate-300 text-[11px]">
+              Portão Social Pedestre permaneceu aberto por mais de 45 segundos durante entrega. Fechamento automático acionado pela MaIA.
+            </p>
+            <div className="text-[10px] text-cyan-400 font-mono">Dispositivo: Sensor Magnético Portão A</div>
+          </div>
+
+          <div className="p-3.5 rounded-xl bg-slate-950 border border-slate-800 space-y-1.5">
+            <div className="flex items-center justify-between">
+              <span className="font-bold text-emerald-400">Acesso por QR Code</span>
+              <span className="text-[10px] text-slate-500 font-mono">Hoje, 07:45</span>
+            </div>
+            <p className="text-slate-300 text-[11px]">
+              Prestador de serviço para Apto 101 validou câmera frontal e microfone. Chamada atendida no WebPhone pelo titular.
+            </p>
+            <div className="text-[10px] text-emerald-400 font-mono">Conformidade: Regra 10.1 Aprovada</div>
+          </div>
+
+          <div className="p-3.5 rounded-xl bg-slate-950 border border-slate-800 space-y-1.5">
+            <div className="flex items-center justify-between">
+              <span className="font-bold text-slate-200">Rotina Noturna Concluída</span>
+              <span className="text-[10px] text-slate-500 font-mono">Ontem, 23:00</span>
+            </div>
+            <p className="text-slate-300 text-[11px]">
+              Iluminação perimetral ativada via gateway Zigbee NovaDigital HNZ-CB3. Nenhuma anomalia de barreira perimetral.
+            </p>
+            <div className="text-[10px] text-slate-400 font-mono">Automação: Regra WHEN 23h IF Escuro</div>
+          </div>
+        </div>
+      </div>
     </div>
   );
 };

@@ -16,6 +16,7 @@ import {
   X,
 } from 'lucide-react';
 import type { ActiveCall, UserSession } from '../types.ts';
+import { audioSystem } from '../utils/audioSystem.ts';
 
 interface WebPhoneModalProps {
   isOpen: boolean;
@@ -45,18 +46,27 @@ export const WebPhoneModal: React.FC<WebPhoneModalProps> = ({
   useEffect(() => {
     let timer: NodeJS.Timeout | null = null;
     if (activeCall && activeCall.state === 'em_atendimento') {
+      audioSystem.stopRingTone();
       timer = setInterval(() => {
         setCallDuration((prev) => prev + 1);
       }, 1000);
+    } else if (activeCall && activeCall.state === 'chamando') {
+      audioSystem.startRingTone();
+      setCallDuration(0);
     } else {
+      audioSystem.stopRingTone();
       setCallDuration(0);
     }
     return () => {
+      audioSystem.stopRingTone();
       if (timer) clearInterval(timer);
     };
   }, [activeCall]);
 
-  if (!isOpen) return null;
+  if (!isOpen) {
+    audioSystem.stopRingTone();
+    return null;
+  }
 
   const formatSeconds = (sec: number) => {
     const mins = Math.floor(sec / 60);
@@ -65,12 +75,40 @@ export const WebPhoneModal: React.FC<WebPhoneModalProps> = ({
   };
 
   const handleDigit = (digit: string) => {
+    audioSystem.playDtmf(digit);
     if (activeCall && activeCall.state === 'em_atendimento') {
-      if (digit === '7') onSendDtmf('*07');
-      if (digit === '8') onSendDtmf('*08');
+      if (digit === '7') {
+        audioSystem.playRelayClick();
+        onSendDtmf('*07');
+      }
+      if (digit === '8') {
+        audioSystem.playRelayClick();
+        onSendDtmf('*08');
+      }
     } else {
       setDialedNumber((prev) => (prev.length < 4 ? prev + digit : prev));
     }
+  };
+
+  const handleAnswerWrapper = () => {
+    audioSystem.stopRingTone();
+    onAnswerCall();
+  };
+
+  const handleHangupWrapper = () => {
+    audioSystem.stopRingTone();
+    audioSystem.playHangupTone();
+    onHangupCall();
+  };
+
+  const handleDtmfWrapper = (dtmf: '*07' | '*08') => {
+    audioSystem.playDtmf('*');
+    setTimeout(() => audioSystem.playDtmf('0'), 60);
+    setTimeout(() => {
+      audioSystem.playDtmf(dtmf === '*07' ? '7' : '8');
+      audioSystem.playRelayClick();
+      onSendDtmf(dtmf);
+    }, 120);
   };
 
   return (
@@ -188,7 +226,7 @@ export const WebPhoneModal: React.FC<WebPhoneModalProps> = ({
                   <div className="grid grid-cols-2 gap-3">
                     <button
                       id="btn-dtmf-pedestre"
-                      onClick={() => onSendDtmf('*07')}
+                      onClick={() => handleDtmfWrapper('*07')}
                       className="flex flex-col items-center justify-center p-3 rounded-xl bg-cyan-600 hover:bg-cyan-500 text-white font-semibold text-xs transition shadow-lg active:scale-95 border border-cyan-400/30"
                     >
                       <Unlock className="w-5 h-5 mb-1 text-cyan-100" />
@@ -198,7 +236,7 @@ export const WebPhoneModal: React.FC<WebPhoneModalProps> = ({
 
                     <button
                       id="btn-dtmf-garagem"
-                      onClick={() => onSendDtmf('*08')}
+                      onClick={() => handleDtmfWrapper('*08')}
                       className="flex flex-col items-center justify-center p-3 rounded-xl bg-blue-600 hover:bg-blue-500 text-white font-semibold text-xs transition shadow-lg active:scale-95 border border-blue-400/30"
                     >
                       <Unlock className="w-5 h-5 mb-1 text-blue-100" />
@@ -222,7 +260,7 @@ export const WebPhoneModal: React.FC<WebPhoneModalProps> = ({
 
                     <button
                       id="btn-hangup-call"
-                      onClick={onHangupCall}
+                      onClick={handleHangupWrapper}
                       className="px-5 py-2.5 rounded-xl bg-red-600 hover:bg-red-500 text-white font-bold text-xs flex items-center gap-2 shadow-lg transition active:scale-95"
                     >
                       <PhoneOff className="w-4 h-4" />
@@ -235,7 +273,7 @@ export const WebPhoneModal: React.FC<WebPhoneModalProps> = ({
                 <div className="flex items-center gap-3 pt-2">
                   <button
                     id="btn-reject-call"
-                    onClick={onHangupCall}
+                    onClick={handleHangupWrapper}
                     className="flex-1 py-3 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-200 font-bold text-xs flex items-center justify-center gap-2 border border-slate-700 transition"
                   >
                     <PhoneOff className="w-4 h-4 text-red-400" />
@@ -244,7 +282,7 @@ export const WebPhoneModal: React.FC<WebPhoneModalProps> = ({
 
                   <button
                     id="btn-answer-call"
-                    onClick={onAnswerCall}
+                    onClick={handleAnswerWrapper}
                     className="flex-2 py-3 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white font-bold text-xs flex items-center justify-center gap-2 shadow-lg shadow-emerald-900/30 transition animate-pulse"
                   >
                     <Phone className="w-4 h-4" />
