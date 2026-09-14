@@ -1,0 +1,105 @@
+rules_version = '2';
+
+service cloud.firestore {
+  match /databases/{database}/documents {
+    // 1. Global Safety Net
+    match /{document=**} {
+      allow read, write: if false;
+    }
+
+    // Primitives
+    function isSignedIn() { return request.auth != null; }
+    function isAdmin() { return isSignedIn() && exists(/databases/$(database)/documents/users/$(request.auth.uid)) && get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == 'admin'; }
+    function isValidId(id) { return id is string && id.size() <= 128 && id.matches('^[a-zA-Z0-9_\\-]+$'); }
+    function incoming() { return request.resource.data; }
+    function existing() { return resource.data; }
+
+    // Validation: User
+    function isValidUser(data) {
+      return data.keys().hasAll(['uid', 'email', 'role'])
+        && data.keys().hasOnly(['uid', 'email', 'name', 'role', 'unitId', 'createdAt'])
+        && data.uid is string && data.uid.size() <= 128
+        && data.email is string && data.email.size() <= 256
+        && (data.get('name', '') is string && data.get('name', '').size() <= 100)
+        && data.role in ['admin', 'resident', 'employee']
+        && (data.get('unitId', '') is string && data.get('unitId', '').size() <= 50)
+        && (data.get('createdAt', request.time) is timestamp)
+        && data.uid == request.auth.uid;
+    }
+
+    match /users/{userId} {
+      allow get: if isSignedIn() && (request.auth.uid == userId || isAdmin());
+      allow list: if isAdmin();
+      
+      allow create: if isSignedIn() 
+        && isValidId(userId)
+        && request.auth.uid == userId
+        && isValidUser(incoming())
+        && incoming().createdAt == request.time
+        && incoming().role == 'resident';
+      
+      allow update: if isSignedIn() 
+        && isValidId(userId)
+        && isValidUser(incoming())
+        && incoming().uid == existing().uid
+        && incoming().createdAt == existing().createdAt
+        && (
+          isAdmin() || 
+          (request.auth.uid == userId && incoming().diff(existing()).affectedKeys().hasOnly(['name', 'unitId']))
+        );
+      
+      allow delete: if isAdmin() && isValidId(userId);
+    }
+
+    // Validation: CondominiumConfig
+    function isValidConfig(data) {
+      return data.keys().hasAll(['name'])
+        && data.keys().hasOnly(['name', 'cnpj', 'updatedAt'])
+        && data.name is string && data.name.size() <= 100
+        && (data.get('cnpj', '') is string && data.get('cnpj', '').size() <= 20)
+        && (data.get('updatedAt', request.time) is timestamp);
+    }
+
+    match /condominium/{configId} {
+      allow read: if isSignedIn();
+      allow create: if isAdmin() && isValidId(configId) && isValidConfig(incoming()) && incoming().updatedAt == request.time;
+      allow update: if isAdmin() && isValidId(configId) && isValidConfig(incoming()) && incoming().updatedAt == request.time;
+      allow delete: if isAdmin() && isValidId(configId);
+    }
+
+    // Validation: CallLog
+    function isValidCallLog(data) {
+      return data.keys().hasAll(['unitNumber', 'startedAt'])
+        && data.keys().hasOnly(['unitNumber', 'purpose', 'durationSeconds', 'startedAt', 'status'])
+        && data.unitNumber is string && data.unitNumber.size() <= 10
+        && (data.get('purpose', '') is string && data.get('purpose', '').size() <= 50)
+        && (data.get('durationSeconds', 0) is number)
+        && data.startedAt is timestamp
+        && (data.get('status', '') is string && data.get('status', '').size() <= 20);
+    }
+
+    match /call_logs/{callId} {
+      allow read: if isAdmin();
+      allow create: if isAdmin() && isValidId(callId) && isValidCallLog(incoming());
+      allow update: if isAdmin() && isValidId(callId) && isValidCallLog(incoming()) && incoming().startedAt == existing().startedAt;
+      allow delete: if isAdmin() && isValidId(callId);
+    }
+
+    // Validation: IoTDevice
+    function isValidIoTDevice(data) {
+      return data.keys().hasAll(['name', 'type'])
+        && data.keys().hasOnly(['name', 'type', 'online', 'state'])
+        && data.name is string && data.name.size() <= 50
+        && data.type is string && data.type.size() <= 50
+        && (data.get('online', false) is bool)
+        && (data.get('state', '') is string && data.get('state', '').size() <= 20);
+    }
+
+    match /iot_devices/{deviceId} {
+      allow read: if isSignedIn();
+      allow create: if isAdmin() && isValidId(deviceId) && isValidIoTDevice(incoming());
+      allow update: if isAdmin() && isValidId(deviceId) && isValidIoTDevice(incoming());
+      allow delete: if isAdmin() && isValidId(deviceId);
+    }
+  }
+}

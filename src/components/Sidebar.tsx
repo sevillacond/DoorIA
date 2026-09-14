@@ -27,14 +27,16 @@ import {
   Moon,
   MapPin,
   Calendar,
+  Sliders,
+  HelpCircle,
 } from 'lucide-react';
 import type { UserSession, SystemStatus } from '../types.ts';
 import { ThemeToggle } from './ThemeToggle.tsx';
 import { useTheme } from '../context/ThemeContext.tsx';
 
 interface SidebarProps {
-  currentTab: 'inicio' | 'portaria' | 'cameras' | 'financeiro' | 'engenharia' | 'dispositivos' | 'moradores' | 'condominio' | 'reservas';
-  onSelectTab: (tab: 'inicio' | 'portaria' | 'cameras' | 'financeiro' | 'engenharia' | 'dispositivos' | 'moradores' | 'condominio' | 'reservas') => void;
+  currentTab: 'inicio' | 'portaria' | 'cameras' | 'financeiro' | 'engenharia' | 'dispositivos' | 'moradores' | 'condominio' | 'reservas' | 'ajuda';
+  onSelectTab: (tab: 'inicio' | 'portaria' | 'cameras' | 'financeiro' | 'engenharia' | 'dispositivos' | 'moradores' | 'condominio' | 'reservas' | 'ajuda') => void;
   session: UserSession;
   systemStatus: SystemStatus | null;
   activeCallCount: number;
@@ -143,6 +145,13 @@ export const Sidebar: React.FC<SidebarProps> = ({
         icon: Building2,
         badge: null,
         section: 'gestao',
+      },
+      {
+        id: 'dispositivos',
+        label: 'Dispositivos & XPE',
+        icon: Radio,
+        badge: 'IoT',
+        section: 'gestao',
       }
     );
   } else if (session.role === 'super_admin' || session.role === 'admin_sistema') {
@@ -205,6 +214,15 @@ export const Sidebar: React.FC<SidebarProps> = ({
       }
     );
   }
+
+  // Seção Global de Ajuda, Manuais & Suporte para Todos os Perfis
+  navItems.push({
+    id: 'ajuda',
+    label: 'Ajuda & Manuais',
+    icon: HelpCircle,
+    badge: 'Guias',
+    section: 'suporte',
+  });
 
   return (
     <>
@@ -468,6 +486,30 @@ export const Sidebar: React.FC<SidebarProps> = ({
               <Radio className="w-4 h-4 text-[#ffb21a] shrink-0" />
               {!isCollapsed && <span className="flex-1 text-left truncate">Totem XPE-3115-IP</span>}
             </button>
+
+            {/* Atalho Assistente XPE 3115-IP para Administradores / Síndico */}
+            {session.role !== 'morador' && (
+              <button
+                onClick={() => {
+                  onSelectTab('dispositivos');
+                  onCloseMobile();
+                }}
+                className={`w-full flex items-center gap-3 px-3 py-2 rounded-xl text-xs font-bold text-blue-300 hover:text-white hover:bg-blue-600/20 border border-blue-500/20 transition ${
+                  isCollapsed ? 'justify-center px-2' : ''
+                }`}
+                title="Assistente Visual Intelbras XPE 3115-IP"
+              >
+                <Sliders className="w-4 h-4 text-[#0a50ff] dark:text-cyan-400 shrink-0" />
+                {!isCollapsed && (
+                  <>
+                    <span className="flex-1 text-left truncate">Assistente XPE 3115</span>
+                    <span className="px-1.5 py-0.2 text-[9px] bg-[#0a50ff]/20 text-[#60a5fa] rounded font-mono">
+                      SETUP
+                    </span>
+                  </>
+                )}
+              </button>
+            )}
 
             {/* Simulador QR Intercom */}
             <button

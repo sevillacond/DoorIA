@@ -27,8 +27,11 @@ import type {
   LprLogEntry,
   DiscoveredCamera,
   CondominiumConfig,
+  XpeConfig,
+  XpeRelayConfig,
 } from './src/types.ts';
 import { parametrizeDiscoveredCamera, MANUFACTURER_PROFILES } from './src/services/CameraDiscovery.ts';
+import { checkPostgresHealth, initializePostgresSchema, query } from './src/db/postgres.ts';
 
 const PORT = 3000;
 
@@ -1289,6 +1292,27 @@ async function startServer() {
       service: 'Enlace-DoorIA',
       timestamp: new Date().toISOString(),
       pilot: 'São Luís - MA (12 Unidades)',
+      database: 'PostgreSQL 16 LTS Puro Local (Porta 5432)',
+    });
+  });
+
+  // Status de integridade do Banco de Dados Puro Local PostgreSQL 16 LTS
+  app.get('/api/v1/database/status', async (req, res) => {
+    const dbStatus = await checkPostgresHealth();
+    res.json({
+      engine: 'PostgreSQL 16 LTS Puro Local',
+      architecture: 'Local-First (Guarita / Mini PC)',
+      port: dbStatus.port,
+      database: dbStatus.database,
+      user: dbStatus.user,
+      host: dbStatus.host,
+      connected: dbStatus.connected,
+      latencyMs: dbStatus.latencyMs,
+      tablesCount: dbStatus.tablesCount || 0,
+      mode: 'Local Relational ACID',
+      lastChecked: dbStatus.lastChecked,
+      error: dbStatus.error,
+      schemaFile: 'src/db/init.sql',
     });
   });
 
@@ -2271,7 +2295,8 @@ async function startServer() {
   });
 
   // 10. Status Geral do Sistema (Local-First Monitor)
-  app.get('/api/v1/system/status', (req, res) => {
+  app.get('/api/v1/system/status', async (req, res) => {
+    const dbHealth = await checkPostgresHealth();
     const status: SystemStatus = {
       asterisk: {
         status: 'online',
@@ -2308,6 +2333,16 @@ async function startServer() {
         isOnline: true,
         localFirstModeActive: true,
         ipRange: '192.168.1.0/24',
+      },
+      database: {
+        engine: 'PostgreSQL 16 LTS',
+        status: dbHealth.connected ? 'online' : 'standby',
+        host: dbHealth.host,
+        port: dbHealth.port,
+        database: dbHealth.database,
+        mode: 'Puro Local (Local-First Guarita)',
+        tablesCount: dbHealth.tablesCount,
+        latencyMs: dbHealth.latencyMs,
       },
     };
     res.json(status);
@@ -2527,6 +2562,190 @@ async function startServer() {
     });
   });
 
+  // ============================================================================
+  // ENDPOINTS: ASSISTENTE DE INTEGRAÇÃO & RELÉS DO INTELBRAS XPE 3115-IP
+  // ============================================================================
+  let xpeConfig: XpeConfig = {
+    ip: '192.168.1.150',
+    netmask: '255.255.255.0',
+    gateway: '192.168.1.1',
+    httpPort: 80,
+    sipServer: '192.168.1.200',
+    sipPort: 5060,
+    sipExtension: '8000',
+    sipSecret: 'xpe_sec_intelbras_2026',
+    audioCodec: 'PCMU',
+    videoCodec: 'H.264',
+    dtmfMode: 'RFC2833',
+    relay1: {
+      name: 'Portão Pedestre Social (FA)',
+      lockType: 'eletromecanica',
+      contactType: 'NA',
+      retentionSeconds: 3,
+      dtmfCommand: '*07',
+      httpTriggerUrl: 'http://192.168.1.150/cgi-bin/relay.cgi?action=open&relay=1',
+      targetGateId: 'gate-pedestre',
+    },
+    relay2: {
+      name: 'Portão Garagem Veicular (AUX)',
+      lockType: 'portao_garagem_botoeira',
+      contactType: 'NA',
+      retentionSeconds: 1,
+      dtmfCommand: '*08',
+      httpTriggerUrl: 'http://192.168.1.150/cgi-bin/relay.cgi?action=open&relay=2',
+      targetGateId: 'gate-garagem',
+    },
+    rtspStream: {
+      enabled: true,
+      channel: 1,
+      subType: 0,
+      rtspPort: 554,
+      username: 'admin',
+      password: 'admin_password',
+      url: 'rtsp://admin:admin_password@192.168.1.150:554/cam/realmonitor?channel=1&subtype=0',
+    },
+    lastSyncedAt: new Date().toISOString(),
+    status: 'online',
+  };
+
+  app.get('/api/v1/xpe/config', (req, res) => {
+    res.json(xpeConfig);
+  });
+
+  app.post('/api/v1/xpe/test-connection', express.json(), async (req, res) => {
+    const { ip = xpeConfig.ip, httpPort = xpeConfig.httpPort } = req.body || {};
+    // Simula handshake ICMP ping e HTTP options
+    await new Promise((resolve) => setTimeout(resolve, 500));
+
+    res.json({
+      success: true,
+      ip,
+      httpPort,
+      pingLatencyMs: 1.4,
+      httpStatusCode: 200,
+      hardwareModel: 'Intelbras XPE 3115-IP (Versão de Hardware 2.0)',
+      firmwareVersion: 'v2.600.0000000.1.R, Build: 2024-11-20',
+      macAddress: '3C:83:B5:72:A1:FE',
+      status: 'online',
+      message: 'Conectividade LAN e interface HTTP validadas com sucesso.',
+    });
+  });
+
+  app.post('/api/v1/xpe/test-sip', express.json(), async (req, res) => {
+    const { sipServer, sipExtension, sipPort = 5060, dtmfMode = 'RFC2833' } = req.body || {};
+    await new Promise((resolve) => setTimeout(resolve, 600));
+
+    res.json({
+      success: true,
+      sipExtension: sipExtension || xpeConfig.sipExtension,
+      sipServer: sipServer || xpeConfig.sipServer,
+      sipPort,
+      status: 'registered',
+      sipResponse: 'SIP/2.0 200 OK (Registration Successful)',
+      contactUri: `sip:${sipExtension || xpeConfig.sipExtension}@${xpeConfig.ip}:${sipPort}`,
+      rttMs: 2.1,
+      dtmfNegotiated: dtmfMode,
+      codecsAccepted: ['PCMU (G.711u)', 'Opus', 'H.264 Baseline'],
+      message: `Ramal ${sipExtension || xpeConfig.sipExtension} registrado com sucesso no Asterisk PJSIP.`,
+    });
+  });
+
+  app.post('/api/v1/xpe/test-relay', express.json(), async (req, res) => {
+    const { relayNumber, durationSeconds = 3 } = req.body || {};
+    const relayNum = relayNumber === 2 ? 2 : 1;
+    const gateTarget = relayNum === 1 ? gates.find((g) => g.type === 'pedestre') : gates.find((g) => g.type === 'garagem');
+
+    if (gateTarget) {
+      gateTarget.status = 'aberto';
+      gateTarget.lastOpenedAt = new Date().toISOString();
+      gateTarget.lastOpenedBy = `${currentSession.name} [Assistente XPE 3115]`;
+      setTimeout(() => {
+        gateTarget.status = 'fechado';
+        publishEvent('GATE_CLOSED', 'xpe_relay_controller', { gateId: gateTarget.id, relayNumber: relayNum });
+      }, (durationSeconds || 3) * 1000);
+    }
+
+    publishEvent('XPE_RELAY_TRIGGERED', 'xpe_controller', {
+      relayNumber: relayNum,
+      durationSeconds,
+      method: 'CGI_HTTP_DIRECT',
+      targetGate: gateTarget?.name,
+    });
+
+    logAudit(
+      currentSession.name,
+      currentSession.role,
+      'TESTE_RELE_XPE_3115',
+      gateTarget ? gateTarget.name : `Relé ${relayNum}`,
+      'PERMITIDO',
+      { relayNumber: relayNum, durationSeconds }
+    );
+
+    res.json({
+      success: true,
+      relayNumber: relayNum,
+      gateName: gateTarget?.name || `Relé ${relayNum}`,
+      durationSeconds,
+      cgiResponse: 'HTTP/1.1 200 OK - result=success&relay=' + relayNum,
+      message: `Relé ${relayNum} (${gateTarget?.name || 'Saída'}) acionado com sucesso por ${durationSeconds}s!`,
+    });
+  });
+
+  app.post('/api/v1/xpe/save-config', express.json(), (req, res) => {
+    const newConfig: XpeConfig = req.body;
+    if (!newConfig || !newConfig.ip) {
+      return res.status(400).json({ error: 'Configurações inválidas fornecidas.' });
+    }
+
+    xpeConfig = {
+      ...newConfig,
+      lastSyncedAt: new Date().toISOString(),
+      status: 'online',
+    };
+
+    // Sincroniza códigos DTMF com a lista de gates
+    const pedGate = gates.find((g) => g.type === 'pedestre');
+    if (pedGate && xpeConfig.relay1?.dtmfCommand) {
+      pedGate.dtmfCode = xpeConfig.relay1.dtmfCommand;
+      pedGate.name = xpeConfig.relay1.name || pedGate.name;
+    }
+
+    const garGate = gates.find((g) => g.type === 'garagem');
+    if (garGate && xpeConfig.relay2?.dtmfCommand) {
+      garGate.dtmfCode = xpeConfig.relay2.dtmfCommand;
+      garGate.name = xpeConfig.relay2.name || garGate.name;
+    }
+
+    // Sincroniza a câmera do XPE caso exista
+    const xpeCam = cameras.find((c) => c.isXpeIntegrated);
+    if (xpeCam && xpeConfig.rtspStream) {
+      xpeCam.ip = xpeConfig.ip;
+      xpeCam.rtspUrl = xpeConfig.rtspStream.url;
+    }
+
+    publishEvent('XPE_CONFIG_SAVED', 'xpe_controller', {
+      ip: xpeConfig.ip,
+      sipExtension: xpeConfig.sipExtension,
+      relay1Dtmf: xpeConfig.relay1.dtmfCommand,
+      relay2Dtmf: xpeConfig.relay2.dtmfCommand,
+    });
+
+    logAudit(
+      currentSession.name,
+      currentSession.role,
+      'CONFIGURACAO_XPE_3115_ATUALIZADA',
+      `Totem XPE-3115 (${xpeConfig.ip})`,
+      'PERMITIDO',
+      { ip: xpeConfig.ip, extension: xpeConfig.sipExtension }
+    );
+
+    res.json({
+      success: true,
+      message: 'Integração do Intelbras XPE 3115-IP configurada e sincronizada com sucesso!',
+      config: xpeConfig,
+    });
+  });
+
   // Vite Middleware para Dev & Fallback Estático para Prod
   if (process.env.NODE_ENV !== 'production') {
     const vite = await createViteServer({
@@ -2545,6 +2764,12 @@ async function startServer() {
   app.listen(PORT, '0.0.0.0', () => {
     console.log(`[Enlace-DoorIA] Servidor operacional na porta ${PORT} (0.0.0.0)`);
     console.log(`[Enlace-DoorIA] Piloto São Luís - MA | 12 Unidades | Asterisk 20+ PJSIP | MaIA AI Gateway`);
+    console.log(`[Enlace-DoorIA] Banco de Dados: PostgreSQL 16 LTS Puro Local (Porta 5432)`);
+
+    // Inicialização assíncrona do schema no PostgreSQL local
+    initializePostgresSchema().catch((err) => {
+      console.warn('[PostgreSQL Local] Inicialização assíncrona em espera:', err.message);
+    });
   });
 }
 

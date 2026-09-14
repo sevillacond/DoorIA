@@ -182,17 +182,17 @@ export const CameraDiscoveryModule: React.FC<CameraDiscoveryModuleProps> = ({ on
   const getBrandBadge = (brand: DiscoveredCamera['manufacturer']) => {
     switch (brand) {
       case 'Intelbras':
-        return 'bg-[#ebfbf8] border-[#18c7a8]/40 text-[#18c7a8]';
+        return 'bg-[#ebfbf8] dark:bg-emerald-950/40 border-[#18c7a8]/40 dark:border-emerald-800 text-[#18c7a8] dark:text-emerald-400';
       case 'Hikvision':
-        return 'bg-[#fef0f0] border-[#fa4b42]/40 text-[#fa4b42]';
+        return 'bg-[#fef0f0] dark:bg-red-950/40 border-[#fa4b42]/40 dark:border-red-800 text-[#fa4b42] dark:text-red-400';
       case 'Dahua':
-        return 'bg-[#ebf2ff] border-[#0a50ff]/40 text-[#0a50ff]';
+        return 'bg-[#ebf2ff] dark:bg-blue-950/40 border-[#0a50ff]/40 dark:border-blue-800 text-[#0a50ff] dark:text-blue-400';
       case 'Axis':
-        return 'bg-[#fff8eb] border-[#ffb21a]/50 text-[#ffb21a]';
+        return 'bg-[#fff8eb] dark:bg-amber-950/40 border-[#ffb21a]/50 dark:border-amber-800 text-[#ffb21a] dark:text-amber-400';
       case 'Uniview':
-        return 'bg-[#f0f9ff] border-[#0284c7]/40 text-[#0284c7]';
+        return 'bg-[#f0f9ff] dark:bg-sky-950/40 border-[#0284c7]/40 dark:border-sky-800 text-[#0284c7] dark:text-sky-400';
       default:
-        return 'bg-slate-100 border-slate-200 text-[#5a6a85]';
+        return 'bg-slate-100 dark:bg-slate-800 border-slate-200 dark:border-slate-700 text-[#5a6a85] dark:text-slate-400';
     }
   };
 
@@ -206,22 +206,22 @@ export const CameraDiscoveryModule: React.FC<CameraDiscoveryModuleProps> = ({ on
   const unconfiguredCount = discoveredCameras.filter((c) => !c.isConfigured).length;
 
   return (
-    <div className="bg-white border border-[#dde5f0] rounded-2xl p-5 shadow-xs space-y-5">
+    <div className="bg-white dark:bg-slate-900 border border-[#dde5f0] dark:border-slate-800 rounded-2xl p-5 shadow-xs space-y-5">
       {/* Header do Módulo de Discovery */}
-      <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-4 pb-4 border-b border-[#dde5f0]">
+      <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-4 pb-4 border-b border-[#dde5f0] dark:border-slate-800">
         <div>
           <div className="flex items-center gap-2.5 mb-1">
-            <div className="w-8 h-8 rounded-xl bg-[#ebf2ff] flex items-center justify-center text-[#0a50ff]">
+            <div className="w-8 h-8 rounded-xl bg-[#ebf2ff] dark:bg-cyan-950/40 flex items-center justify-center text-[#0a50ff] dark:text-cyan-400">
               <Radar className="w-5 h-5 animate-pulse" />
             </div>
             <div>
-              <h3 className="text-base font-extrabold text-[#0d1b35] flex items-center gap-2 font-['Red_Hat_Display']">
+              <h3 className="text-base font-extrabold text-[#0d1b35] dark:text-white flex items-center gap-2 font-['Red_Hat_Display']">
                 Discovery de Câmeras na Rede Local (LAN)
-                <span className="px-2 py-0.5 rounded-full text-[10px] font-mono bg-[#ebf2ff] text-[#0a50ff] border border-[#dde8ff]">
+                <span className="px-2 py-0.5 rounded-full text-[10px] font-mono bg-[#ebf2ff] dark:bg-cyan-950/40 text-[#0a50ff] dark:text-cyan-400 border border-[#dde8ff] dark:border-cyan-800/50">
                   ONVIF WS-Discovery / SSDP / ARP
                 </span>
               </h3>
-              <p className="text-xs text-[#5a6a85]">
+              <p className="text-xs text-[#5a6a85] dark:text-slate-400">
                 Varredura automática e parametrização segundo fabricante (Intelbras, Hikvision, Dahua, Axis)
               </p>
             </div>
@@ -230,14 +230,14 @@ export const CameraDiscoveryModule: React.FC<CameraDiscoveryModuleProps> = ({ on
 
         {/* Controles de Varredura */}
         <div className="flex flex-wrap items-center gap-2.5">
-          <div className="flex items-center bg-[#f8fafc] border border-[#dde5f0] rounded-xl px-3 py-1.5 text-xs text-[#0d1b35]">
-            <Globe className="w-3.5 h-3.5 mr-1.5 text-[#5a6a85]" />
-            <span className="text-[11px] text-[#5a6a85] mr-1.5">Sub-rede:</span>
+          <div className="flex items-center bg-[#f8fafc] dark:bg-slate-950 border border-[#dde5f0] dark:border-slate-800 rounded-xl px-3 py-1.5 text-xs text-[#0d1b35] dark:text-white">
+            <Globe className="w-3.5 h-3.5 mr-1.5 text-[#5a6a85] dark:text-slate-400" />
+            <span className="text-[11px] text-[#5a6a85] dark:text-slate-400 mr-1.5">Sub-rede:</span>
             <input
               type="text"
               value={subnet}
               onChange={(e) => setSubnet(e.target.value)}
-              className="bg-transparent font-mono text-[#0a50ff] font-bold focus:outline-none w-28"
+              className="bg-transparent font-mono text-[#0a50ff] dark:text-cyan-400 font-bold focus:outline-none w-28"
             />
           </div>
 
@@ -245,7 +245,7 @@ export const CameraDiscoveryModule: React.FC<CameraDiscoveryModuleProps> = ({ on
             id="btn-scan-network"
             onClick={handleScan}
             disabled={scanning}
-            className="px-4 py-2 bg-[#0a50ff] hover:bg-[#0842cc] text-white rounded-xl text-xs font-bold flex items-center gap-2 transition shadow-xs shadow-blue-500/20 disabled:opacity-50 cursor-pointer"
+            className="px-4 py-2 bg-[#0a50ff] hover:bg-[#0842cc] dark:bg-cyan-600 dark:hover:bg-cyan-500 text-white rounded-xl text-xs font-bold flex items-center gap-2 transition shadow-xs shadow-blue-500/20 dark:shadow-cyan-500/20 disabled:opacity-50 cursor-pointer"
           >
             <RefreshCw className={`w-3.5 h-3.5 ${scanning ? 'animate-spin' : ''}`} />
             <span>{scanning ? 'Varrendo Rede (UDP 3702)...' : 'Escanear Rede Local'}</span>
@@ -255,10 +255,10 @@ export const CameraDiscoveryModule: React.FC<CameraDiscoveryModuleProps> = ({ on
 
       {/* Estatísticas e Filtros Rápidos */}
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 text-xs">
-        <div className="flex items-center gap-2 text-[#5a6a85]">
-          <span className="font-bold text-[#0d1b35]">{discoveredCameras.length}</span> dispositivos identificados
+        <div className="flex items-center gap-2 text-[#5a6a85] dark:text-slate-400">
+          <span className="font-bold text-[#0d1b35] dark:text-white">{discoveredCameras.length}</span> dispositivos identificados
           na LAN •
-          <span className="text-[#ffb21a] font-bold">{unconfiguredCount}</span> pendentes de ativação
+          <span className="text-[#ffb21a] dark:text-amber-400 font-bold">{unconfiguredCount}</span> pendentes de ativação
         </div>
 
         {/* Filtros de Fabricante */}
@@ -276,8 +276,8 @@ export const CameraDiscoveryModule: React.FC<CameraDiscoveryModuleProps> = ({ on
               onClick={() => setFilterBrand(f.id)}
               className={`px-2.5 py-1 rounded-lg text-[11px] font-bold transition cursor-pointer ${
                 filterBrand === f.id
-                  ? 'bg-[#0a50ff] text-white shadow-xs'
-                  : 'bg-[#f8fafc] text-[#5a6a85] hover:text-[#0d1b35] border border-[#dde5f0]'
+                  ? 'bg-[#0a50ff] dark:bg-cyan-600 text-white shadow-xs'
+                  : 'bg-[#f8fafc] dark:bg-slate-950 text-[#5a6a85] dark:text-slate-400 hover:text-[#0d1b35] dark:hover:text-white border border-[#dde5f0] dark:border-slate-800'
               }`}
             >
               {f.label}
@@ -288,12 +288,12 @@ export const CameraDiscoveryModule: React.FC<CameraDiscoveryModuleProps> = ({ on
 
       {/* Lista de Câmeras Descobertas com Parametrização */}
       {loading ? (
-        <div className="p-8 text-center text-[#5a6a85] text-sm flex items-center justify-center gap-2">
-          <RefreshCw className="w-4 h-4 animate-spin text-[#0a50ff]" />
+        <div className="p-8 text-center text-[#5a6a85] dark:text-slate-400 text-sm flex items-center justify-center gap-2">
+          <RefreshCw className="w-4 h-4 animate-spin text-[#0a50ff] dark:text-cyan-400" />
           <span>Consultando tabela de descoberta na sub-rede {subnet}...</span>
         </div>
       ) : filteredCameras.length === 0 ? (
-        <div className="p-8 text-center bg-[#f8fafc] rounded-xl border border-[#dde5f0] text-[#5a6a85] text-xs">
+        <div className="p-8 text-center bg-[#f8fafc] dark:bg-slate-950 rounded-xl border border-[#dde5f0] dark:border-slate-800 text-[#5a6a85] dark:text-slate-400 text-xs">
           Nenhuma câmera localizada com o filtro selecionado. Clique em "Escanear Rede Local" para buscar novos
           equipamentos via WS-Discovery.
         </div>
@@ -308,8 +308,8 @@ export const CameraDiscoveryModule: React.FC<CameraDiscoveryModuleProps> = ({ on
                 key={cam.id}
                 className={`p-4 rounded-2xl border transition flex flex-col justify-between ${
                   cam.isConfigured
-                    ? 'bg-[#f8fafc] border-[#dde5f0] hover:border-[#0a50ff]/30'
-                    : 'bg-white border-[#0a50ff]/30 hover:border-[#0a50ff] shadow-xs'
+                    ? 'bg-[#f8fafc] dark:bg-slate-950 border-[#dde5f0] dark:border-slate-800 hover:border-[#0a50ff]/30 dark:hover:border-cyan-500/30'
+                    : 'bg-white dark:bg-slate-900 border-[#0a50ff]/30 dark:border-cyan-500/30 hover:border-[#0a50ff] dark:hover:border-cyan-500 shadow-xs'
                 }`}
               >
                 <div>
@@ -323,81 +323,81 @@ export const CameraDiscoveryModule: React.FC<CameraDiscoveryModuleProps> = ({ on
                       >
                         {cam.manufacturer}
                       </span>
-                      <span className="text-[10px] font-mono text-[#5a6a85] bg-[#f0f4f9] px-1.5 py-0.5 rounded border border-[#dde5f0]">
+                      <span className="text-[10px] font-mono text-[#5a6a85] dark:text-slate-400 bg-[#f0f4f9] dark:bg-slate-800 px-1.5 py-0.5 rounded border border-[#dde5f0] dark:border-slate-700">
                         {cam.discoveryMethod}
                       </span>
                     </div>
 
                     {cam.isConfigured ? (
-                      <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-[#ebfbf8] text-[#18c7a8] border border-[#18c7a8]/30 flex items-center gap-1">
-                        <CheckCircle2 className="w-3 h-3 text-[#18c7a8]" />
+                      <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-[#ebfbf8] dark:bg-emerald-950/40 text-[#18c7a8] dark:text-emerald-400 border border-[#18c7a8]/30 dark:border-emerald-800 flex items-center gap-1">
+                        <CheckCircle2 className="w-3 h-3 text-[#18c7a8] dark:text-emerald-400" />
                         No CFTV / go2rtc
                       </span>
                     ) : (
-                      <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-[#fff8eb] text-[#ffb21a] border border-[#ffb21a]/40 flex items-center gap-1">
-                        <AlertCircle className="w-3 h-3 text-[#ffb21a]" />
+                      <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-[#fff8eb] dark:bg-amber-950/40 text-[#ffb21a] dark:text-amber-400 border border-[#ffb21a]/40 dark:border-amber-800 flex items-center gap-1">
+                        <AlertCircle className="w-3 h-3 text-[#ffb21a] dark:text-amber-400" />
                         Não Ativada
                       </span>
                     )}
                   </div>
 
                   {/* Nome do Modelo & Informações Físicas */}
-                  <h4 className="text-sm font-extrabold text-[#0d1b35] mb-1.5 flex items-center gap-1.5 font-['Red_Hat_Display']">
-                    <Camera className="w-4 h-4 text-[#0a50ff] shrink-0" />
+                  <h4 className="text-sm font-extrabold text-[#0d1b35] dark:text-white mb-1.5 flex items-center gap-1.5 font-['Red_Hat_Display']">
+                    <Camera className="w-4 h-4 text-[#0a50ff] dark:text-cyan-400 shrink-0" />
                     <span>{cam.model}</span>
                   </h4>
 
-                  <div className="grid grid-cols-2 gap-2 text-[11px] text-[#5a6a85] mb-3 bg-[#f8fafc] p-2.5 rounded-xl border border-[#dde5f0]">
+                  <div className="grid grid-cols-2 gap-2 text-[11px] text-[#5a6a85] dark:text-slate-400 mb-3 bg-[#f8fafc] dark:bg-slate-950 p-2.5 rounded-xl border border-[#dde5f0] dark:border-slate-800">
                     <div>
-                      <span className="text-[#5a6a85]">IP LAN: </span>
-                      <strong className="text-[#0a50ff] font-mono font-bold">{cam.ip}</strong>
+                      <span className="text-[#5a6a85] dark:text-slate-500">IP LAN: </span>
+                      <strong className="text-[#0a50ff] dark:text-cyan-400 font-mono font-bold">{cam.ip}</strong>
                     </div>
                     <div>
-                      <span className="text-[#5a6a85]">MAC (OUI): </span>
-                      <strong className="text-[#0d1b35] font-mono text-[10px]">{cam.mac}</strong>
+                      <span className="text-[#5a6a85] dark:text-slate-500">MAC (OUI): </span>
+                      <strong className="text-[#0d1b35] dark:text-slate-300 font-mono text-[10px]">{cam.mac}</strong>
                     </div>
                     <div>
-                      <span className="text-[#5a6a85]">Porta ONVIF: </span>
-                      <strong className="text-[#0d1b35] font-mono">{cam.onvifPort}</strong>
+                      <span className="text-[#5a6a85] dark:text-slate-500">Porta ONVIF: </span>
+                      <strong className="text-[#0d1b35] dark:text-slate-300 font-mono">{cam.onvifPort}</strong>
                     </div>
                     <div>
-                      <span className="text-[#5a6a85]">Porta RTSP: </span>
-                      <strong className="text-[#0d1b35] font-mono">{cam.rtspPort}</strong>
+                      <span className="text-[#5a6a85] dark:text-slate-500">Porta RTSP: </span>
+                      <strong className="text-[#0d1b35] dark:text-slate-300 font-mono">{cam.rtspPort}</strong>
                     </div>
                   </div>
 
                   {/* Caixa de Parametrização Automática conforme Fabricante */}
                   <div className="space-y-1.5 mb-3">
                     <div className="flex items-center justify-between text-[11px]">
-                      <span className="text-[#5a6a85] font-medium flex items-center gap-1">
-                        <Settings2 className="w-3.5 h-3.5 text-[#0a50ff]" />
+                      <span className="text-[#5a6a85] dark:text-slate-400 font-medium flex items-center gap-1">
+                        <Settings2 className="w-3.5 h-3.5 text-[#0a50ff] dark:text-cyan-400" />
                         Parametrização do Fabricante ({cam.manufacturer}):
                       </span>
-                      <span className="text-[10px] text-[#0a50ff] font-mono font-bold bg-[#ebf2ff] px-1.5 py-0.5 rounded border border-[#dde8ff]">
+                      <span className="text-[10px] text-[#0a50ff] dark:text-cyan-400 font-mono font-bold bg-[#ebf2ff] dark:bg-cyan-950/40 px-1.5 py-0.5 rounded border border-[#dde8ff] dark:border-cyan-800/50">
                         {cam.supportedProfiles[0]}
                       </span>
                     </div>
 
-                    <div className="bg-[#0d1b35] border border-slate-800 rounded-xl p-2.5 font-mono text-[10px] text-slate-300 space-y-1 shadow-inner">
+                    <div className="bg-[#0d1b35] dark:bg-slate-950 border border-slate-800 dark:border-slate-800 rounded-xl p-2.5 font-mono text-[10px] text-slate-300 dark:text-slate-400 space-y-1 shadow-inner">
                       <div className="truncate">
-                        <span className="text-slate-400 font-sans">Main: </span>
-                        <span className="text-cyan-300 font-bold">{cam.suggestedRtspMain}</span>
+                        <span className="text-slate-400 dark:text-slate-500 font-sans">Main: </span>
+                        <span className="text-cyan-300 dark:text-cyan-400 font-bold">{cam.suggestedRtspMain}</span>
                       </div>
                       <div className="truncate">
-                        <span className="text-slate-400 font-sans">Sub: </span>
+                        <span className="text-slate-400 dark:text-slate-500 font-sans">Sub: </span>
                         <span className="text-slate-400">{cam.suggestedRtspSub}</span>
                       </div>
                     </div>
 
-                    <div className="text-[10px] text-[#5a6a85] italic flex items-center gap-1 px-1">
-                      <Lock className="w-3 h-3 text-slate-400" />
+                    <div className="text-[10px] text-[#5a6a85] dark:text-slate-500 italic flex items-center gap-1 px-1">
+                      <Lock className="w-3 h-3 text-slate-400 dark:text-slate-600" />
                       <span>{cam.defaultCredentialsHint}</span>
                     </div>
                   </div>
 
                   {/* Resultado do Teste de Conexão se houver */}
                   {testResult && (
-                    <div className="mb-3 px-2.5 py-1.5 rounded-xl bg-[#ebfbf8] border border-[#18c7a8]/30 text-[#18c7a8] text-[11px] flex items-center justify-between font-mono animate-fadeIn">
+                    <div className="mb-3 px-2.5 py-1.5 rounded-xl bg-[#ebfbf8] dark:bg-emerald-950/40 border border-[#18c7a8]/30 dark:border-emerald-800 text-[#18c7a8] dark:text-emerald-400 text-[11px] flex items-center justify-between font-mono animate-fadeIn">
                       <span>{testResult.status} ({testResult.codec})</span>
                       <span className="font-bold">{testResult.latency}ms latência</span>
                     </div>
@@ -405,24 +405,24 @@ export const CameraDiscoveryModule: React.FC<CameraDiscoveryModuleProps> = ({ on
                 </div>
 
                 {/* Ações: Testar Conexão, Ver YAML go2rtc e Importar */}
-                <div className="pt-3 border-t border-[#dde5f0] flex items-center justify-between gap-2">
+                <div className="pt-3 border-t border-[#dde5f0] dark:border-slate-800 flex items-center justify-between gap-2">
                   <div className="flex items-center gap-1.5">
                     <button
                       onClick={() => handleTestStream(cam)}
                       disabled={isTesting}
-                      className="px-2.5 py-1.5 bg-white hover:bg-slate-50 text-[#5a6a85] hover:text-[#0d1b35] border border-[#dde5f0] rounded-xl text-xs font-semibold flex items-center gap-1 transition cursor-pointer"
+                      className="px-2.5 py-1.5 bg-white dark:bg-slate-900 hover:bg-slate-50 dark:hover:bg-slate-800 text-[#5a6a85] dark:text-slate-400 hover:text-[#0d1b35] dark:hover:text-white border border-[#dde5f0] dark:border-slate-700 rounded-xl text-xs font-semibold flex items-center gap-1 transition cursor-pointer"
                       title="Efetua handshake RTSP na porta 554 para verificar disponibilidade"
                     >
-                      <Activity className={`w-3 h-3 ${isTesting ? 'animate-spin text-[#0a50ff]' : 'text-[#5a6a85]'}`} />
+                      <Activity className={`w-3 h-3 ${isTesting ? 'animate-spin text-[#0a50ff] dark:text-cyan-400' : 'text-[#5a6a85] dark:text-slate-400'}`} />
                       <span>{isTesting ? 'Testando...' : 'Testar RTSP'}</span>
                     </button>
 
                     <button
                       onClick={() => setActiveTabSnippet(activeTabSnippet === cam.id ? null : cam.id)}
-                      className="px-2.5 py-1.5 bg-white hover:bg-slate-50 text-[#5a6a85] hover:text-[#0d1b35] border border-[#dde5f0] rounded-xl text-xs font-mono flex items-center gap-1 transition cursor-pointer"
+                      className="px-2.5 py-1.5 bg-white dark:bg-slate-900 hover:bg-slate-50 dark:hover:bg-slate-800 text-[#5a6a85] dark:text-slate-400 hover:text-[#0d1b35] dark:hover:text-white border border-[#dde5f0] dark:border-slate-700 rounded-xl text-xs font-mono flex items-center gap-1 transition cursor-pointer"
                       title="Ver configuração para o go2rtc.yaml"
                     >
-                      <Terminal className="w-3 h-3 text-[#ffb21a]" />
+                      <Terminal className="w-3 h-3 text-[#ffb21a] dark:text-amber-400" />
                       <span>go2rtc.yaml</span>
                     </button>
                   </div>
@@ -430,7 +430,7 @@ export const CameraDiscoveryModule: React.FC<CameraDiscoveryModuleProps> = ({ on
                   {!cam.isConfigured ? (
                     <button
                       onClick={() => openImportModal(cam)}
-                      className="px-3.5 py-1.5 bg-[#0a50ff] hover:bg-[#0842cc] text-white rounded-xl text-xs font-bold flex items-center gap-1.5 transition shadow-xs shadow-blue-500/20 cursor-pointer"
+                      className="px-3.5 py-1.5 bg-[#0a50ff] hover:bg-[#0842cc] dark:bg-cyan-600 dark:hover:bg-cyan-500 text-white rounded-xl text-xs font-bold flex items-center gap-1.5 transition shadow-xs shadow-blue-500/20 dark:shadow-cyan-500/20 cursor-pointer"
                     >
                       <Plus className="w-3.5 h-3.5" />
                       <span>Ativar no CFTV</span>
@@ -438,7 +438,7 @@ export const CameraDiscoveryModule: React.FC<CameraDiscoveryModuleProps> = ({ on
                   ) : (
                     <button
                       onClick={() => openImportModal(cam)}
-                      className="px-2.5 py-1.5 bg-white hover:bg-slate-50 text-[#5a6a85] border border-[#dde5f0] rounded-xl text-xs font-medium flex items-center gap-1 transition cursor-pointer"
+                      className="px-2.5 py-1.5 bg-white dark:bg-slate-900 hover:bg-slate-50 dark:hover:bg-slate-800 text-[#5a6a85] dark:text-slate-400 border border-[#dde5f0] dark:border-slate-700 rounded-xl text-xs font-medium flex items-center gap-1 transition cursor-pointer"
                     >
                       <Settings2 className="w-3.5 h-3.5" />
                       <span>Reparametrizar</span>
@@ -448,9 +448,9 @@ export const CameraDiscoveryModule: React.FC<CameraDiscoveryModuleProps> = ({ on
 
                 {/* Snippet expandido de go2rtc */}
                 {activeTabSnippet === cam.id && (
-                  <div className="mt-3 p-3 bg-[#0d1b35] rounded-xl border border-slate-800 font-mono text-[10px] relative animate-fadeIn">
+                  <div className="mt-3 p-3 bg-[#0d1b35] dark:bg-slate-950 rounded-xl border border-slate-800 font-mono text-[10px] relative animate-fadeIn">
                     <div className="flex justify-between items-center text-slate-400 pb-1.5 mb-1.5 border-b border-slate-800">
-                      <span className="font-sans font-bold text-slate-300">Snippet go2rtc.yaml ({cam.manufacturer})</span>
+                      <span className="font-sans font-bold text-slate-300 dark:text-slate-400">Snippet go2rtc.yaml ({cam.manufacturer})</span>
                       <button
                         onClick={() => copyToClipboard(cam.suggestedGo2rtcConfig, cam.id)}
                         className="text-cyan-400 hover:text-cyan-300 flex items-center gap-1 cursor-pointer"
@@ -468,7 +468,7 @@ export const CameraDiscoveryModule: React.FC<CameraDiscoveryModuleProps> = ({ on
                         )}
                       </button>
                     </div>
-                    <pre className="text-cyan-300 whitespace-pre overflow-x-auto">
+                    <pre className="text-cyan-300 dark:text-cyan-400 whitespace-pre overflow-x-auto">
                       {cam.suggestedGo2rtcConfig}
                     </pre>
                   </div>
@@ -481,9 +481,9 @@ export const CameraDiscoveryModule: React.FC<CameraDiscoveryModuleProps> = ({ on
 
       {/* Modal de Importação e Parametrização Personalizada */}
       {selectedCameraForImport && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-[#0d1b35]/70 backdrop-blur-xs animate-fadeIn">
-          <div className="bg-white border border-[#dde5f0] rounded-2xl w-full max-w-lg overflow-hidden shadow-2xl">
-            <div className="p-4 border-b border-[#dde5f0] flex items-center justify-between bg-[#f8fafc]">
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-[#0d1b35]/70 dark:bg-black/70 backdrop-blur-xs animate-fadeIn">
+          <div className="bg-white dark:bg-slate-900 border border-[#dde5f0] dark:border-slate-800 rounded-2xl w-full max-w-lg overflow-hidden shadow-2xl">
+            <div className="p-4 border-b border-[#dde5f0] dark:border-slate-800 flex items-center justify-between bg-[#f8fafc] dark:bg-slate-950">
               <div className="flex items-center gap-2">
                 <span
                   className={`px-2 py-0.5 rounded text-xs font-bold border ${getBrandBadge(
@@ -492,13 +492,13 @@ export const CameraDiscoveryModule: React.FC<CameraDiscoveryModuleProps> = ({ on
                 >
                   {selectedCameraForImport.manufacturer}
                 </span>
-                <h3 className="font-extrabold text-[#0d1b35] text-sm font-['Red_Hat_Display']">
+                <h3 className="font-extrabold text-[#0d1b35] dark:text-white text-sm font-['Red_Hat_Display']">
                   Ativar & Parametrizar Câmera no CFTV
                 </h3>
               </div>
               <button
                 onClick={() => setSelectedCameraForImport(null)}
-                className="text-slate-400 hover:text-[#0d1b35] p-1 rounded-lg hover:bg-slate-100 transition cursor-pointer"
+                className="text-slate-400 hover:text-[#0d1b35] dark:hover:text-white p-1 rounded-lg hover:bg-slate-100 dark:hover:bg-slate-800 transition cursor-pointer"
               >
                 <X className="w-5 h-5" />
               </button>
@@ -506,27 +506,27 @@ export const CameraDiscoveryModule: React.FC<CameraDiscoveryModuleProps> = ({ on
 
             {importSuccessMsg ? (
               <div className="p-8 text-center space-y-3">
-                <CheckCircle2 className="w-12 h-12 text-[#18c7a8] mx-auto animate-bounce" />
-                <h4 className="text-base font-extrabold text-[#0d1b35] font-['Red_Hat_Display']">{importSuccessMsg}</h4>
-                <p className="text-xs text-[#5a6a85]">
+                <CheckCircle2 className="w-12 h-12 text-[#18c7a8] dark:text-emerald-400 mx-auto animate-bounce" />
+                <h4 className="text-base font-extrabold text-[#0d1b35] dark:text-white font-['Red_Hat_Display']">{importSuccessMsg}</h4>
+                <p className="text-xs text-[#5a6a85] dark:text-slate-400">
                   O stream foi inserido no pipeline do go2rtc e já está disponível no painel de câmeras em tempo real.
                 </p>
               </div>
             ) : (
               <form onSubmit={handleConfirmImport} className="p-5 space-y-4">
-                <div className="bg-[#f8fafc] p-3 rounded-xl border border-[#dde5f0] text-xs space-y-1">
-                  <div className="text-[#5a6a85]">
+                <div className="bg-[#f8fafc] dark:bg-slate-950 p-3 rounded-xl border border-[#dde5f0] dark:border-slate-800 text-xs space-y-1">
+                  <div className="text-[#5a6a85] dark:text-slate-400">
                     Dispositivo:{' '}
-                    <strong className="text-[#0d1b35]">{selectedCameraForImport.model}</strong>
+                    <strong className="text-[#0d1b35] dark:text-white">{selectedCameraForImport.model}</strong>
                   </div>
-                  <div className="text-[#5a6a85] font-mono text-[11px]">
-                    IP: <span className="text-[#0a50ff] font-bold">{selectedCameraForImport.ip}</span> | MAC:{' '}
-                    <span className="text-[#0d1b35]">{selectedCameraForImport.mac}</span>
+                  <div className="text-[#5a6a85] dark:text-slate-400 font-mono text-[11px]">
+                    IP: <span className="text-[#0a50ff] dark:text-cyan-400 font-bold">{selectedCameraForImport.ip}</span> | MAC:{' '}
+                    <span className="text-[#0d1b35] dark:text-white">{selectedCameraForImport.mac}</span>
                   </div>
                 </div>
 
                 <div>
-                  <label className="block text-xs font-bold text-[#5a6a85] mb-1">
+                  <label className="block text-xs font-bold text-[#5a6a85] dark:text-slate-400 mb-1">
                     Nome de Exibição no Condomínio
                   </label>
                   <input
@@ -535,12 +535,12 @@ export const CameraDiscoveryModule: React.FC<CameraDiscoveryModuleProps> = ({ on
                     value={customName}
                     onChange={(e) => setCustomName(e.target.value)}
                     placeholder="Ex: Câmera Portaria Social"
-                    className="w-full px-3.5 py-2.5 bg-white border border-[#dde5f0] rounded-xl text-xs text-[#0d1b35] focus:outline-none focus:border-[#0a50ff] focus:ring-1 focus:ring-[#0a50ff]"
+                    className="w-full px-3.5 py-2.5 bg-white dark:bg-slate-900 border border-[#dde5f0] dark:border-slate-700 rounded-xl text-xs text-[#0d1b35] dark:text-white focus:outline-none focus:border-[#0a50ff] dark:focus:border-cyan-500 focus:ring-1 focus:ring-[#0a50ff] dark:focus:ring-cyan-500"
                   />
                 </div>
 
                 <div>
-                  <label className="block text-xs font-bold text-[#5a6a85] mb-1">
+                  <label className="block text-xs font-bold text-[#5a6a85] dark:text-slate-400 mb-1">
                     Setor / Localização Físico
                   </label>
                   <input
@@ -549,13 +549,13 @@ export const CameraDiscoveryModule: React.FC<CameraDiscoveryModuleProps> = ({ on
                     value={customLocation}
                     onChange={(e) => setCustomLocation(e.target.value)}
                     placeholder="Ex: Portão Social / Acesso Pedestre"
-                    className="w-full px-3.5 py-2.5 bg-white border border-[#dde5f0] rounded-xl text-xs text-[#0d1b35] focus:outline-none focus:border-[#0a50ff] focus:ring-1 focus:ring-[#0a50ff]"
+                    className="w-full px-3.5 py-2.5 bg-white dark:bg-slate-900 border border-[#dde5f0] dark:border-slate-700 rounded-xl text-xs text-[#0d1b35] dark:text-white focus:outline-none focus:border-[#0a50ff] dark:focus:border-cyan-500 focus:ring-1 focus:ring-[#0a50ff] dark:focus:ring-cyan-500"
                   />
                 </div>
 
                 <div className="grid grid-cols-2 gap-3">
                   <div>
-                    <label className="block text-xs font-bold text-[#5a6a85] mb-1">
+                    <label className="block text-xs font-bold text-[#5a6a85] dark:text-slate-400 mb-1">
                       Usuário RTSP ({selectedCameraForImport.manufacturer})
                     </label>
                     <input
@@ -563,11 +563,11 @@ export const CameraDiscoveryModule: React.FC<CameraDiscoveryModuleProps> = ({ on
                       required
                       value={username}
                       onChange={(e) => setUsername(e.target.value)}
-                      className="w-full px-3.5 py-2.5 bg-white border border-[#dde5f0] rounded-xl text-xs text-[#0d1b35] focus:outline-none focus:border-[#0a50ff] focus:ring-1 focus:ring-[#0a50ff]"
+                      className="w-full px-3.5 py-2.5 bg-white dark:bg-slate-900 border border-[#dde5f0] dark:border-slate-700 rounded-xl text-xs text-[#0d1b35] dark:text-white focus:outline-none focus:border-[#0a50ff] dark:focus:border-cyan-500 focus:ring-1 focus:ring-[#0a50ff] dark:focus:ring-cyan-500"
                     />
                   </div>
                   <div>
-                    <label className="block text-xs font-bold text-[#5a6a85] mb-1">
+                    <label className="block text-xs font-bold text-[#5a6a85] dark:text-slate-400 mb-1">
                       Senha da Câmera
                     </label>
                     <input
@@ -575,32 +575,32 @@ export const CameraDiscoveryModule: React.FC<CameraDiscoveryModuleProps> = ({ on
                       value={password}
                       onChange={(e) => setPassword(e.target.value)}
                       placeholder="Senha definida no equipamento"
-                      className="w-full px-3.5 py-2.5 bg-white border border-[#dde5f0] rounded-xl text-xs text-[#0d1b35] focus:outline-none focus:border-[#0a50ff] focus:ring-1 focus:ring-[#0a50ff]"
+                      className="w-full px-3.5 py-2.5 bg-white dark:bg-slate-900 border border-[#dde5f0] dark:border-slate-700 rounded-xl text-xs text-[#0d1b35] dark:text-white focus:outline-none focus:border-[#0a50ff] dark:focus:border-cyan-500 focus:ring-1 focus:ring-[#0a50ff] dark:focus:ring-cyan-500"
                     />
                   </div>
                 </div>
 
                 <div className="grid grid-cols-2 gap-3">
                   <div>
-                    <label className="block text-xs font-bold text-[#5a6a85] mb-1">
+                    <label className="block text-xs font-bold text-[#5a6a85] dark:text-slate-400 mb-1">
                       Perfil ONVIF
                     </label>
                     <select
                       value={selectedProfile}
                       onChange={(e) => setSelectedProfile(e.target.value as any)}
-                      className="w-full px-3.5 py-2.5 bg-white border border-[#dde5f0] rounded-xl text-xs text-[#0d1b35] focus:outline-none focus:border-[#0a50ff] focus:ring-1 focus:ring-[#0a50ff]"
+                      className="w-full px-3.5 py-2.5 bg-white dark:bg-slate-900 border border-[#dde5f0] dark:border-slate-700 rounded-xl text-xs text-[#0d1b35] dark:text-white focus:outline-none focus:border-[#0a50ff] dark:focus:border-cyan-500 focus:ring-1 focus:ring-[#0a50ff] dark:focus:ring-cyan-500"
                     >
                       <option value="ONVIF_Profile_T">ONVIF Profile T (H.264/H.265 Smart)</option>
                       <option value="ONVIF_Profile_S">ONVIF Profile S (Baseline)</option>
                     </select>
                   </div>
                   <div className="flex flex-col justify-end">
-                    <label className="flex items-center gap-2 p-2.5 bg-[#f8fafc] border border-[#dde5f0] rounded-xl text-xs text-[#0d1b35] cursor-pointer">
+                    <label className="flex items-center gap-2 p-2.5 bg-[#f8fafc] dark:bg-slate-950 border border-[#dde5f0] dark:border-slate-800 rounded-xl text-xs text-[#0d1b35] dark:text-white cursor-pointer">
                       <input
                         type="checkbox"
                         checked={useSubStream}
                         onChange={(e) => setUseSubStream(e.target.checked)}
-                        className="rounded border-[#dde5f0] text-[#0a50ff] focus:ring-0 cursor-pointer"
+                        className="rounded border-[#dde5f0] dark:border-slate-700 text-[#0a50ff] dark:text-cyan-500 focus:ring-0 cursor-pointer"
                       />
                       <span>Usar Sub-Stream (Leve)</span>
                     </label>
@@ -608,11 +608,11 @@ export const CameraDiscoveryModule: React.FC<CameraDiscoveryModuleProps> = ({ on
                 </div>
 
                 {/* Pré-visualização da URL RTSP gerada para o fabricante */}
-                <div className="p-3 bg-[#0d1b35] rounded-xl border border-slate-800 space-y-1">
+                <div className="p-3 bg-[#0d1b35] dark:bg-slate-950 rounded-xl border border-slate-800 dark:border-slate-800 space-y-1">
                   <div className="text-[10px] font-bold text-slate-400 uppercase">
                     String RTSP Gerada ({selectedCameraForImport.manufacturer}):
                   </div>
-                  <div className="font-mono text-[11px] text-cyan-300 break-all font-bold">
+                  <div className="font-mono text-[11px] text-cyan-300 dark:text-cyan-400 break-all font-bold">
                     {useSubStream
                       ? selectedCameraForImport.suggestedRtspSub.replace(
                           'admin:*****',
@@ -625,18 +625,18 @@ export const CameraDiscoveryModule: React.FC<CameraDiscoveryModuleProps> = ({ on
                   </div>
                 </div>
 
-                <div className="pt-3 border-t border-[#dde5f0] flex justify-end gap-2.5">
+                <div className="pt-3 border-t border-[#dde5f0] dark:border-slate-800 flex justify-end gap-2.5">
                   <button
                     type="button"
                     onClick={() => setSelectedCameraForImport(null)}
-                    className="px-4 py-2 text-xs font-bold text-[#5a6a85] hover:bg-slate-100 rounded-xl transition cursor-pointer"
+                    className="px-4 py-2 text-xs font-bold text-[#5a6a85] dark:text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-800 rounded-xl transition cursor-pointer"
                   >
                     Cancelar
                   </button>
                   <button
                     type="submit"
                     disabled={importing}
-                    className="px-4 py-2 text-xs font-bold bg-[#0a50ff] hover:bg-[#0842cc] text-white rounded-xl transition shadow-xs shadow-blue-500/20 flex items-center gap-1.5 disabled:opacity-50 cursor-pointer"
+                    className="px-4 py-2 text-xs font-bold bg-[#0a50ff] hover:bg-[#0842cc] dark:bg-cyan-600 dark:hover:bg-cyan-500 text-white rounded-xl transition shadow-xs shadow-blue-500/20 dark:shadow-cyan-500/20 flex items-center gap-1.5 disabled:opacity-50 cursor-pointer"
                   >
                     {importing ? (
                       <RefreshCw className="w-3.5 h-3.5 animate-spin" />

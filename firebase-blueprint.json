@@ -1,0 +1,72 @@
+{
+  "entities": {
+    "User": {
+      "title": "User",
+      "description": "Resident or Admin user profile",
+      "type": "object",
+      "properties": {
+        "uid": { "type": "string", "maxLength": 128 },
+        "email": { "type": "string", "maxLength": 256 },
+        "name": { "type": "string", "maxLength": 100 },
+        "role": { "type": "string", "enum": ["admin", "resident", "employee"] },
+        "unitId": { "type": "string", "maxLength": 50 },
+        "createdAt": { "type": "number" }
+      },
+      "required": ["uid", "email", "role"]
+    },
+    "CondominiumConfig": {
+      "title": "CondominiumConfig",
+      "description": "Global settings for the condo",
+      "type": "object",
+      "properties": {
+        "name": { "type": "string", "maxLength": 100 },
+        "cnpj": { "type": "string", "maxLength": 20 },
+        "updatedAt": { "type": "number" }
+      },
+      "required": ["name"]
+    },
+    "CallLog": {
+      "title": "CallLog",
+      "description": "Audit log for PBX calls",
+      "type": "object",
+      "properties": {
+        "unitNumber": { "type": "string", "maxLength": 10 },
+        "purpose": { "type": "string", "maxLength": 50 },
+        "durationSeconds": { "type": "number" },
+        "startedAt": { "type": "number" },
+        "status": { "type": "string", "maxLength": 20 }
+      },
+      "required": ["unitNumber", "startedAt"]
+    },
+    "IoTDevice": {
+      "title": "IoTDevice",
+      "description": "IoT edge device record",
+      "type": "object",
+      "properties": {
+        "name": { "type": "string", "maxLength": 50 },
+        "type": { "type": "string", "maxLength": 50 },
+        "online": { "type": "boolean" },
+        "state": { "type": "string", "maxLength": 20 }
+      },
+      "required": ["name", "type"]
+    }
+  },
+  "firestore": {
+    "/users/{userId}": {
+      "schema": { "$ref": "#/entities/User" },
+      "description": "User profiles"
+    },
+    "/condominium/{configId}": {
+      "schema": { "$ref": "#/entities/CondominiumConfig" },
+      "description": "Condo settings"
+    },
+    "/call_logs/{callId}": {
+      "schema": { "$ref": "#/entities/CallLog" },
+      "description": "PBX Logs"
+    },
+    "/iot_devices/{deviceId}": {
+      "schema": { "$ref": "#/entities/IoTDevice" },
+      "description": "IoT devices status"
+    }
+  }
+}

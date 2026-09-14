@@ -1,0 +1,76 @@
+version: '3.8'
+
+services:
+  # 1. BANCO DE DADOS PURO LOCAL POSTGRESQL 16 LTS
+  postgres:
+    image: postgres:16-alpine
+    container_name: dooria-postgres
+    restart: always
+    environment:
+      POSTGRES_DB: dooria_db
+      POSTGRES_USER: dooria
+      POSTGRES_PASSWORD: dooria_secret
+      PGDATA: /var/lib/postgresql/data/pgdata
+    ports:
+      - "5432:5432"
+    volumes:
+      - dooria_pg_data:/var/lib/postgresql/data
+      - ./src/db/init.sql:/docker-entrypoint-initdb.d/init.sql:ro
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U dooria -d dooria_db"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+    networks:
+      - dooria-network
+
+  # 2. SISTEMA ENLACE-DOORIA (CORE / API / WEB FRONTEND)
+  dooria-app:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: dooria-core
+    restart: always
+    depends_on:
+      postgres:
+        condition: service_healthy
+    environment:
+      NODE_ENV: production
+      DATABASE_URL: postgresql://dooria:dooria_secret@postgres:5432/dooria_db
+      PGHOST: postgres
+      PGPORT: 5432
+      PGUSER: dooria
+      PGPASSWORD: dooria_secret
+      PGDATABASE: dooria_db
+      GEMINI_API_KEY: ${GEMINI_API_KEY:-}
+    ports:
+      - "3000:3000"
+    networks:
+      - dooria-network
+
+  # 3. ASTERISK 20 LTS (TELEFONIA E INTERFONIA PURA SIP / WEBRTC)
+  asterisk:
+    image: andrius/asterisk:20-alpine
+    container_name: dooria-asterisk
+    restart: always
+    network_mode: host
+    volumes:
+      - ./config/asterisk:/etc/asterisk
+
+  # 4. GO2RTC (STREAMING WEBRTC RTSP SUB-50MS)
+  go2rtc:
+    image: alexxit/go2rtc:latest
+    container_name: dooria-go2rtc
+    restart: always
+    network_mode: host
+    volumes:
+      - ./config/go2rtc.yaml:/config/go2rtc.yaml
+
+volumes:
+  dooria_pg_data:
+    name: dooria_pg_data
+
+networks:
+  dooria-network:
+    name: dooria-network
+    driver: bridge

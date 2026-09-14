@@ -12,9 +12,11 @@ import {
   UserCheck,
   Wrench,
   HelpCircle,
+  Sliders,
 } from 'lucide-react';
 import type { CallPurpose, Unit } from '../types.ts';
 import { audioSystem } from '../utils/audioSystem.ts';
+import { XpeIntegrationWizardModal } from './XpeIntegrationWizardModal.tsx';
 
 interface XpeIntercomSimulatorProps {
   isOpen: boolean;
@@ -36,6 +38,7 @@ export const XpeIntercomSimulator: React.FC<XpeIntercomSimulatorProps> = ({
   const [selectedPurpose, setSelectedPurpose] = useState<CallPurpose>('visitante');
   const [keypadInput, setKeypadInput] = useState<string>('');
   const [voiceMuted, setVoiceMuted] = useState<boolean>(false);
+  const [isWizardOpen, setIsWizardOpen] = useState<boolean>(false);
 
   if (!isOpen) return null;
 
@@ -107,12 +110,22 @@ export const XpeIntercomSimulator: React.FC<XpeIntercomSimulatorProps> = ({
               <p className="text-xs text-slate-400">Calçada / Acesso Social Externo</p>
             </div>
           </div>
-          <button
-            onClick={onClose}
-            className="text-slate-400 hover:text-white p-1.5 rounded-lg hover:bg-slate-800 transition"
-          >
-            <X className="w-5 h-5" />
-          </button>
+          <div className="flex items-center gap-2">
+            <button
+              onClick={() => setIsWizardOpen(true)}
+              className="px-2.5 py-1 rounded-lg bg-blue-500/10 hover:bg-blue-500/20 text-blue-400 text-xs font-bold flex items-center gap-1.5 transition border border-blue-500/20 cursor-pointer"
+              title="Abrir Assistente de Integração do XPE 3115-IP"
+            >
+              <Sliders className="w-3.5 h-3.5" />
+              <span>Configurar</span>
+            </button>
+            <button
+              onClick={onClose}
+              className="text-slate-400 hover:text-white p-1.5 rounded-lg hover:bg-slate-800 transition cursor-pointer"
+            >
+              <X className="w-5 h-5" />
+            </button>
+          </div>
         </div>
 
         {/* Chassi do Interfone XPE */}
@@ -312,6 +325,12 @@ export const XpeIntercomSimulator: React.FC<XpeIntercomSimulatorProps> = ({
           <span className="text-cyan-400 font-mono">Asterisk 20 LTS Pure</span>
         </div>
       </div>
+
+      {/* Assistente Visual de Integração */}
+      <XpeIntegrationWizardModal
+        isOpen={isWizardOpen}
+        onClose={() => setIsWizardOpen(false)}
+      />
     </div>
   );
 };

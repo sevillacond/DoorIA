@@ -102,7 +102,7 @@ export interface Gate {
   id: string;
   name: string;
   type: 'pedestre' | 'garagem';
-  dtmfCode: '*07' | '*08';
+  dtmfCode: string;
   status: 'fechado' | 'abrindo' | 'aberto' | 'fechando';
   sensorState: 'ok' | 'alerta_aberto_tempo_excessivo' | 'sensor_obstruido';
   lastOpenedAt?: string;
@@ -287,7 +287,10 @@ export type EventBusEventType =
   | 'MAIA_ACTION_EXECUTED'
   | 'PUSH_SUBSCRIPTION_REGISTERED'
   | 'PUSH_NOTIFICATION_DISPATCHED'
-  | 'CONDOMINIUM_CONFIG_UPDATED';
+  | 'CONDOMINIUM_CONFIG_UPDATED'
+  | 'GATE_CLOSED'
+  | 'XPE_RELAY_TRIGGERED'
+  | 'XPE_CONFIG_SAVED';
 
 export interface CondominiumConfig {
   id: string;
@@ -444,6 +447,16 @@ export interface SystemStatus {
     localFirstModeActive: boolean;
     ipRange: '192.168.1.0/24';
   };
+  database?: {
+    engine: string;
+    status: 'online' | 'standby';
+    host: string;
+    port: number;
+    database: string;
+    mode: string;
+    tablesCount?: number;
+    latencyMs?: number;
+  };
 }
 
 export interface CallRecordingAuditData {
@@ -499,4 +512,42 @@ export interface Reservation {
   guestCount: number;
   notes?: string;
   feeAddedToBill?: boolean;
+}
+
+// INTEGRAÇÃO VISUAL INTELBRAS XPE 3115-IP
+export interface XpeRelayConfig {
+  name: string;
+  lockType: 'eletroima' | 'eletromecanica' | 'solenoide' | 'portao_garagem_botoeira';
+  contactType: 'NA' | 'NF';
+  retentionSeconds: number;
+  dtmfCommand: string;
+  httpTriggerUrl: string;
+  targetGateId: string;
+}
+
+export interface XpeConfig {
+  ip: string;
+  netmask: string;
+  gateway: string;
+  httpPort: number;
+  sipServer: string;
+  sipPort: number;
+  sipExtension: string;
+  sipSecret: string;
+  audioCodec: 'PCMU' | 'PCMA' | 'Opus';
+  videoCodec: 'H.264' | 'None';
+  dtmfMode: 'RFC2833' | 'SIP_INFO' | 'INBAND';
+  relay1: XpeRelayConfig;
+  relay2: XpeRelayConfig;
+  rtspStream: {
+    enabled: boolean;
+    channel: number;
+    subType: number;
+    rtspPort: number;
+    username: string;
+    password: string;
+    url: string;
+  };
+  lastSyncedAt?: string;
+  status: 'online' | 'offline' | 'verificando';
 }

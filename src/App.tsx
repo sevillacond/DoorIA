@@ -33,6 +33,9 @@ import { PWAInstallBanner } from './components/PWAInstallBanner.tsx';
 import { OfflineIndicator } from './components/OfflineIndicator.tsx';
 import { NotificationCenterModal } from './components/NotificationCenterModal.tsx';
 import { CondominiumSettingsModule } from './components/CondominiumSettingsModule.tsx';
+import { HelpModule } from './components/HelpModule.tsx';
+import { LoginScreen } from './components/LoginScreen.tsx';
+import { useAuth } from './context/AuthContext.tsx';
 import type {
   UserSession,
   Unit,
@@ -55,6 +58,8 @@ import type {
 } from './types.ts';
 
 export default function App() {
+  const { user, loading: authLoading } = useAuth();
+
   const [session, setSession] = useState<UserSession>({
     id: 'user-carlos-101',
     name: 'Carlos Eduardo Mendes',
@@ -65,7 +70,21 @@ export default function App() {
     mfaEnabled: true,
   });
 
-  const [activeTab, setActiveTab] = useState<'inicio' | 'portaria' | 'cameras' | 'financeiro' | 'engenharia' | 'dispositivos' | 'moradores' | 'condominio' | 'reservas'>('inicio');
+  // Sync session with Firebase Auth user
+  useEffect(() => {
+    if (user) {
+      setSession((prev) => ({
+        ...prev,
+        id: user.uid,
+        name: user.displayName || 'Usuário',
+        email: user.email || '',
+        // Temporarily default to admin if it's the developer email, else morador
+        role: user.email === 'sevillacond@gmail.com' ? 'super_admin' : 'morador'
+      }));
+    }
+  }, [user]);
+
+  const [activeTab, setActiveTab] = useState<'inicio' | 'portaria' | 'cameras' | 'financeiro' | 'engenharia' | 'dispositivos' | 'moradores' | 'condominio' | 'reservas' | 'ajuda'>('inicio');
 
   // Estados dos Módulos do Sistema
   const [units, setUnits] = useState<Unit[]>([]);
@@ -171,10 +190,11 @@ export default function App() {
   };
 
   useEffect(() => {
+    if (!user) return;
     refreshAllData();
     const interval = setInterval(refreshAllData, 3000);
     return () => clearInterval(interval);
-  }, []);
+  }, [user]);
 
   // Alternar Papel RBAC
   const handleSwitchRole = async (role: 'morador' | 'sindico' | 'super_admin', unitNumber?: string) => {
@@ -321,6 +341,21 @@ export default function App() {
     }
   };
 
+  // Loading State
+  if (authLoading) {
+    return (
+      <div className="min-h-screen bg-[#070d18] flex flex-col items-center justify-center gap-4 text-slate-300 font-sans">
+        <div className="w-10 h-10 rounded-full border-3 border-[#0a50ff] border-t-transparent animate-spin"></div>
+        <div className="text-xs font-mono text-slate-400 tracking-wide">Iniciando Enlace-DoorIA...</div>
+      </div>
+    );
+  }
+
+  // Unauthenticated State
+  if (!user) {
+    return <LoginScreen />;
+  }
+
   return (
     <div className="min-h-screen bg-[#f5f8ff] dark:bg-[#070d18] text-[#0d1b35] dark:text-[#f1f5f9] flex selection:bg-[#0a50ff]/20 selection:text-[#0a50ff] font-sans transition-colors duration-200">
       {/* MENU SIDEBAR COMPLETO */}
@@ -355,6 +390,7 @@ export default function App() {
           onToggleWebPhone={() => setIsWebPhoneOpen(!isWebPhoneOpen)}
           onOpenMaia={() => setIsMaiaOpen(true)}
           onOpenNotifications={() => setIsNotificationsOpen(true)}
+          onSelectTab={setActiveTab}
           activeCallCount={activeCall && activeCall.state === 'chamando' ? 1 : 0}
           currentTab={activeTab}
         />
@@ -457,6 +493,17 @@ export default function App() {
   
           {activeTab === 'dispositivos' && (session.role === 'super_admin' || session.role === 'admin_sistema') && (
             <DeviceManagementModule />
+          )}
+
+          {activeTab === 'ajuda' && (
+            <HelpModule
+              session={session}
+              onOpenXpeSimulator={() => setIsXpeOpen(true)}
+              onOpenQrSimulator={() => setIsQrOpen(true)}
+              onToggleWebPhone={() => setIsWebPhoneOpen(prev => !prev)}
+              onOpenMaia={() => setIsMaiaOpen(true)}
+              onSelectTab={setActiveTab}
+            />
           )}
         </main>
 
