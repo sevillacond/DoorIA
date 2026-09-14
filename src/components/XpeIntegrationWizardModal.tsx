@@ -485,10 +485,15 @@ remove_existing=yes`;
 
               <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
                 <div className="space-y-4">
-                  <h3 className="text-xs font-black uppercase tracking-wider text-[#0d1b35] dark:text-white flex items-center gap-2">
-                    <Phone className="w-4 h-4 text-[#ffb21a]" />
-                    Parâmetros do Ramal SIP (PJSIP)
-                  </h3>
+                  <div className="flex items-center justify-between">
+                    <h3 className="text-xs font-black uppercase tracking-wider text-[#0d1b35] dark:text-white flex items-center gap-2">
+                      <Phone className="w-4 h-4 text-[#ffb21a]" />
+                      Parâmetros do Ramal SIP (PJSIP)
+                    </h3>
+                    <span className="text-[10px] font-mono font-bold text-emerald-600 dark:text-emerald-400 bg-emerald-50 dark:bg-emerald-950/60 px-2 py-0.5 rounded border border-emerald-300 dark:border-emerald-800">
+                      NATIVO & PRÉ-VINCULADO
+                    </span>
+                  </div>
 
                   <div className="grid grid-cols-2 gap-3">
                     <div>

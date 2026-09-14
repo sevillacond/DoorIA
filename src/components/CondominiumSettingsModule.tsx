@@ -21,6 +21,7 @@ import {
   Layers,
   Car,
   Home,
+  Database,
 } from 'lucide-react';
 import type { UserSession, CondominiumConfig } from '../types.ts';
 
@@ -1021,6 +1022,29 @@ export const CondominiumSettingsModule: React.FC<CondominiumSettingsModuleProps>
                     Endereçamento IP & Topologia de Hardware da Portaria
                   </h3>
                   <p className="text-xs text-[#5a6a85] dark:text-[#94a3b8]">Parâmetros de rede estática local (Sem dependência de nuvem)</p>
+                </div>
+              </div>
+
+              {/* Banner de Integração & Credenciais Nativas Automáticas */}
+              <div className="p-3.5 rounded-xl bg-emerald-500/10 border border-emerald-500/25 dark:border-emerald-500/20 flex flex-col sm:flex-row sm:items-center justify-between gap-3 text-xs">
+                <div className="flex items-center gap-2.5">
+                  <div className="w-7 h-7 rounded-lg bg-emerald-500/20 text-emerald-600 dark:text-emerald-400 flex items-center justify-center shrink-0">
+                    <CheckCircle2 className="w-4 h-4" />
+                  </div>
+                  <div>
+                    <div className="font-bold text-[#0d1b35] dark:text-white flex items-center gap-2">
+                      <span>Credenciais & Integração Nativas Automáticas</span>
+                      <span className="px-1.5 py-0.5 rounded text-[10px] font-mono font-bold bg-emerald-100 dark:bg-emerald-950/70 text-emerald-700 dark:text-emerald-300">
+                        Zero Configuração Manual
+                      </span>
+                    </div>
+                    <div className="text-[11px] text-[#5a6a85] dark:text-slate-300 mt-0.5">
+                      O <strong>PostgreSQL 16 LTS</strong> (Porta 5432) e o <strong>Asterisk 20 PJSIP</strong> (Porta 5060/8089) comunicam-se via sockets locais nativos, sem necessidade de chaves, senhas manuais ou URLs de bancos externos.
+                    </div>
+                  </div>
+                </div>
+                <div className="shrink-0 font-mono text-[10px] font-bold text-emerald-700 dark:text-emerald-400 bg-emerald-100/80 dark:bg-emerald-950/80 px-2.5 py-1 rounded-lg border border-emerald-300 dark:border-emerald-800">
+                  NATIVO & ATIVO
                 </div>
               </div>
 

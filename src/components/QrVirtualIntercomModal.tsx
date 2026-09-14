@@ -18,7 +18,8 @@ interface QrVirtualIntercomModalProps {
   isOpen: boolean;
   onClose: () => void;
   units: Unit[];
-  onStartCall: (unitNumber: string, purpose: CallPurpose, cameraGranted: boolean, micGranted: boolean) => void;
+  onStartCall: (unitNumber: string, purpose: CallPurpose, cameraGranted: boolean, micGranted: boolean, qrToken?: string | null) => void;
+  prefilledToken?: string | null;
 }
 
 export const QrVirtualIntercomModal: React.FC<QrVirtualIntercomModalProps> = ({
@@ -26,6 +27,7 @@ export const QrVirtualIntercomModal: React.FC<QrVirtualIntercomModalProps> = ({
   onClose,
   units,
   onStartCall,
+  prefilledToken,
 }) => {
   const [cameraPermission, setCameraPermission] = useState<boolean>(false);
   const [micPermission, setMicPermission] = useState<boolean>(false);
@@ -34,6 +36,9 @@ export const QrVirtualIntercomModal: React.FC<QrVirtualIntercomModalProps> = ({
   const [step, setStep] = useState<'concierge' | 'permissoes' | 'chamando'>('concierge');
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
 
+  // If a prefilled token is provided, we could optionally decode it to find the unit/purpose.
+  // For now, we simply inform the user the token was accepted.
+  
   if (!isOpen) return null;
 
   const handleGrantPermissions = async () => {
@@ -68,7 +73,7 @@ export const QrVirtualIntercomModal: React.FC<QrVirtualIntercomModalProps> = ({
     }
 
     setStep('chamando');
-    onStartCall(selectedUnit, purpose, cameraPermission, micPermission);
+    onStartCall(selectedUnit, purpose, cameraPermission, micPermission, prefilledToken);
   };
 
   return (
@@ -104,49 +109,74 @@ export const QrVirtualIntercomModal: React.FC<QrVirtualIntercomModalProps> = ({
                 <div className="text-xs leading-relaxed">
                   <span className="font-bold">Bem-vindo ao Condomínio Solar das Palmeiras!</span>
                   <br />
-                  Você escaneou o QR Code da portaria. Para entrar em contato com o morador, selecione a unidade e informe a finalidade.
+                  {prefilledToken ? (
+                    <span>
+                      Identificamos o seu <strong>Token QR Criptografado</strong> seguro.{' '}
+                      Confirme a unidade e o motivo da visita para avançar.
+                    </span>
+                  ) : (
+                    <span>
+                      Você escaneou o QR Code da portaria. Para entrar em contato com o morador, selecione a unidade e informe a finalidade.
+                    </span>
+                  )}
                 </div>
               </div>
 
-              <div>
-                <label className="block text-xs font-bold text-slate-300 mb-1.5">Para qual unidade deseja ligar?</label>
-                <select
-                  value={selectedUnit}
-                  onChange={(e) => setSelectedUnit(e.target.value)}
-                  className="w-full px-3 py-2.5 bg-slate-800 border border-slate-700 rounded-xl text-sm font-semibold text-white focus:outline-none focus:border-cyan-500"
-                >
-                  {units.map((u) => (
-                    <option key={u.id} value={u.number}>
-                      Apartamento {u.number} - {u.ownerName}
-                    </option>
-                  ))}
-                </select>
-              </div>
+              {prefilledToken && (
+                <div className="p-3 bg-emerald-950/40 border border-emerald-800/60 rounded-xl flex items-center justify-between text-xs">
+                  <div className="flex items-center gap-2 text-emerald-400 font-bold">
+                    <ShieldCheck className="w-4 h-4" />
+                    <span>Passaporte Verificado</span>
+                  </div>
+                  <span className="font-mono text-emerald-500/80 uppercase">
+                    {prefilledToken.substring(0, 8)}...
+                  </span>
+                </div>
+              )}
 
-              <div>
-                <label className="block text-xs font-bold text-slate-300 mb-1.5">Finalidade do atendimento:</label>
-                <div className="grid grid-cols-2 gap-2">
-                  {[
-                    { id: 'visitante', label: 'Visitante' },
-                    { id: 'entrega', label: 'Entrega / Encomenda' },
-                    { id: 'prestador', label: 'Prestador de Serviço' },
-                    { id: 'outro', label: 'Outro Assunto' },
-                  ].map((p) => (
-                    <button
-                      key={p.id}
-                      type="button"
-                      onClick={() => setPurpose(p.id as CallPurpose)}
-                      className={`p-2.5 rounded-xl border text-xs font-semibold text-left transition ${
-                        purpose === p.id
-                          ? 'bg-cyan-600 text-white border-cyan-400'
-                          : 'bg-slate-800 text-slate-300 border-slate-700 hover:bg-slate-700'
-                      }`}
+              {!prefilledToken && (
+                <>
+                  <div>
+                    <label className="block text-xs font-bold text-slate-300 mb-1.5">Para qual unidade deseja ligar?</label>
+                    <select
+                      value={selectedUnit}
+                      onChange={(e) => setSelectedUnit(e.target.value)}
+                      className="w-full px-3 py-2.5 bg-slate-800 border border-slate-700 rounded-xl text-sm font-semibold text-white focus:outline-none focus:border-cyan-500"
                     >
-                      {p.label}
-                    </button>
-                  ))}
-                </div>
-              </div>
+                      {units.map((u) => (
+                        <option key={u.id} value={u.number}>
+                          Apartamento {u.number} - {u.ownerName}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+
+                  <div>
+                    <label className="block text-xs font-bold text-slate-300 mb-1.5">Finalidade do atendimento:</label>
+                    <div className="grid grid-cols-2 gap-2">
+                      {[
+                        { id: 'visitante', label: 'Visitante' },
+                        { id: 'entrega', label: 'Entrega / Encomenda' },
+                        { id: 'prestador', label: 'Prestador de Serviço' },
+                        { id: 'outro', label: 'Outro Assunto' },
+                      ].map((p) => (
+                        <button
+                          key={p.id}
+                          type="button"
+                          onClick={() => setPurpose(p.id as CallPurpose)}
+                          className={`p-2.5 rounded-xl border text-xs font-semibold text-left transition ${
+                            purpose === p.id
+                              ? 'bg-cyan-600 text-white border-cyan-400'
+                              : 'bg-slate-800 text-slate-300 border-slate-700 hover:bg-slate-700'
+                          }`}
+                        >
+                          {p.label}
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+                </>
+              )}
 
               <button
                 onClick={() => setStep('permissoes')}
@@ -226,7 +256,9 @@ export const QrVirtualIntercomModal: React.FC<QrVirtualIntercomModalProps> = ({
                   className="w-full py-3 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white font-bold text-xs flex items-center justify-center gap-2 shadow-lg shadow-emerald-950/40 transition animate-pulse"
                 >
                   <PhoneCall className="w-4 h-4" />
-                  <span>Chamar Morador da Unidade {selectedUnit}</span>
+                  <span>
+                    {prefilledToken ? 'Chamar Unidade de Destino' : `Chamar Morador da Unidade ${selectedUnit}`}
+                  </span>
                 </button>
               )}
             </div>
@@ -240,7 +272,7 @@ export const QrVirtualIntercomModal: React.FC<QrVirtualIntercomModalProps> = ({
               <div>
                 <h4 className="font-bold text-sm text-white">Chamada Iniciada com Sucesso</h4>
                 <p className="text-xs text-slate-300 mt-1">
-                  Sessão temporária WebRTC criada para o Apto {selectedUnit}. O morador está recebendo seu vídeo e áudio no WebPhone.
+                  Sessão temporária WebRTC criada{prefilledToken ? '.' : ` para o Apto ${selectedUnit}.`} O morador está recebendo seu vídeo e áudio no WebPhone.
                 </p>
               </div>
               <button

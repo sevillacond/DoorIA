@@ -1,6 +1,13 @@
 import React, { createContext, useContext, useState, useEffect } from 'react';
-import { onAuthStateChanged, User, signInWithPopup, signOut } from 'firebase/auth';
-import { auth, googleAuthProvider } from '../lib/firebase';
+
+// Representação simples de um usuário para manter compatibilidade
+export interface User {
+  uid: string;
+  displayName: string;
+  email: string;
+  photoURL?: string;
+  role?: 'morador' | 'sindico' | 'super_admin';
+}
 
 interface AuthContextType {
   user: User | null;
@@ -26,50 +33,31 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     } catch {}
     return null;
   });
+  
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    let resolved = false;
-    const unsubscribe = onAuthStateChanged(auth, (currentUser) => {
-      resolved = true;
-      if (currentUser) {
-        setUser(currentUser);
-        try {
-          localStorage.removeItem('enlace_dooria_demo_user');
-        } catch {}
-      }
-      setLoading(false);
-    });
-
-    // Timeout de segurança para evitar tela travada em carregamento no iframe
+    // Simula inicialização rápida local (Local-First)
     const safetyTimer = setTimeout(() => {
-      if (!resolved) {
-        setLoading(false);
-      }
-    }, 1500);
+      setLoading(false);
+    }, 200);
 
-    return () => {
-      unsubscribe();
-      clearTimeout(safetyTimer);
-    };
+    return () => clearTimeout(safetyTimer);
   }, []);
 
   const loginWithGoogle = async () => {
-    try {
-      await signInWithPopup(auth, googleAuthProvider);
-    } catch (error) {
-      console.error('Erro ao fazer login com Google:', error);
-      // Fallback para usuário demo em caso de bloqueio de popup pelo iframe
-      loginAsDemoUser('super_admin');
-    }
+    // Substituído no ambiente local-first, cai no fallback automático de Super Admin
+    console.warn('[Auth] Login externo desativado. Utilizando fallback local-first.');
+    loginAsDemoUser('super_admin');
   };
 
   const loginAsDemoUser = (role: 'morador' | 'sindico' | 'super_admin' = 'super_admin') => {
     const demoUser = {
-      uid: 'dev-admin-user',
+      uid: `dev-user-${role}`,
       displayName: role === 'super_admin' ? 'Engenharia / Super Admin' : role === 'sindico' ? 'Síndico Gestor' : 'Carlos Mendes (Morador 101)',
-      email: role === 'super_admin' ? 'sevillacond@gmail.com' : 'carlos.mendes@gmail.com',
+      email: role === 'super_admin' ? 'sevillacond@gmail.com' : role === 'sindico' ? 'sindico@solardaspalmeiras.com.br' : 'carlos.mendes@gmail.com',
       photoURL: '',
+      role,
     } as unknown as User;
 
     setUser(demoUser);
@@ -81,7 +69,6 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   const logout = async () => {
     try {
       localStorage.removeItem('enlace_dooria_demo_user');
-      await signOut(auth);
       setUser(null);
     } catch (error) {
       console.error('Erro ao fazer logout:', error);

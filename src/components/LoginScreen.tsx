@@ -3,7 +3,7 @@ import { ShieldCheck, LogIn } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
 
 export const LoginScreen: React.FC = () => {
-  const { loginWithGoogle, loginAsDemoUser } = useAuth();
+  const { loginAsDemoUser } = useAuth();
 
   return (
     <div className="min-h-screen bg-[#070d18] text-[#f1f5f9] flex flex-col items-center justify-center font-sans selection:bg-[#0a50ff]/30">
@@ -21,19 +21,21 @@ export const LoginScreen: React.FC = () => {
           Portaria Autônoma Inteligente & CRM
         </p>
 
-        {/* Login Button */}
-        <button
-          onClick={loginWithGoogle}
-          className="w-full flex items-center justify-center gap-3 px-6 py-3.5 rounded-xl bg-white hover:bg-slate-100 text-slate-900 font-bold text-sm transition-all active:scale-[0.98] shadow-lg shadow-white/10 cursor-pointer"
-        >
-          <img src="https://www.gstatic.com/firebasejs/ui/2.0.0/images/auth/google.svg" alt="Google" className="w-5 h-5" />
-          <span>Entrar com Google Workspace</span>
-        </button>
+        {/* Login Button - Removido o Google, usando apenas credenciais locais por segurança */}
+        <div className="w-full bg-[#112240] border border-[#1e2f50] rounded-xl p-4 text-left">
+           <div className="flex items-center gap-2 mb-2">
+             <ShieldCheck className="w-4 h-4 text-emerald-500" />
+             <span className="text-xs font-bold text-white uppercase tracking-wider">Acesso Local Seguro</span>
+           </div>
+           <p className="text-[11px] text-slate-400 leading-relaxed mb-4">
+             Conexão estabelecida diretamente com o servidor PostgreSQL 16 LTS da guarita (Zero Nuvem).
+           </p>
+        </div>
 
         {/* Divisor */}
-        <div className="flex items-center gap-3 w-full my-4">
+        <div className="flex items-center gap-3 w-full my-6">
           <div className="flex-1 h-px bg-[#1e2f50]"></div>
-          <span className="text-[11px] text-slate-500 font-medium uppercase tracking-wider">Ou acesso rápido de demonstração</span>
+          <span className="text-[11px] text-slate-500 font-medium uppercase tracking-wider">Perfis Locais Pré-Configurados</span>
           <div className="flex-1 h-px bg-[#1e2f50]"></div>
         </div>
 

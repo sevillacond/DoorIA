@@ -204,13 +204,16 @@ CREATE INDEX IF NOT EXISTS idx_lpr_logs_timestamp ON lpr_logs(timestamp DESC);
 CREATE TABLE IF NOT EXISTS audit_logs (
     id VARCHAR(64) PRIMARY KEY,
     timestamp TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
+    actor VARCHAR(128) NOT NULL,
+    role VARCHAR(64) NOT NULL,
     action VARCHAR(128) NOT NULL,
-    user_name VARCHAR(128) NOT NULL,
-    user_role VARCHAR(64) NOT NULL,
     target VARCHAR(128) NOT NULL,
-    details TEXT,
+    status VARCHAR(64) NOT NULL,
+    reason TEXT,
     ip_address VARCHAR(64),
-    signature VARCHAR(128)
+    dtmf_command VARCHAR(16),
+    details JSONB,
+    sha256_hash VARCHAR(128)
 );
 
 CREATE INDEX IF NOT EXISTS idx_audit_logs_timestamp ON audit_logs(timestamp DESC);

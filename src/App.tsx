@@ -108,6 +108,19 @@ export default function App() {
   const [isWebPhoneOpen, setIsWebPhoneOpen] = useState(false);
   const [isXpeOpen, setIsXpeOpen] = useState(false);
   const [isQrOpen, setIsQrOpen] = useState(false);
+  const [initialQrToken, setInitialQrToken] = useState<string | null>(null);
+
+  // Verifica URL por convite QR
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search);
+    const token = params.get('qr_token');
+    if (token) {
+      setInitialQrToken(token);
+      setIsQrOpen(true);
+      // Remove o token da URL para não poluir
+      window.history.replaceState({}, document.title, window.location.pathname);
+    }
+  }, []);
   const [isMaiaOpen, setIsMaiaOpen] = useState(false);
   const [isNotificationsOpen, setIsNotificationsOpen] = useState(false);
   const [isMobileSidebarOpen, setIsMobileSidebarOpen] = useState(false);
@@ -241,13 +254,14 @@ export default function App() {
     unitNumber: string,
     purpose: CallPurpose,
     cameraGranted: boolean,
-    micGranted: boolean
+    micGranted: boolean,
+    qrToken?: string | null
   ) => {
     try {
       const res = await fetch('/api/v1/calls/qr/start', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ unitNumber, purpose, cameraGranted, microphoneGranted: micGranted }),
+        body: JSON.stringify({ unitNumber, purpose, cameraGranted, microphoneGranted: micGranted, qrToken }),
       });
       const data = await res.json();
       if (data.call) {
@@ -545,6 +559,7 @@ export default function App() {
         onClose={() => setIsQrOpen(false)}
         units={units}
         onStartCall={handleStartQrCall}
+        prefilledToken={initialQrToken}
       />
 
       <MaiaChatDrawer

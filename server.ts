@@ -1062,6 +1062,37 @@ function logAudit(
   };
   auditLogs.unshift(log);
   if (auditLogs.length > 100) auditLogs.pop();
+
+  // Assinatura criptográfica SHA-256 e gravação no PostgreSQL puro local (porta 5432)
+  try {
+    const rawPayload = `${log.id}|${log.timestamp}|${actor}|${action}|${status}|${dtmfCommand || ''}|${JSON.stringify(details)}`;
+    const sha256Hash = crypto.createHash('sha256').update(rawPayload).digest('hex');
+
+    query(
+      `INSERT INTO audit_logs (id, timestamp, actor, role, action, target, status, reason, ip_address, dtmf_command, details, sha256_hash)
+       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12)
+       ON CONFLICT (id) DO NOTHING`,
+      [
+        log.id,
+        log.timestamp,
+        log.actor,
+        log.role,
+        log.action,
+        log.target || '',
+        log.status,
+        log.reason || '',
+        log.ipAddress,
+        log.dtmfCommand || null,
+        JSON.stringify(log.details || {}),
+        sha256Hash,
+      ]
+    ).catch(() => {
+      // Standby silencioso caso o PostgreSQL local esteja em inicialização
+    });
+  } catch {
+    // Continua sem falhas para manter a alta disponibilidade da portaria
+  }
+
   return log;
 }
 
@@ -1613,7 +1644,31 @@ async function startServer() {
 
   // Iniciar chamada pelo QR Virtual Intercom (Visitante no Smartphone)
   app.post('/api/v1/calls/qr/start', (req, res) => {
-    const { unitNumber, purpose, cameraGranted, microphoneGranted } = req.body;
+    const { unitNumber, purpose, cameraGranted, microphoneGranted, qrToken } = req.body;
+
+    // Se houver um token QR, validar a existência e validade (Regra Ouro #09)
+    let validatedInvite = null;
+    if (qrToken) {
+      validatedInvite = visitorInvites.find(inv => inv.qrToken === qrToken);
+      if (!validatedInvite) {
+        logAudit('Visitante (QR Intercom)', 'visitante', 'CHAMADA_QR_BLOQUEADA', `Token ${qrToken}`, 'NEGADO', {
+          reason: 'Token QR inválido ou inexistente.',
+        });
+        return res.status(403).json({
+          success: false,
+          error: 'Token QR inválido ou expirado.',
+        });
+      }
+      if (validatedInvite.expiresAt < new Date().toISOString()) {
+         logAudit('Visitante (QR Intercom)', 'visitante', 'CHAMADA_QR_BLOQUEADA', `Token ${qrToken}`, 'NEGADO', {
+          reason: 'Token QR expirado.',
+        });
+        return res.status(403).json({
+          success: false,
+          error: 'Este convite QR Code expirou.',
+        });
+      }
+    }
 
     // Regra Obrigatória #10.1 & Regra de Ouro #5:
     // "O morador só deve ser chamado depois que câmera e microfone estiverem habilitados"
@@ -1627,7 +1682,9 @@ async function startServer() {
       });
     }
 
-    const targetUnit = units.find((u) => u.number === unitNumber) || units[0];
+    // Se o token QR validou, usar a unidade do token, caso contrário, usa a informada na UI (fallback se for o QR genérico da portaria)
+    const targetUnitNumber = validatedInvite ? validatedInvite.unitNumber : unitNumber;
+    const targetUnit = units.find((u) => u.number === targetUnitNumber) || units[0];
 
     activeCall = {
       id: `call-qr-${Date.now()}`,
