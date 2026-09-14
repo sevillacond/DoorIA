@@ -181,71 +181,63 @@ export const FinancialModule: React.FC<FinancialModuleProps> = ({
       {/* ABA 1: BOLETOS & TAXAS */}
       {selectedTab === 'boletos' && (
         <div className="space-y-3">
-          <div className="bg-white dark:bg-slate-900 border border-[#dde5f0] dark:border-slate-800 rounded-2xl overflow-hidden shadow-xs">
-            <div className="overflow-x-auto">
-              <table className="w-full text-left text-xs">
-                <thead className="bg-[#f8fafc] dark:bg-slate-950 text-[#5a6a85] dark:text-slate-400 uppercase tracking-wider text-[10px] border-b border-[#dde5f0] dark:border-slate-800 font-bold">
-                  <tr>
-                    <th className="py-3 px-4">Unidade</th>
-                    <th className="py-3 px-4">Competência</th>
-                    <th className="py-3 px-4">Vencimento</th>
-                    <th className="py-3 px-4">Valor Original</th>
-                    <th className="py-3 px-4">Encargos</th>
-                    <th className="py-3 px-4">Total Atualizado</th>
-                    <th className="py-3 px-4">Status</th>
-                    <th className="py-3 px-4 text-right">Ação</th>
-                  </tr>
-                </thead>
-                <tbody className="divide-y divide-[#dde5f0] dark:divide-slate-800/60 font-mono">
-                  {bills.map((bill) => (
-                    <tr key={bill.id} className="hover:bg-slate-50 dark:hover:bg-slate-800/40 transition">
-                      <td className="py-3 px-4 font-bold text-[#0d1b35] dark:text-white">Apto {bill.unitNumber}</td>
-                      <td className="py-3 px-4 text-[#5a6a85] dark:text-slate-300">{bill.competencia}</td>
-                      <td className="py-3 px-4 text-[#5a6a85] dark:text-slate-400">
-                        {new Date(bill.vencimento).toLocaleDateString('pt-BR')}
-                      </td>
-                      <td className="py-3 px-4 text-[#5a6a85] dark:text-slate-300">
-                        R$ {bill.valorOriginal.toFixed(2)}
-                      </td>
-                      <td className="py-3 px-4 text-[#5a6a85] dark:text-slate-400">
-                        {bill.multa > 0 ? (
-                          <span className="text-amber-600 dark:text-amber-400 font-semibold">
-                            + R$ {(bill.multa + bill.juros + bill.correcao).toFixed(2)}
-                          </span>
-                        ) : (
-                          'R$ 0,00'
-                        )}
-                      </td>
-                      <td className="py-3 px-4 font-bold text-[#0a50ff] dark:text-cyan-300">
-                        R$ {bill.valorTotal.toFixed(2)}
-                      </td>
-                      <td className="py-3 px-4">
-                        <span
-                          className={`px-2 py-0.5 rounded-full text-[10px] font-bold uppercase ${
-                            bill.status === 'pago'
-                              ? 'bg-emerald-50 text-emerald-700 border border-emerald-200 dark:bg-emerald-950 dark:text-emerald-300 dark:border-emerald-800'
-                              : bill.status === 'atrasado'
-                              ? 'bg-red-50 text-red-700 border border-red-200 dark:bg-red-950 dark:text-red-300 dark:border-red-800'
-                              : 'bg-amber-50 text-amber-700 border border-amber-200 dark:bg-amber-950 dark:text-amber-300 dark:border-amber-800'
-                          }`}
-                        >
-                          {bill.status.replace('_', ' ')}
-                        </span>
-                      </td>
-                      <td className="py-3 px-4 text-right">
-                        <button
-                          onClick={() => alert(`Código de Barras copiado:\n${bill.codigoBarras}`)}
-                          className="px-2.5 py-1 rounded-lg bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-700 text-[#0d1b35] dark:text-slate-200 text-[11px] font-sans border border-[#dde5f0] dark:border-slate-700 transition cursor-pointer"
-                        >
-                          Linha Digitável
-                        </button>
-                      </td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
+          {bills.map((bill) => (
+            <div key={bill.id} className="p-4 bg-white dark:bg-slate-900 border border-[#dde5f0] dark:border-slate-800 rounded-2xl shadow-xs hover:shadow-md transition flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+              <div className="space-y-2 flex-1">
+                <div className="flex items-center gap-2">
+                  <span className="font-bold text-[#0d1b35] dark:text-white">Apto {bill.unitNumber}</span>
+                  <span className="text-xs text-[#5a6a85] dark:text-slate-400 font-medium">• {bill.competencia}</span>
+                  <span
+                    className={`px-2 py-0.5 rounded-full text-[10px] font-bold uppercase ${
+                      bill.status === 'pago'
+                        ? 'bg-emerald-50 text-emerald-700 border border-emerald-200 dark:bg-emerald-950 dark:text-emerald-300 dark:border-emerald-800'
+                        : bill.status === 'atrasado'
+                        ? 'bg-red-50 text-red-700 border border-red-200 dark:bg-red-950 dark:text-red-300 dark:border-red-800'
+                        : 'bg-amber-50 text-amber-700 border border-amber-200 dark:bg-amber-950 dark:text-amber-300 dark:border-amber-800'
+                    }`}
+                  >
+                    {bill.status.replace('_', ' ')}
+                  </span>
+                </div>
+                
+                <div className="flex flex-wrap items-center gap-x-4 gap-y-1 text-xs font-mono">
+                  <div>
+                    <span className="text-[#5a6a85] dark:text-slate-400">Venc: </span>
+                    <span className="text-[#0d1b35] dark:text-slate-200">{new Date(bill.vencimento).toLocaleDateString('pt-BR')}</span>
+                  </div>
+                  <div>
+                    <span className="text-[#5a6a85] dark:text-slate-400">Original: </span>
+                    <span className="text-[#0d1b35] dark:text-slate-200">R$ {bill.valorOriginal.toFixed(2)}</span>
+                  </div>
+                  {bill.multa > 0 && (
+                    <div>
+                      <span className="text-[#5a6a85] dark:text-slate-400">Encargos: </span>
+                      <span className="text-amber-600 dark:text-amber-400 font-semibold">+ R$ {(bill.multa + bill.juros + bill.correcao).toFixed(2)}</span>
+                    </div>
+                  )}
+                </div>
+              </div>
+              
+              <div className="flex items-center sm:flex-col sm:items-end justify-between gap-2 pt-3 sm:pt-0 border-t border-[#dde5f0] dark:border-slate-800 sm:border-0">
+                <div className="text-right">
+                  <div className="text-[10px] text-[#5a6a85] dark:text-slate-400 uppercase tracking-wider font-bold">Total Atualizado</div>
+                  <div className="font-bold text-[#0a50ff] dark:text-cyan-300 text-lg font-mono">R$ {bill.valorTotal.toFixed(2)}</div>
+                </div>
+                
+                <button
+                  onClick={() => alert(`Código de Barras copiado:\n${bill.codigoBarras}`)}
+                  className="px-3 py-1.5 rounded-xl bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-700 text-[#0d1b35] dark:text-slate-200 text-xs font-bold border border-[#dde5f0] dark:border-slate-700 transition cursor-pointer"
+                >
+                  Copiar Linha Digitável
+                </button>
+              </div>
             </div>
-          </div>
+          ))}
+          {bills.length === 0 && (
+            <div className="p-8 text-center bg-white dark:bg-slate-900 border border-[#dde5f0] dark:border-slate-800 rounded-2xl text-[#5a6a85] dark:text-slate-400">
+              Nenhum boleto encontrado.
+            </div>
+          )}
         </div>
       )}
 
@@ -265,45 +257,63 @@ export const FinancialModule: React.FC<FinancialModuleProps> = ({
             </p>
           </div>
 
-          <div className="bg-white dark:bg-slate-900 border border-[#dde5f0] dark:border-slate-800 rounded-2xl overflow-hidden shadow-xs">
-            <div className="overflow-x-auto">
-              <table className="w-full text-left text-xs">
-                <thead className="bg-[#f8fafc] dark:bg-slate-950 text-[#5a6a85] dark:text-slate-400 uppercase tracking-wider text-[10px] border-b border-[#dde5f0] dark:border-slate-800 font-bold">
-                  <tr>
-                    <th className="py-3 px-4">Unidade</th>
-                    <th className="py-3 px-4">Competência</th>
-                    <th className="py-3 px-4">Vencimento</th>
-                    <th className="py-3 px-4">Principal</th>
-                    <th className="py-3 px-4">Atraso</th>
-                    <th className="py-3 px-4">Multa (2%)</th>
-                    <th className="py-3 px-4">Juros (1% a.m.)</th>
-                    <th className="py-3 px-4">Correção</th>
-                    <th className="py-3 px-4 font-bold text-right">Total Devido</th>
-                  </tr>
-                </thead>
-                <tbody className="divide-y divide-[#dde5f0] dark:divide-slate-800/60 font-mono">
-                  {bills
-                    .filter((b) => b.status === 'atrasado')
-                    .map((bill) => (
-                      <tr key={bill.id} className="hover:bg-slate-50 dark:hover:bg-slate-800/40 transition">
-                        <td className="py-3 px-4 font-bold text-[#0d1b35] dark:text-white">Apto {bill.unitNumber}</td>
-                        <td className="py-3 px-4 text-[#5a6a85] dark:text-slate-300">{bill.competencia}</td>
-                        <td className="py-3 px-4 text-[#5a6a85] dark:text-slate-400">
-                          {new Date(bill.vencimento).toLocaleDateString('pt-BR')}
-                        </td>
-                        <td className="py-3 px-4 text-[#5a6a85] dark:text-slate-300">R$ {bill.valorOriginal.toFixed(2)}</td>
-                        <td className="py-3 px-4 text-[#ff5c7a] dark:text-red-400 font-bold">{bill.diasAtraso} dias</td>
-                        <td className="py-3 px-4 text-amber-600 dark:text-amber-300">R$ {bill.multa.toFixed(2)}</td>
-                        <td className="py-3 px-4 text-amber-600 dark:text-amber-300">R$ {bill.juros.toFixed(2)}</td>
-                        <td className="py-3 px-4 text-[#5a6a85] dark:text-slate-400">R$ {bill.correcao.toFixed(2)}</td>
-                        <td className="py-3 px-4 text-right font-bold text-[#ff5c7a] dark:text-red-400">
-                          R$ {bill.valorTotal.toFixed(2)}
-                        </td>
-                      </tr>
-                    ))}
-                </tbody>
-              </table>
-            </div>
+          <div className="space-y-3">
+            {bills
+              .filter((b) => b.status === 'atrasado')
+              .map((bill) => (
+                <div key={bill.id} className="p-4 bg-white dark:bg-slate-900 border border-[#dde5f0] dark:border-slate-800 rounded-2xl shadow-xs hover:shadow-md transition flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+                  <div className="space-y-2 flex-1">
+                    <div className="flex items-center gap-2">
+                      <span className="font-bold text-[#0d1b35] dark:text-white">Apto {bill.unitNumber}</span>
+                      <span className="text-xs text-[#5a6a85] dark:text-slate-400 font-medium">• {bill.competencia}</span>
+                    </div>
+                    
+                    <div className="grid grid-cols-2 gap-2 text-xs font-mono">
+                      <div>
+                        <span className="text-[#5a6a85] dark:text-slate-400 block text-[10px] uppercase">Vencimento</span>
+                        <span className="text-[#0d1b35] dark:text-slate-200">{new Date(bill.vencimento).toLocaleDateString('pt-BR')}</span>
+                      </div>
+                      <div>
+                        <span className="text-[#5a6a85] dark:text-slate-400 block text-[10px] uppercase">Atraso</span>
+                        <span className="text-[#ff5c7a] dark:text-red-400 font-bold">{bill.diasAtraso} dias</span>
+                      </div>
+                      <div>
+                        <span className="text-[#5a6a85] dark:text-slate-400 block text-[10px] uppercase">Principal</span>
+                        <span className="text-[#0d1b35] dark:text-slate-200">R$ {bill.valorOriginal.toFixed(2)}</span>
+                      </div>
+                      <div>
+                        <span className="text-[#5a6a85] dark:text-slate-400 block text-[10px] uppercase">Encargos Totais</span>
+                        <span className="text-amber-600 dark:text-amber-300">R$ {(bill.multa + bill.juros + bill.correcao).toFixed(2)}</span>
+                      </div>
+                    </div>
+                    
+                    {/* Detalhamento dos Encargos (Apenas mobile) */}
+                    <div className="sm:hidden flex flex-wrap gap-2 pt-2 border-t border-slate-100 dark:border-slate-800 text-[10px] font-mono">
+                      <span className="text-amber-600 dark:text-amber-300 bg-amber-50 dark:bg-amber-950/30 px-2 py-1 rounded">Multa: R$ {bill.multa.toFixed(2)}</span>
+                      <span className="text-amber-600 dark:text-amber-300 bg-amber-50 dark:bg-amber-950/30 px-2 py-1 rounded">Juros: R$ {bill.juros.toFixed(2)}</span>
+                      <span className="text-[#5a6a85] dark:text-slate-400 bg-slate-50 dark:bg-slate-800 px-2 py-1 rounded">Correção: R$ {bill.correcao.toFixed(2)}</span>
+                    </div>
+                  </div>
+                  
+                  <div className="flex flex-col sm:items-end justify-between gap-1 pt-3 sm:pt-0 border-t border-[#dde5f0] dark:border-slate-800 sm:border-0 text-right">
+                    {/* Detalhamento dos Encargos (Apenas desktop) */}
+                    <div className="hidden sm:flex flex-col text-[10px] font-mono text-right text-amber-600 dark:text-amber-300/80 mb-2">
+                      <span>Multa (2%): R$ {bill.multa.toFixed(2)}</span>
+                      <span>Juros (1% am): R$ {bill.juros.toFixed(2)}</span>
+                      <span className="text-[#5a6a85] dark:text-slate-500">Correção: R$ {bill.correcao.toFixed(2)}</span>
+                    </div>
+                    
+                    <div className="text-[10px] text-[#5a6a85] dark:text-slate-400 uppercase tracking-wider font-bold">Total Devido</div>
+                    <div className="font-bold text-[#ff5c7a] dark:text-red-400 text-lg font-mono">R$ {bill.valorTotal.toFixed(2)}</div>
+                  </div>
+                </div>
+              ))}
+            
+            {bills.filter((b) => b.status === 'atrasado').length === 0 && (
+              <div className="p-8 text-center bg-white dark:bg-slate-900 border border-[#dde5f0] dark:border-slate-800 rounded-2xl text-[#5a6a85] dark:text-slate-400">
+                Nenhuma inadimplência encontrada.
+              </div>
+            )}
           </div>
         </div>
       )}

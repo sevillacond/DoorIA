@@ -25,14 +25,16 @@ import {
   BellRing,
   Sun,
   Moon,
+  MapPin,
+  Calendar,
 } from 'lucide-react';
 import type { UserSession, SystemStatus } from '../types.ts';
 import { ThemeToggle } from './ThemeToggle.tsx';
 import { useTheme } from '../context/ThemeContext.tsx';
 
 interface SidebarProps {
-  currentTab: 'inicio' | 'portaria' | 'cameras' | 'financeiro' | 'engenharia' | 'dispositivos' | 'moradores' | 'condominio';
-  onSelectTab: (tab: 'inicio' | 'portaria' | 'cameras' | 'financeiro' | 'engenharia' | 'dispositivos' | 'moradores' | 'condominio') => void;
+  currentTab: 'inicio' | 'portaria' | 'cameras' | 'financeiro' | 'engenharia' | 'dispositivos' | 'moradores' | 'condominio' | 'reservas';
+  onSelectTab: (tab: 'inicio' | 'portaria' | 'cameras' | 'financeiro' | 'engenharia' | 'dispositivos' | 'moradores' | 'condominio' | 'reservas') => void;
   session: UserSession;
   systemStatus: SystemStatus | null;
   activeCallCount: number;
@@ -75,13 +77,29 @@ export const Sidebar: React.FC<SidebarProps> = ({
   ];
 
   if (session.role === 'morador') {
-    navItems.push({
-      id: 'financeiro',
-      label: 'Boletos & Financeiro',
-      icon: DollarSign,
-      badge: null,
-      section: 'gestao',
-    });
+    navItems.push(
+      {
+        id: 'cameras',
+        label: 'Câmeras da Portaria',
+        icon: Camera,
+        badge: 'Ao vivo',
+        section: 'seguranca',
+      },
+      {
+        id: 'financeiro',
+        label: 'Boletos & Financeiro',
+        icon: DollarSign,
+        badge: null,
+        section: 'gestao',
+      },
+      {
+        id: 'reservas',
+        label: 'Áreas Comuns',
+        icon: Calendar,
+        badge: null,
+        section: 'gestao',
+      }
+    );
   } else if (session.role === 'sindico') {
     navItems.push(
       {
@@ -95,6 +113,13 @@ export const Sidebar: React.FC<SidebarProps> = ({
         id: 'moradores',
         label: 'Gestão de Moradores',
         icon: Users,
+        badge: null,
+        section: 'gestao',
+      },
+      {
+        id: 'reservas',
+        label: 'Áreas Comuns',
+        icon: Calendar,
         badge: null,
         section: 'gestao',
       },
@@ -133,6 +158,13 @@ export const Sidebar: React.FC<SidebarProps> = ({
         id: 'moradores',
         label: 'Gestão de Moradores',
         icon: Users,
+        badge: null,
+        section: 'gestao',
+      },
+      {
+        id: 'reservas',
+        label: 'Áreas Comuns',
+        icon: Calendar,
         badge: null,
         section: 'gestao',
       },

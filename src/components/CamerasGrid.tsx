@@ -41,6 +41,13 @@ export const CamerasGrid: React.FC<CamerasGridProps> = ({ cameras, onOpenDiscove
   const [panX, setPanX] = useState(0);
   const [panY, setPanY] = useState(0);
 
+  // Touch gestures & Fullscreen state
+  const [isFullscreen, setIsFullscreen] = useState(false);
+  const [isDragging, setIsDragging] = useState(false);
+  const [touchStart, setTouchStart] = useState<{ x: number; y: number } | null>(null);
+  const [initialPinchDist, setInitialPinchDist] = useState<number | null>(null);
+  const viewportRef = useRef<HTMLDivElement>(null);
+
   // Snapshot flash effect
   const [snapshotFlash, setSnapshotFlash] = useState(false);
   const [snapshotCaptured, setSnapshotCaptured] = useState<{ url: string; time: string; hash: string } | null>(null);
@@ -52,6 +59,57 @@ export const CamerasGrid: React.FC<CamerasGridProps> = ({ cameras, onOpenDiscove
     setZoomLevel(1);
     setPanX(0);
     setPanY(0);
+  };
+
+  const handleFullscreenToggle = () => {
+    if (!document.fullscreenElement) {
+      viewportRef.current?.requestFullscreen().catch((err) => {
+        console.error(`Error attempting to enable full-screen mode: ${err.message}`);
+      });
+    } else {
+      document.exitFullscreen();
+    }
+  };
+
+  useEffect(() => {
+    const handleFullscreenChange = () => {
+      setIsFullscreen(!!document.fullscreenElement);
+    };
+    document.addEventListener('fullscreenchange', handleFullscreenChange);
+    return () => document.removeEventListener('fullscreenchange', handleFullscreenChange);
+  }, []);
+
+  const getPinchDistance = (touches: React.TouchList) => {
+    if (touches.length < 2) return 0;
+    const dx = touches[0].clientX - touches[1].clientX;
+    const dy = touches[0].clientY - touches[1].clientY;
+    return Math.sqrt(dx * dx + dy * dy);
+  };
+
+  const handleTouchStart = (e: React.TouchEvent) => {
+    if (e.touches.length === 1) {
+      setIsDragging(true);
+      setTouchStart({ x: e.touches[0].clientX - panX, y: e.touches[0].clientY - panY });
+    } else if (e.touches.length === 2) {
+      setInitialPinchDist(getPinchDistance(e.touches));
+    }
+  };
+
+  const handleTouchMove = (e: React.TouchEvent) => {
+    if (e.touches.length === 1 && isDragging && touchStart) {
+      setPanX(e.touches[0].clientX - touchStart.x);
+      setPanY(e.touches[0].clientY - touchStart.y);
+    } else if (e.touches.length === 2 && initialPinchDist) {
+      const currentDist = getPinchDistance(e.touches);
+      const scale = currentDist / initialPinchDist;
+      setZoomLevel((prev) => Math.min(Math.max(1, prev * scale), 4));
+      setInitialPinchDist(currentDist);
+    }
+  };
+
+  const handleTouchEnd = () => {
+    setIsDragging(false);
+    setInitialPinchDist(null);
   };
 
   const handleTriggerGate = async (dtmf: '*07' | '*08') => {
@@ -348,7 +406,13 @@ export const CamerasGrid: React.FC<CamerasGridProps> = ({ cameras, onOpenDiscove
             </div>
 
             {/* Viewport de Vídeo com PTZ Digital */}
-            <div className="relative aspect-video bg-black flex items-center justify-center overflow-hidden select-none">
+            <div 
+              ref={viewportRef}
+              className="relative aspect-video bg-black flex items-center justify-center overflow-hidden select-none touch-none"
+              onTouchStart={handleTouchStart}
+              onTouchMove={handleTouchMove}
+              onTouchEnd={handleTouchEnd}
+            >
               {snapshotFlash && (
                 <div className="absolute inset-0 bg-white z-40 transition-opacity duration-300 pointer-events-none opacity-80" />
               )}
@@ -358,6 +422,7 @@ export const CamerasGrid: React.FC<CamerasGridProps> = ({ cameras, onOpenDiscove
                 className="w-full h-full flex items-center justify-center transition-transform duration-150 relative"
                 style={{
                   transform: `scale(${zoomLevel}) translate(${panX}px, ${panY}px)`,
+                  transformOrigin: 'center center',
                 }}
               >
                 <div className="w-full h-full bg-gradient-to-br from-slate-950 via-slate-900 to-black flex flex-col items-center justify-center text-slate-500 relative">
@@ -411,6 +476,13 @@ export const CamerasGrid: React.FC<CamerasGridProps> = ({ cameras, onOpenDiscove
                   title="Resetar Enquadramento PTZ"
                 >
                   <RotateCcw className="w-4 h-4" />
+                </button>
+                <button
+                  onClick={handleFullscreenToggle}
+                  className="p-2 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-200 transition"
+                  title="Tela Cheia"
+                >
+                  {isFullscreen ? <Minimize2 className="w-4 h-4" /> : <Maximize2 className="w-4 h-4" />}
                 </button>
                 <button
                   onClick={() => handleCaptureSnapshot(selectedCamera)}

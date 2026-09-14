@@ -10,6 +10,8 @@ import {
   CheckCircle2,
   Terminal,
   X,
+  Mic,
+  MicOff,
 } from 'lucide-react';
 import type { MaiaMessage, UserSession } from '../types.ts';
 
@@ -35,7 +37,52 @@ Opero em conformidade estrita com o Policy Engine e o princípio Local-First. Co
   ]);
   const [inputValue, setInputValue] = useState('');
   const [loading, setLoading] = useState(false);
+  const [isListening, setIsListening] = useState(false);
   const messagesEndRef = useRef<HTMLDivElement>(null);
+  
+  // Speech Recognition setup
+  const recognitionRef = useRef<any>(null);
+
+  useEffect(() => {
+    if (typeof window !== 'undefined') {
+      const SpeechRecognition = (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition;
+      if (SpeechRecognition) {
+        recognitionRef.current = new SpeechRecognition();
+        recognitionRef.current.continuous = false;
+        recognitionRef.current.interimResults = false;
+        recognitionRef.current.lang = 'pt-BR';
+
+        recognitionRef.current.onresult = (event: any) => {
+          const transcript = event.results[0][0].transcript;
+          setInputValue((prev) => prev ? `${prev} ${transcript}` : transcript);
+          setIsListening(false);
+        };
+
+        recognitionRef.current.onerror = (event: any) => {
+          console.error('Speech recognition error', event.error);
+          setIsListening(false);
+        };
+
+        recognitionRef.current.onend = () => {
+          setIsListening(false);
+        };
+      }
+    }
+  }, []);
+
+  const toggleListening = () => {
+    if (isListening) {
+      recognitionRef.current?.stop();
+      setIsListening(false);
+    } else {
+      try {
+        recognitionRef.current?.start();
+        setIsListening(true);
+      } catch (e) {
+        console.error(e);
+      }
+    }
+  };
 
   useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
@@ -210,9 +257,19 @@ Opero em conformidade estrita com o Policy Engine e o princípio Local-First. Co
             type="text"
             value={inputValue}
             onChange={(e) => setInputValue(e.target.value)}
-            placeholder="Pergunte à MaIA..."
-            className="flex-1 px-3.5 py-2 bg-slate-900 border border-slate-700 rounded-xl text-xs text-white placeholder-slate-500 focus:outline-none focus:border-cyan-500"
+            placeholder={isListening ? "Ouvindo..." : "Pergunte à MaIA..."}
+            className={`flex-1 px-3.5 py-2 bg-slate-900 border rounded-xl text-xs text-white placeholder-slate-500 focus:outline-none transition ${isListening ? 'border-red-500 shadow-[0_0_8px_rgba(239,68,68,0.5)]' : 'border-slate-700 focus:border-cyan-500'}`}
           />
+          {recognitionRef.current && (
+            <button
+              type="button"
+              onClick={toggleListening}
+              className={`p-2 rounded-xl text-white transition ${isListening ? 'bg-red-600 hover:bg-red-500 animate-pulse' : 'bg-slate-800 hover:bg-slate-700'}`}
+              title="Falar com a MaIA"
+            >
+              {isListening ? <MicOff className="w-4 h-4" /> : <Mic className="w-4 h-4" />}
+            </button>
+          )}
           <button
             type="submit"
             disabled={!inputValue.trim() || loading}

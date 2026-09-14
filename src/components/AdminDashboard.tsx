@@ -1,4 +1,5 @@
 import React, { useState } from 'react';
+import { AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from 'recharts';
 import {
   Users,
   Activity,
@@ -20,8 +21,10 @@ import {
   ChevronRight,
   MapPin,
   BadgeCheck,
+  Calendar,
+  CheckCircle2,
 } from 'lucide-react';
-import type { UserSession, Unit, Gate, CallLog, FinancialSummary, SystemStatus, AuditLogEntry } from '../types.ts';
+import type { UserSession, Unit, Gate, CallLog, FinancialSummary, SystemStatus, AuditLogEntry, Reservation } from '../types.ts';
 
 interface AdminDashboardProps {
   session: UserSession;
@@ -49,12 +52,35 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
   const [filterPeriod, setFilterPeriod] = useState<'hoje' | 'semana' | 'mes'>('hoje');
   const [panicLoading, setPanicLoading] = useState(false);
 
+  // Reservas pendentes e próximas para o Síndico
+  const [allReservations] = useState<Reservation[]>(() => {
+    try {
+      const saved = localStorage.getItem('enlace_reservations');
+      return saved ? JSON.parse(saved) : [];
+    } catch {
+      return [];
+    }
+  });
+
+  const pendingReservations = allReservations.filter(r => r.status === 'pendente');
+  const upcomingReservations = allReservations.filter(r => r.status === 'aprovada' && r.date >= new Date().toISOString().split('T')[0]);
+
   // Cálculos rápidos para o Síndico
   const activeCalls = callLogs.filter(c => c.status === 'chamando' || c.status === 'em_atendimento').length;
   const missedCalls = callLogs.filter(c => c.status === 'perdida').length;
   
   const unidadesInadimplentes = units.filter(u => u.hasDebts).length;
   const taxaInadimplencia = units.length > 0 ? (unidadesInadimplentes / units.length) * 100 : 0;
+
+  const accessData = [
+    { name: 'Seg', pedestres: 45, veiculos: 22 },
+    { name: 'Ter', pedestres: 52, veiculos: 28 },
+    { name: 'Qua', pedestres: 48, veiculos: 25 },
+    { name: 'Qui', pedestres: 61, veiculos: 32 },
+    { name: 'Sex', pedestres: 75, veiculos: 40 },
+    { name: 'Sáb', pedestres: 85, veiculos: 48 },
+    { name: 'Dom', pedestres: 68, veiculos: 35 },
+  ];
 
   const handleTriggerPanic = async () => {
     if (!confirm('CONFIRMAÇÃO DE EMERGÊNCIA:\nDeseja acionar o Protocolo de Pânico / Coação da Portaria?\nIsso registrará evento imutável, acenderá refletores de segurança e notificará a equipe gestora.')) {
@@ -133,6 +159,34 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
         </div>
       </div>
 
+      {/* Alerta de Reservas Pendentes para o Síndico */}
+      {pendingReservations.length > 0 && (
+        <div className="p-4 rounded-2xl bg-amber-50 border border-amber-200 flex flex-col sm:flex-row sm:items-center justify-between gap-3 shadow-xs">
+          <div className="flex items-center gap-3">
+            <div className="w-9 h-9 rounded-xl bg-amber-100 text-amber-700 flex items-center justify-center shrink-0">
+              <Calendar className="w-5 h-5" />
+            </div>
+            <div>
+              <div className="text-xs font-bold text-amber-900 flex items-center gap-1.5">
+                <span>{pendingReservations.length} solicitação(ões) de reserva de área comum aguardando aprovação!</span>
+                <span className="px-2 py-0.2 rounded-full text-[9px] font-extrabold uppercase bg-amber-200 text-amber-900">
+                  Ação Necessária
+                </span>
+              </div>
+              <div className="text-xs text-amber-700 mt-0.5">
+                Unidade(s): {pendingReservations.map(r => `Apto ${r.unitNumber}`).join(', ')}
+              </div>
+            </div>
+          </div>
+          <button
+            onClick={() => onSelectTab('reservas')}
+            className="px-3.5 py-1.5 rounded-xl bg-amber-600 hover:bg-amber-700 text-white text-xs font-bold transition shadow-xs cursor-pointer self-start sm:self-auto"
+          >
+            Analisar Reservas
+          </button>
+        </div>
+      )}
+
       {/* KPIs Operacionais Digify CRM */}
       <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
         <div className="p-5 rounded-2xl bg-white border border-[#dde5f0] shadow-xs hover:shadow-md transition">
@@ -184,6 +238,44 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
           </div>
           <div className="text-3xl font-extrabold text-[#0d1b35] mt-3 font-['Red_Hat_Display']">100%</div>
           <div className="text-xs text-[#18c7a8] font-bold mt-1">0 violações na LAN</div>
+        </div>
+      </div>
+
+      {/* Fluxo de Acesso Semanal - Gráfico Recharts */}
+      <div className="p-5 rounded-2xl bg-white border border-[#dde5f0] shadow-xs hover:shadow-md transition">
+        <div className="flex items-center justify-between mb-4">
+          <h3 className="text-sm font-extrabold text-[#0d1b35] flex items-center gap-2 font-['Red_Hat_Display']">
+            <Activity className="w-4 h-4 text-[#0a50ff]" />
+            <span>Fluxo de Acessos (Últimos 7 Dias)</span>
+          </h3>
+          <span className="text-xs text-[#5a6a85] font-bold bg-[#f5f8ff] px-2.5 py-1 rounded-lg border border-[#dde5f0]">
+            Visão Geral
+          </span>
+        </div>
+        <div className="h-64 w-full">
+          <ResponsiveContainer width="100%" height="100%">
+            <AreaChart data={accessData} margin={{ top: 10, right: 10, left: -20, bottom: 0 }}>
+              <defs>
+                <linearGradient id="colorPedestres" x1="0" y1="0" x2="0" y2="1">
+                  <stop offset="5%" stopColor="#0a50ff" stopOpacity={0.3} />
+                  <stop offset="95%" stopColor="#0a50ff" stopOpacity={0} />
+                </linearGradient>
+                <linearGradient id="colorVeiculos" x1="0" y1="0" x2="0" y2="1">
+                  <stop offset="5%" stopColor="#18c7a8" stopOpacity={0.3} />
+                  <stop offset="95%" stopColor="#18c7a8" stopOpacity={0} />
+                </linearGradient>
+              </defs>
+              <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#dde5f0" />
+              <XAxis dataKey="name" axisLine={false} tickLine={false} tick={{ fontSize: 10, fill: '#5a6a85' }} dy={10} />
+              <YAxis axisLine={false} tickLine={false} tick={{ fontSize: 10, fill: '#5a6a85' }} />
+              <Tooltip 
+                contentStyle={{ borderRadius: '12px', border: '1px solid #dde5f0', boxShadow: '0 4px 6px -1px rgb(0 0 0 / 0.1)' }}
+                labelStyle={{ fontWeight: 'bold', color: '#0d1b35', marginBottom: '4px' }}
+              />
+              <Area type="monotone" dataKey="pedestres" name="Pedestres" stroke="#0a50ff" strokeWidth={2} fillOpacity={1} fill="url(#colorPedestres)" />
+              <Area type="monotone" dataKey="veiculos" name="Veículos" stroke="#18c7a8" strokeWidth={2} fillOpacity={1} fill="url(#colorVeiculos)" />
+            </AreaChart>
+          </ResponsiveContainer>
         </div>
       </div>
 

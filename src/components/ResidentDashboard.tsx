@@ -20,6 +20,7 @@ import {
   Trash2,
   X,
   ExternalLink,
+  Calendar,
 } from 'lucide-react';
 import type {
   UserSession,
@@ -28,6 +29,7 @@ import type {
   VisitorInvite,
   Vehicle,
   CallLog,
+  Reservation,
 } from '../types.ts';
 
 interface ResidentDashboardProps {
@@ -64,6 +66,17 @@ export const ResidentDashboard: React.FC<ResidentDashboardProps> = ({
 
   const pendingPackages = packages.filter((p) => p.status === 'aguardando_retirada');
 
+  const [userReservations] = useState<Reservation[]>(() => {
+    try {
+      const saved = localStorage.getItem('enlace_reservations');
+      if (saved) {
+        const parsed: Reservation[] = JSON.parse(saved);
+        return parsed.filter(r => r.unitNumber === session.unitNumber && (r.status === 'aprovada' || r.status === 'pendente'));
+      }
+    } catch {}
+    return [];
+  });
+
   const handleCreateInviteSubmit = (e: React.FormEvent) => {
     e.preventDefault();
     if (!newVisitorName.trim()) return;
@@ -98,10 +111,10 @@ export const ResidentDashboard: React.FC<ResidentDashboardProps> = ({
 
         <div className="space-y-1.5 z-10">
           <div className="flex items-center gap-2">
-            <span className="text-xs font-bold px-3 py-1 rounded-full bg-[#0a50ff]/20 text-[#55b0ff] border border-[#0a50ff]/40 uppercase tracking-wide">
+            <span className="text-xs font-bold px-3 py-1 rounded-full bg-[#0a50ff]/20 text-[#55b0ff] border border-[#0a50ff]/40 uppercase tracking-wide whitespace-nowrap">
               UNIDADE {session.unitNumber || '101'}
             </span>
-            <span className="text-xs text-slate-300 font-medium">Bloco A • 1º Andar • Solar das Palmeiras</span>
+            <span className="text-[10px] sm:text-xs text-slate-300 font-medium truncate">Bloco A • 1º Andar • Solar das Palmeiras</span>
           </div>
           <h1 className="text-xl sm:text-3xl font-extrabold text-white tracking-tight font-['Red_Hat_Display']">
             Olá, {session.name}
@@ -112,19 +125,19 @@ export const ResidentDashboard: React.FC<ResidentDashboardProps> = ({
         </div>
 
         {/* Atalho WebPhone em destaque Digify */}
-        <div className="flex items-center gap-2 z-10">
+        <div className="flex flex-col sm:flex-row sm:items-center gap-2 z-10 w-full md:w-auto mt-2 md:mt-0">
           <button
             onClick={onOpenWebPhone}
-            className="px-4 py-2.5 rounded-xl bg-[#0a50ff] hover:bg-[#0842cc] text-white text-xs font-bold flex items-center gap-2 shadow-lg shadow-blue-500/25 transition active:scale-95 cursor-pointer"
+            className="w-full md:w-auto px-4 py-3 md:py-2.5 rounded-xl bg-[#0a50ff] hover:bg-[#0842cc] text-white text-sm md:text-xs font-bold flex justify-center items-center gap-2 shadow-lg shadow-blue-500/25 transition active:scale-95 cursor-pointer"
           >
-            <PhoneCall className="w-4 h-4" />
+            <PhoneCall className="w-5 h-5 md:w-4 md:h-4" />
             <span>Abrir WebPhone Ramal {session.unitNumber}</span>
           </button>
         </div>
       </div>
 
       {/* Sub-Navegação do Morador estilo Digify Tabs */}
-      <div className="flex items-center gap-2 border-b border-[#dde5f0] pb-2 overflow-x-auto">
+      <div className="flex items-center gap-2 border-b border-[#dde5f0] pb-2 overflow-x-auto [&::-webkit-scrollbar]:hidden [-ms-overflow-style:none] [scrollbar-width:none]">
         {[
           { id: 'geral', label: 'Visão Geral', count: null },
           { id: 'encomendas', label: 'Encomendas', count: pendingPackages.length },
@@ -242,8 +255,57 @@ export const ResidentDashboard: React.FC<ResidentDashboardProps> = ({
             </div>
           )}
 
+          {/* Reservas Agendadas da Unidade */}
+          {userReservations.length > 0 && (
+            <div className="p-5 rounded-2xl bg-white border border-[#dde5f0] shadow-xs hover:shadow-md transition space-y-3">
+              <div className="flex items-center justify-between">
+                <div className="flex items-center gap-2 text-[#0a50ff] font-bold text-sm">
+                  <Calendar className="w-4 h-4" />
+                  <span>Você tem {userReservations.length} reserva(s) de espaço comum!</span>
+                </div>
+                <button
+                  onClick={() => onSelectTab('reservas')}
+                  className="text-xs text-[#0a50ff] font-bold hover:underline cursor-pointer"
+                >
+                  Gerenciar Espaços
+                </button>
+              </div>
+
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                {userReservations.map((res) => (
+                  <div
+                    key={res.id}
+                    className="p-4 rounded-xl bg-[#f8fafc] border border-[#dde5f0] flex items-center justify-between"
+                  >
+                    <div>
+                      <div className="text-xs font-bold text-[#0d1b35] flex items-center gap-1.5">
+                        <span>{res.amenityId === 'am-1' ? 'Salão de Festas' : res.amenityId === 'am-2' ? 'Churrasqueira VIP' : 'Área Comum'}</span>
+                        <span className={`px-2 py-0.2 rounded-full text-[9px] font-bold uppercase ${
+                          res.status === 'aprovada' 
+                            ? 'bg-emerald-100 text-emerald-700' 
+                            : 'bg-amber-100 text-amber-700'
+                        }`}>
+                          {res.status}
+                        </span>
+                      </div>
+                      <div className="text-xs text-[#5a6a85] mt-0.5 font-mono">
+                        {new Date(res.date + 'T00:00:00').toLocaleDateString('pt-BR')} • {res.startTime} às {res.endTime}
+                      </div>
+                    </div>
+                    <div className="text-right">
+                      <div className="text-[10px] text-[#5a6a85]">Convidados</div>
+                      <div className="text-sm font-bold text-[#0d1b35]">
+                        {res.guestCount}
+                      </div>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+
           {/* Atalhos Rápidos */}
-          <div className="grid grid-cols-2 sm:grid-cols-4 gap-3.5">
+          <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-3.5">
             <button
               onClick={() => setInviteModalOpen(true)}
               className="p-5 rounded-2xl bg-white hover:bg-slate-50/80 border border-[#dde5f0] hover:border-[#0a50ff]/40 text-left transition flex flex-col justify-between h-32 shadow-xs hover:shadow-md cursor-pointer"
@@ -253,7 +315,20 @@ export const ResidentDashboard: React.FC<ResidentDashboardProps> = ({
               </div>
               <div>
                 <div className="text-xs font-bold text-[#0d1b35]">Criar Convite QR</div>
-                <div className="text-[11px] text-[#5a6a85] mt-0.5">Para visitantes e entregas</div>
+                <div className="text-[11px] text-[#5a6a85] mt-0.5">Visitantes e entregas</div>
+              </div>
+            </button>
+
+            <button
+              onClick={() => onSelectTab('reservas')}
+              className="p-5 rounded-2xl bg-white hover:bg-slate-50/80 border border-[#dde5f0] hover:border-[#0a50ff]/40 text-left transition flex flex-col justify-between h-32 shadow-xs hover:shadow-md cursor-pointer"
+            >
+              <div className="w-9 h-9 rounded-xl bg-[#ebf2ff] text-[#0a50ff] flex items-center justify-center">
+                <Calendar className="w-5 h-5" />
+              </div>
+              <div>
+                <div className="text-xs font-bold text-[#0d1b35]">Áreas Comuns</div>
+                <div className="text-[11px] text-[#5a6a85] mt-0.5">Reservar lazer e salão</div>
               </div>
             </button>
 
@@ -285,7 +360,7 @@ export const ResidentDashboard: React.FC<ResidentDashboardProps> = ({
 
             <button
               onClick={onOpenWebPhone}
-              className="p-5 rounded-2xl bg-white hover:bg-slate-50/80 border border-[#dde5f0] hover:border-[#0a50ff]/40 text-left transition flex flex-col justify-between h-32 shadow-xs hover:shadow-md cursor-pointer"
+              className="p-5 rounded-2xl bg-white hover:bg-slate-50/80 border border-[#dde5f0] hover:border-[#0a50ff]/40 text-left transition flex flex-col justify-between h-32 shadow-xs hover:shadow-md cursor-pointer col-span-2 sm:col-span-1"
             >
               <div className="w-9 h-9 rounded-xl bg-[#ebf2ff] text-[#0a50ff] flex items-center justify-center">
                 <PhoneCall className="w-5 h-5" />
@@ -496,64 +571,64 @@ export const ResidentDashboard: React.FC<ResidentDashboardProps> = ({
             </span>
           </div>
 
-          <div className="bg-white border border-[#dde5f0] rounded-2xl overflow-hidden shadow-xs">
-            <div className="overflow-x-auto">
-              <table className="w-full text-left text-xs">
-                <thead className="bg-[#f8fafc] text-[#5a6a85] uppercase text-[10px] border-b border-[#dde5f0] font-bold">
-                  <tr>
-                    <th className="py-3 px-4">Data/Hora</th>
-                    <th className="py-3 px-4">Origem</th>
-                    <th className="py-3 px-4">Finalidade</th>
-                    <th className="py-3 px-4">Duração</th>
-                    <th className="py-3 px-4">Status</th>
-                    <th className="py-3 px-4">Portão Aberto</th>
-                    <th className="py-3 px-4 text-right">Gravação</th>
-                  </tr>
-                </thead>
-                <tbody className="divide-y divide-[#dde5f0]">
-                  {callLogs.map((log) => (
-                    <tr key={log.id} className="hover:bg-[#f8fafc] transition">
-                      <td className="py-3 px-4 text-[#5a6a85] font-mono">
-                        {new Date(log.startedAt).toLocaleString('pt-BR')}
-                      </td>
-                      <td className="py-3 px-4 text-[#0a50ff] font-semibold">
-                        {log.origin === 'xpe_3115_ip' ? 'Totem XPE-3115-IP' : 'QR Virtual Intercom'}
-                      </td>
-                      <td className="py-3 px-4 capitalize text-[#0d1b35] font-medium">{log.purpose}</td>
-                      <td className="py-3 px-4 text-[#5a6a85] font-mono">{log.durationSeconds}s</td>
-                      <td className="py-3 px-4">
-                        <span
-                          className={`px-2.5 py-0.5 rounded-full text-[10px] font-bold uppercase ${
-                            log.status === 'atendida'
-                              ? 'bg-emerald-50 text-emerald-700 border border-emerald-200'
-                              : 'bg-rose-50 text-rose-700 border border-rose-200'
-                          }`}
-                        >
-                          {log.status}
-                        </span>
-                      </td>
-                      <td className="py-3 px-4 text-amber-700 font-semibold">{log.gateOpened || 'Nenhum'}</td>
-                      <td className="py-3 px-4 text-right">
-                        {log.hasRecording && onOpenAuditModal ? (
-                          <button
-                            onClick={() => onOpenAuditModal(log.recordingId || log.id)}
-                            className="text-[11px] text-[#0a50ff] bg-[#ebf2ff] hover:bg-[#dde8ff] px-2.5 py-1 rounded-lg border border-[#dde8ff] font-semibold transition inline-flex items-center gap-1"
-                            title="Consultar integridade criptográfica da gravação"
-                          >
-                            <ShieldCheck className="w-3.5 h-3.5 text-[#0a50ff]" />
-                            <span>Gravação SHA-256</span>
-                          </button>
-                        ) : (
-                          <span className="text-[10px] text-slate-400 bg-slate-100 px-2.5 py-1 rounded-full">
-                            Sem gravação
-                          </span>
-                        )}
-                      </td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
+          <div className="space-y-3">
+            {callLogs.map((log) => (
+              <div key={log.id} className="p-4 bg-white border border-[#dde5f0] rounded-2xl shadow-xs hover:shadow-md transition flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+                <div className="space-y-2 flex-1">
+                  <div className="flex items-center gap-2">
+                    <span className="text-[#0a50ff] font-bold text-sm">
+                      {log.origin === 'xpe_3115_ip' ? 'Totem XPE-3115-IP' : 'QR Virtual Intercom'}
+                    </span>
+                    <span className="text-[#5a6a85] text-xs font-mono">• {new Date(log.startedAt).toLocaleString('pt-BR')}</span>
+                  </div>
+                  <div className="flex flex-wrap items-center gap-2 text-xs">
+                    <span className="bg-[#f8fafc] px-2 py-1 rounded-lg border border-[#dde5f0] font-medium text-[#0d1b35] capitalize">
+                      {log.purpose}
+                    </span>
+                    <span className="text-[#5a6a85] font-mono">Duração: {log.durationSeconds}s</span>
+                    <span className="text-amber-700 font-semibold flex items-center gap-1">
+                      <Unlock className="w-3.5 h-3.5" />
+                      {log.gateOpened || 'Nenhum portão aberto'}
+                    </span>
+                  </div>
+                </div>
+
+                <div className="flex items-center sm:flex-col sm:items-end justify-between gap-3 pt-3 sm:pt-0 border-t border-[#dde5f0] sm:border-0">
+                  <span
+                    className={`px-3 py-1 rounded-full text-[10px] font-bold uppercase tracking-wider ${
+                      log.status === 'atendida'
+                        ? 'bg-emerald-50 text-emerald-700 border border-emerald-200'
+                        : 'bg-rose-50 text-rose-700 border border-rose-200'
+                    }`}
+                  >
+                    {log.status}
+                  </span>
+                  
+                  <div>
+                    {log.hasRecording && onOpenAuditModal ? (
+                      <button
+                        onClick={() => onOpenAuditModal(log.recordingId || log.id)}
+                        className="text-[11px] text-[#0a50ff] bg-[#ebf2ff] hover:bg-[#dde8ff] px-3 py-1.5 rounded-xl border border-[#dde8ff] font-semibold transition inline-flex items-center gap-1.5 shadow-xs"
+                        title="Consultar integridade criptográfica da gravação"
+                      >
+                        <ShieldCheck className="w-3.5 h-3.5" />
+                        <span>Gravação SHA-256</span>
+                      </button>
+                    ) : (
+                      <span className="text-[10px] text-slate-400 bg-slate-100 px-3 py-1.5 rounded-xl border border-slate-200">
+                        Sem gravação
+                      </span>
+                    )}
+                  </div>
+                </div>
+              </div>
+            ))}
+            
+            {callLogs.length === 0 && (
+              <div className="p-8 text-center bg-white border border-[#dde5f0] rounded-2xl text-[#5a6a85]">
+                Nenhum registro de atendimento encontrado.
+              </div>
+            )}
           </div>
         </div>
       )}

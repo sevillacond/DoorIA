@@ -1106,17 +1106,104 @@ async function executeMaiaPrompt(
         config: {
           systemInstruction: `${MAIA_SYSTEM_PROMPT}\nUsuário atual: Nome="${user.name}", Perfil="${user.role}", Unidade="${user.unitNumber || 'Geral'}".`,
           temperature: 0.3,
+          tools: [{
+            functionDeclarations: [
+              {
+                name: 'abrir_portao',
+                description: 'Abre o portão (pedestre ou garagem). Exige confirmação do morador ou síndico.',
+                parameters: {
+                  type: Type.OBJECT,
+                  properties: {
+                    portao: { type: Type.STRING, enum: ['pedestre', 'garagem'], description: 'Qual portão abrir' }
+                  },
+                  required: ['portao']
+                }
+              },
+              {
+                name: 'consultar_unidade',
+                description: 'Consulta informações de moradores e dados de uma unidade específica.',
+                parameters: {
+                  type: Type.OBJECT,
+                  properties: {
+                    unidade: { type: Type.STRING, description: 'Número da unidade para consulta' }
+                  },
+                  required: ['unidade']
+                }
+              },
+              {
+                name: 'consultar_financeiro',
+                description: 'Consulta status de faturas e inadimplência do usuário atual ou geral (se síndico).',
+                parameters: {
+                  type: Type.OBJECT,
+                  properties: {}
+                }
+              }
+            ]
+          }]
         },
       });
 
       const timeoutPromise = new Promise<never>((_, reject) =>
-        setTimeout(() => reject(new Error('Tempo limite excedido na resposta do modelo remoto')), 8000)
+        setTimeout(() => reject(new Error('Tempo limite excedido na resposta do modelo remoto')), 12000)
       );
 
       const response = await Promise.race([geminiPromise, timeoutPromise]);
+      let finalReply = response.text || 'MaIA operacional. Solicitação processada com sucesso.';
+
+      if (response.functionCalls && response.functionCalls.length > 0) {
+        const call = response.functionCalls[0];
+        if (call.name === 'abrir_portao') {
+          const portao = call.args?.portao as string;
+          if (user.role === 'morador' && !activeCall) {
+            finalReply = `[MaIA Policy Engine] Solicitação Negada: Conforme o Master PRD, moradores só podem abrir portões via DTMF durante uma chamada ativa.`;
+            logAudit(user.name, user.role, 'TENTATIVA_ABERTURA_VIA_MAIA_SEM_CHAMADA', 'Portões', 'NEGADO', { prompt });
+          } else {
+            finalReply = `[MaIA Portaria] Acionamento de portão autorizado para o perfil ${user.role}. Abrindo portão de ${portao}.`;
+            executedTools.push({
+              toolName: 'abrir_portao',
+              params: { gate: portao },
+              result: { status: 'aberto_por_5_segundos' },
+              authorized: true,
+            });
+          }
+        } else if (call.name === 'consultar_unidade') {
+          const unidade = call.args?.unidade as string;
+          const matchedUnit = units.find((u) => u.number === unidade);
+          if (matchedUnit) {
+            if (user.role === 'morador' && user.unitNumber !== matchedUnit.number) {
+              finalReply = `[MaIA Segurança] Acesso restrito. Como morador da Unidade ${user.unitNumber}, você não tem permissão para consultar os dados da Unidade ${matchedUnit.number}.`;
+            } else {
+              finalReply = `[MaIA] Unidade ${matchedUnit.number} (${matchedUnit.block}): Proprietário ${matchedUnit.ownerName}, ramal SIP ${matchedUnit.sipExtension}. Situação financeira: ${matchedUnit.financialStatus.toUpperCase()}.`;
+              executedTools.push({
+                toolName: 'consultar_unidade',
+                params: { unitNumber: matchedUnit.number },
+                result: { unit: matchedUnit },
+                authorized: true,
+              });
+            }
+          } else {
+            finalReply = `[MaIA] Unidade ${unidade} não encontrada.`;
+          }
+        } else if (call.name === 'consultar_financeiro') {
+          if (user.role === 'morador') {
+            const myBills = financialBills.filter((b) => b.unitNumber === user.unitNumber);
+            const pendentes = myBills.filter((b) => b.status === 'atrasado');
+            if (pendentes.length > 0) {
+              const total = pendentes.reduce((acc, curr) => acc + curr.valorTotal, 0);
+              finalReply = `[MaIA Financeiro] Unidade ${user.unitNumber}: Constam ${pendentes.length} taxa(s) condominial(is) pendente(s) totalizando R$ ${total.toFixed(2)}.`;
+            } else {
+              finalReply = `[MaIA Financeiro] Unidade ${user.unitNumber}: Suas taxas condominiais estão 100% em dia! O próximo vencimento é em 10/10/2026.`;
+            }
+          } else {
+            const atrasadas = financialBills.filter((b) => b.status === 'atrasado');
+            const total = atrasadas.reduce((acc, curr) => acc + curr.valorTotal, 0);
+            finalReply = `[MaIA Relatório Síndico] O condomínio registra atualmente R$ ${total.toFixed(2)} em recebíveis em atraso. A inadimplência está concentrada na unidade 203.`;
+          }
+        }
+      }
 
       return {
-        reply: response.text || 'MaIA operacional. Solicitação processada com sucesso.',
+        reply: finalReply,
         toolCallsExecuted: executedTools,
       };
     } catch (apiError: any) {

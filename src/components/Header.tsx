@@ -26,7 +26,7 @@ interface HeaderProps {
   onOpenMaia: () => void;
   onOpenNotifications?: () => void;
   activeCallCount: number;
-  currentTab: 'inicio' | 'cameras' | 'financeiro' | 'engenharia' | 'portaria' | 'moradores' | 'dispositivos' | 'condominio';
+  currentTab: 'inicio' | 'cameras' | 'financeiro' | 'engenharia' | 'portaria' | 'moradores' | 'dispositivos' | 'condominio' | 'reservas';
 }
 
 export const Header: React.FC<HeaderProps> = ({
@@ -59,6 +59,8 @@ export const Header: React.FC<HeaderProps> = ({
         return 'Gestão de Câmeras, Totens & Relés';
       case 'condominio':
         return 'Configurações & Dados do Condomínio';
+      case 'reservas':
+        return 'Gestão de Áreas Comuns & Reservas';
       default:
         return 'Portaria Autônoma';
     }

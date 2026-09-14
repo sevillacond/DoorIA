@@ -21,6 +21,7 @@ import { QrVirtualIntercomModal } from './components/QrVirtualIntercomModal.tsx'
 import { ResidentDashboard } from './components/ResidentDashboard.tsx';
 import { CamerasGrid } from './components/CamerasGrid.tsx';
 import { FinancialModule } from './components/FinancialModule.tsx';
+import { AmenitiesModule } from './components/AmenitiesModule.tsx';
 import { AdminTopologyView } from './components/AdminTopologyView.tsx';
 import { UnitManagementModule } from './components/UnitManagementModule.tsx';
 import { DeviceManagementModule } from './components/DeviceManagementModule.tsx';
@@ -64,7 +65,7 @@ export default function App() {
     mfaEnabled: true,
   });
 
-  const [activeTab, setActiveTab] = useState<'inicio' | 'portaria' | 'cameras' | 'financeiro' | 'engenharia' | 'dispositivos' | 'moradores' | 'condominio'>('inicio');
+  const [activeTab, setActiveTab] = useState<'inicio' | 'portaria' | 'cameras' | 'financeiro' | 'engenharia' | 'dispositivos' | 'moradores' | 'condominio' | 'reservas'>('inicio');
 
   // Estados dos Módulos do Sistema
   const [units, setUnits] = useState<Unit[]>([]);
@@ -409,10 +410,10 @@ export default function App() {
             />
           )}
 
-          {activeTab === 'cameras' && session.role !== 'morador' && (
+          {activeTab === 'cameras' && (
             <CamerasGrid
               cameras={cameras}
-              onOpenDiscovery={() => setActiveTab('dispositivos')}
+              onOpenDiscovery={session.role !== 'morador' ? () => setActiveTab('dispositivos') : undefined}
             />
           )}
 
@@ -421,6 +422,12 @@ export default function App() {
               bills={bills}
               summary={financialSummary}
               agreements={agreements}
+              session={session}
+            />
+          )}
+
+          {activeTab === 'reservas' && (
+            <AmenitiesModule
               session={session}
             />
           )}

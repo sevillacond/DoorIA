@@ -175,7 +175,7 @@ class AudioSystem {
   }
 
   /**
-   * URA MaIA Text-To-Speech (Voz Humana em Português Brasileiro)
+   * URA MaIA Text-To-Speech (Voz Humana e Feminina em Português Brasileiro)
    */
   public speakUra(text: string): void {
     if (typeof window === 'undefined' || !window.speechSynthesis) return;
@@ -184,14 +184,29 @@ class AudioSystem {
 
     const utterance = new SpeechSynthesisUtterance(text);
     utterance.lang = 'pt-BR';
-    utterance.rate = 1.05; // Cadência profissional de URA de telecom
-    utterance.pitch = 1.0;
+    utterance.rate = 1.0; // Cadência mais natural e humanizada
+    utterance.pitch = 1.15; // Levemente mais agudo para um tom mais suave/feminino
 
-    // Tenta encontrar uma voz em pt-BR natural se disponível
+    // Tenta encontrar uma voz em pt-BR natural, priorizando vozes femininas conhecidas
     const voices = window.speechSynthesis.getVoices();
-    const ptVoice = voices.find((v) => v.lang.startsWith('pt') || v.lang.includes('BR'));
-    if (ptVoice) {
-      utterance.voice = ptVoice;
+    const ptVoices = voices.filter((v) => v.lang.startsWith('pt') || v.lang.includes('BR'));
+    
+    const femaleVoice = ptVoices.find((v) => 
+      v.name.includes('Google') || 
+      v.name.includes('Francisca') || 
+      v.name.includes('Maria') || 
+      v.name.includes('Luciana') || 
+      v.name.includes('Vitoria') ||
+      v.name.includes('Raquel') ||
+      v.name.includes('Heloisa') ||
+      v.name.includes('Leticia') ||
+      v.name.includes('Yara') ||
+      v.name.includes('Female') ||
+      v.name.includes('Feminina')
+    ) || ptVoices[0];
+
+    if (femaleVoice) {
+      utterance.voice = femaleVoice;
     }
 
     window.speechSynthesis.speak(utterance);

@@ -469,3 +469,34 @@ export interface CallRecordingAuditData {
     observations: string;
   };
 }
+
+// AMENITIES E RESERVAS
+export interface Amenity {
+  id: string;
+  name: string;
+  description: string;
+  capacity: number;
+  openTime: string; // HH:mm
+  closeTime: string; // HH:mm
+  requiresFee: boolean;
+  feeAmount?: number;
+  requiresApproval: boolean;
+  status: 'disponivel' | 'manutencao' | 'interditado';
+  maxDurationHours: number;
+  imageUrl?: string;
+}
+
+export interface Reservation {
+  id: string;
+  amenityId: string;
+  unitId: string;
+  unitNumber: string;
+  residentName: string;
+  date: string; // YYYY-MM-DD
+  startTime: string; // HH:mm
+  endTime: string; // HH:mm
+  status: 'pendente' | 'aprovada' | 'rejeitada' | 'cancelada' | 'concluida';
+  guestCount: number;
+  notes?: string;
+  feeAddedToBill?: boolean;
+}

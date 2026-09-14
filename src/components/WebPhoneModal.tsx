@@ -72,6 +72,21 @@ export const WebPhoneModal: React.FC<WebPhoneModalProps> = ({
     };
   }, [activeCall]);
 
+  useEffect(() => {
+    let interval: NodeJS.Timeout | null = null;
+    if (gateCountdown && gateCountdown.seconds > 0) {
+      interval = setInterval(() => {
+        setGateCountdown((prev) => {
+          if (!prev || prev.seconds <= 1) return null;
+          return { ...prev, seconds: prev.seconds - 1 };
+        });
+      }, 1000);
+    }
+    return () => {
+      if (interval) clearInterval(interval);
+    };
+  }, [gateCountdown?.gate]); // Only trigger when a new gate sequence starts
+
   if (!isOpen) {
     audioSystem.stopRingTone();
     return null;
@@ -109,22 +124,6 @@ export const WebPhoneModal: React.FC<WebPhoneModalProps> = ({
     audioSystem.playHangupTone();
     onHangupCall();
   };
-
-  // Efeito do Cronômetro Regressivo do Portão
-  useEffect(() => {
-    let interval: NodeJS.Timeout | null = null;
-    if (gateCountdown && gateCountdown.seconds > 0) {
-      interval = setInterval(() => {
-        setGateCountdown((prev) => {
-          if (!prev || prev.seconds <= 1) return null;
-          return { ...prev, seconds: prev.seconds - 1 };
-        });
-      }, 1000);
-    }
-    return () => {
-      if (interval) clearInterval(interval);
-    };
-  }, [gateCountdown?.gate]); // Only trigger when a new gate sequence starts
 
   const handleDtmfWrapper = (dtmf: '*07' | '*08') => {
     audioSystem.playDtmf('*');
