@@ -18,6 +18,7 @@ import {
 import type { UserSession, SystemStatus } from '../types.ts';
 import { ThemeToggle } from './ThemeToggle.tsx';
 import { useAuth } from '../context/AuthContext.tsx';
+import { PWAInstallButton } from './PWAInstallButton.tsx';
 
 interface HeaderProps {
   session: UserSession;
@@ -128,6 +129,9 @@ export const Header: React.FC<HeaderProps> = ({
 
           {/* Atalhos Rápidos da Barra Superior */}
           <div className="flex items-center gap-2">
+            {/* Instalação PWA */}
+            <PWAInstallButton />
+
             {/* Botão de Pânico (SOS) */}
             <button
               onClick={() => {

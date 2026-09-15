@@ -58,7 +58,7 @@ export const XpeIntercomSimulator: React.FC<XpeIntercomSimulatorProps> = ({
     setKeypadInput('');
     if (!voiceMuted) {
       audioSystem.speakUra(
-        'Olá! Bem-vindo à Portaria Inteligente do Condomínio Solar das Palmeiras. Por favor, selecione a sua unidade de destino.'
+        'Olá, seja bem-vindo ao Solar das Palmeiras. Por favor, digite no teclado o número do apartamento que deseja visitar.'
       );
     }
   };
@@ -69,7 +69,7 @@ export const XpeIntercomSimulator: React.FC<XpeIntercomSimulatorProps> = ({
     setStep('classificar_finalidade');
     if (!voiceMuted) {
       audioSystem.speakUra(
-        `Qual a finalidade da visita ao Apartamento ${unitNum}? Escolha entre entrega, visitante ou prestador.`
+        `Entendi. Qual seria o motivo da sua visita ao apartamento ${unitNum}? Você é um visitante, entregador ou prestador de serviço?`
       );
     }
   };
@@ -80,7 +80,7 @@ export const XpeIntercomSimulator: React.FC<XpeIntercomSimulatorProps> = ({
     setStep('discando');
     if (!voiceMuted) {
       audioSystem.speakUra(
-        `Aguarde um instante. O sistema está contatando os moradores do Apartamento ${selectedUnit}.`
+        `Tudo certo. Por favor, aguarde só um instante enquanto eu chamo o morador do apartamento ${selectedUnit}.`
       );
     }
     onStartCall(selectedUnit, purpose);

@@ -1118,13 +1118,14 @@ if (process.env.GEMINI_API_KEY) {
 }
 
 // Ferramentas da MaIA autorizadas
-const MAIA_SYSTEM_PROMPT = `Você é a MaIA (Módulo de Automação e Inteligência Autônoma), a inteligência operacional do Enlace-DoorIA no condomínio piloto em São Luís - MA (12 unidades).
+const MAIA_SYSTEM_PROMPT = `Você é a MaIA, a Concierge Digital e Inteligência Operacional do Enlace-DoorIA no condomínio piloto em São Luís - MA.
 Diretrizes Absolutas:
-1. Você opera sob estrito RBAC/Policy Engine. Você NUNCA executa comandos SQL diretamente nem comanda relés sem passar pela validação de permissão.
-2. Seu tom é profissional, calmo, preciso, técnico e em português brasileiro.
-3. Se o usuário for Morador, forneça informações APENAS sobre a unidade dele.
-4. Para abrir portões, exija sempre confirmação explícita e verifique se há chamada ativa ou perfil de síndico/operador.
-5. Você compreende os protocolos: Asterisk PJSIP, Intelbras XPE-3115-IP, DTMF *07 (pedestre) e *08 (garagem), Zigbee NovaDigital HNZ-CB3, câmeras ONVIF Profile T/S.`;
+1. Seu tom deve ser EXTREMAMENTE HUMANIZADO, empático, natural, acolhedor e educado (estilo concierge de alto padrão), em português brasileiro. Evite parecer um robô ou um sistema de software frio.
+2. Em diálogos curtos (ex: pelo interfone), seja concisa e direta, como uma pessoa real respondendo a uma visita. Exemplo: "Olá! Por favor, aguarde um instante enquanto eu chamo o morador." ao invés de "[Sistema] Processando solicitação...".
+3. Você opera sob estrito RBAC/Policy Engine, mas deve comunicar as regras de forma gentil.
+4. Se o usuário for Morador, forneça informações APENAS sobre a unidade dele, com cortesia.
+5. Para abrir portões, exija sempre confirmação explícita de forma segura mas natural, verificando se há chamada ativa ou perfil de síndico/operador.
+6. Você compreende tecnicamente: Asterisk PJSIP, Intelbras XPE-3115-IP, DTMF *07 e *08, Zigbee HNZ-CB3, ONVIF; mas nunca despeje essa sopa de letrinhas no usuário final (moradores e visitantes), traduza para termos humanos.`;
 
 async function executeMaiaPrompt(
   prompt: string,
@@ -1133,7 +1134,7 @@ async function executeMaiaPrompt(
   const executedTools: Array<{ toolName: string; params: any; result: any; authorized: boolean }> = [];
 
   // Se Gemini estiver disponível, utilizamos geração com function calling estruturado
-  if (aiClient && process.env.GEMINI_API_KEY) {
+  if (aiClient) {
     try {
       const geminiPromise = aiClient.models.generateContent({
         model: 'gemini-3.8-flash',
@@ -1254,9 +1255,9 @@ async function executeMaiaPrompt(
     const matchedUnit = units.find((u) => lower.includes(u.number));
     if (matchedUnit) {
       if (user.role === 'morador' && user.unitNumber !== matchedUnit.number) {
-        fallbackReply = `[MaIA Segurança] Acesso restrito. Como morador da Unidade ${user.unitNumber}, você não tem permissão para consultar os dados da Unidade ${matchedUnit.number}.`;
+        fallbackReply = `Desculpe, por questões de segurança e privacidade, eu só posso informar os dados do seu próprio apartamento (Unidade ${user.unitNumber}). Posso ajudar com mais alguma coisa?`;
       } else {
-        fallbackReply = `[MaIA Local] Unidade ${matchedUnit.number} (${matchedUnit.block}): Proprietário ${matchedUnit.ownerName}, ramal SIP ${matchedUnit.sipExtension}. Situação financeira: ${matchedUnit.financialStatus.toUpperCase()}.`;
+        fallbackReply = `Claro! A Unidade ${matchedUnit.number} pertence a ${matchedUnit.ownerName}. O ramal do apartamento é o ${matchedUnit.sipExtension}. A situação financeira está ${matchedUnit.financialStatus.toUpperCase()}.`;
         executedTools.push({
           toolName: 'consultar_unidade',
           params: { unitNumber: matchedUnit.number },
@@ -1265,7 +1266,7 @@ async function executeMaiaPrompt(
         });
       }
     } else {
-      fallbackReply = `[MaIA Local] O Condomínio Solar das Palmeiras possui 12 unidades distribuídas no Bloco A (101 a 104, 201 a 204, 301 a 304). Qual unidade deseja consultar?`;
+      fallbackReply = `Aqui no condomínio temos 12 apartamentos distribuídos no Bloco A. Você gostaria de falar com qual unidade específica?`;
     }
   } else if (lower.includes('inadimpl') || lower.includes('boleto') || lower.includes('financeiro') || lower.includes('contas')) {
     if (user.role === 'morador') {
@@ -1273,21 +1274,21 @@ async function executeMaiaPrompt(
       const pendentes = myBills.filter((b) => b.status === 'atrasado');
       if (pendentes.length > 0) {
         const total = pendentes.reduce((acc, curr) => acc + curr.valorTotal, 0);
-        fallbackReply = `[MaIA Financeiro] Unidade ${user.unitNumber}: Constam ${pendentes.length} taxa(s) condominial(is) pendente(s) totalizando R$ ${total.toFixed(2)} (já calculado com multa de 2% e juros de 1% a.m.). Deseja simular um acordo de parcelamento?`;
+        fallbackReply = `Verifiquei aqui que constam ${pendentes.length} taxa(s) pendente(s) para o seu apartamento, totalizando R$ ${total.toFixed(2)} já com as devidas correções. Você gostaria de simular um acordo de parcelamento amigável?`;
       } else {
-        fallbackReply = `[MaIA Financeiro] Unidade ${user.unitNumber}: Suas taxas condominiais estão 100% em dia! O próximo vencimento é em 10/10/2026.`;
+        fallbackReply = `Boas notícias! Suas taxas condominiais estão 100% em dia. O seu próximo vencimento será apenas no dia 10.`;
       }
     } else {
       const atrasadas = financialBills.filter((b) => b.status === 'atrasado');
       const total = atrasadas.reduce((acc, curr) => acc + curr.valorTotal, 0);
-      fallbackReply = `[MaIA Relatório Síndico] O condomínio registra atualmente R$ ${total.toFixed(2)} em recebíveis em atraso, concentrados principalmente na Unidade 203. A Unidade 302 mantém um acordo de parcelamento ativo e em dia.`;
+      fallbackReply = `Como síndico, informo que temos atualmente R$ ${total.toFixed(2)} em recebíveis em atraso, a maior parte concentrada na Unidade 203. Mas a Unidade 302 mantém o acordo de parcelamento ativo e certinho.`;
     }
   } else if (lower.includes('abrir') || lower.includes('portão') || lower.includes('garagem') || lower.includes('pedestre')) {
     if (user.role === 'morador' && !activeCall) {
-      fallbackReply = `[MaIA Policy Engine] Solicitação Negada: Conforme o Master PRD (Regra de Ouro #4 e #11), moradores só podem abrir portões via DTMF (*07/*08) ou WebPhone durante uma sessão de chamada ativa de atendimento.`;
+      fallbackReply = `Entendo que você precise abrir o portão, mas por normas de segurança do condomínio, moradores só podem liberar o acesso enquanto estiverem em uma chamada ativa com o interfone. Por favor, atenda à chamada no painel para realizar a abertura.`;
       logAudit(user.name, user.role, 'TENTATIVA_ABERTURA_VIA_MAIA_SEM_CHAMADA', 'Portões', 'NEGADO', { prompt });
     } else {
-      fallbackReply = `[MaIA Portaria] Acionamento de portão autorizado para o perfil ${user.role}. Comando DTMF *07 (Pedestre) ou *08 (Garagem) validado com sucesso.`;
+      fallbackReply = `Tudo certo! Confirmei sua permissão e o portão está abrindo agora mesmo. Tenha um excelente dia!`;
       executedTools.push({
         toolName: 'abrir_portao',
         params: { gate: lower.includes('garagem') ? 'garagem' : 'pedestre' },
@@ -1296,11 +1297,11 @@ async function executeMaiaPrompt(
       });
     }
   } else if (lower.includes('camera') || lower.includes('câmera') || lower.includes('xpe')) {
-    fallbackReply = `[MaIA Monitoramento] Todas as 4 câmeras IP ONVIF (Portaria XPE, Garagem, Hall e Espaço Gourmet) estão operando normalmente na LAN local com codec H.264 e perfil Profile T/S.`;
+    fallbackReply = `Eu acabei de checar e as quatro câmeras de segurança (Portaria, Garagem, Hall e Espaço Gourmet) estão funcionando perfeitamente em alta definição.`;
   } else if (lower.includes('asterisk') || lower.includes('status') || lower.includes('rede')) {
-    fallbackReply = `[MaIA Infraestrutura] Núcleo Asterisk 20.8 LTS operacional na LAN (192.168.1.100) com PJSIP e WebRTC ativos. Totem Intelbras XPE-3115-IP e Gateway NovaDigital Zigbee 3.0 Ethernet 100% online em modo Local-First.`;
+    fallbackReply = `Nosso sistema interno está 100% online. A central de interfones e o controle dos portões estão operando localmente com total segurança.`;
   } else {
-    fallbackReply = `[MaIA Autônoma] Olá, ${user.name}. Sou a MaIA, inteligência operacional do Enlace-DoorIA. Posso auxiliar no atendimento do XPE, consulta de visitantes, encomendas, histórico de portaria, status dos portões e conferência de boletos e taxas condominiais. Como posso ajudar?`;
+    fallbackReply = `Olá, ${user.name}! Tudo bem? Sou a MaIA, sua concierge digital. Como posso facilitar o seu dia hoje? Posso ajudar com a portaria, avisar sobre encomendas ou verificar informações do condomínio.`;
   }
 
   return {
@@ -1465,9 +1466,35 @@ async function startServer() {
         ...condominiumConfig.technicalSettings,
         ...(updates.technicalSettings || {}),
       },
+      cloudIntegration: {
+        ...condominiumConfig.cloudIntegration,
+        ...(updates.cloudIntegration || {}),
+      },
       updatedAt: new Date().toISOString(),
       updatedBy: `${currentSession.name} (${currentSession.role})`,
     };
+
+    // Atualiza instâncias dinâmicas baseadas na configuração
+    if (updates.cloudIntegration?.geminiApiKey) {
+      try {
+        const { GoogleGenAI } = require('@google/genai');
+        const configOptions: any = { apiKey: updates.cloudIntegration.geminiApiKey };
+        if (updates.cloudIntegration.aiGatewayUrl) {
+          // Normaliza a URL do gateway caso o usuário esqueça o protocolo
+          let baseUrl = updates.cloudIntegration.aiGatewayUrl;
+          if (!baseUrl.startsWith('http://') && !baseUrl.startsWith('https://')) {
+            baseUrl = `https://${baseUrl}`;
+          }
+          configOptions.baseUrl = baseUrl;
+        }
+        aiClient = new GoogleGenAI(configOptions);
+        condominiumConfig.cloudIntegration = condominiumConfig.cloudIntegration || {};
+        condominiumConfig.cloudIntegration.geminiStatus = 'active';
+      } catch (err) {
+        condominiumConfig.cloudIntegration = condominiumConfig.cloudIntegration || {};
+        condominiumConfig.cloudIntegration.geminiStatus = 'invalid';
+      }
+    }
 
     logAudit(
       currentSession.name,

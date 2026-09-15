@@ -370,6 +370,11 @@ export interface CondominiumConfig {
     allowSelfSignedCerts?: boolean; // Accept invalid SSL for local networks
     localIpRange?: string; // E.g. 192.168.1.0/24
   };
+  cloudIntegration?: {
+    geminiApiKey?: string;
+    aiGatewayUrl?: string; // e.g. 9router.enlace.slz.br
+    geminiStatus?: 'not_configured' | 'active' | 'invalid';
+  };
   updatedAt?: string;
   updatedBy?: string;
 }

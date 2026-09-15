@@ -36,6 +36,7 @@ import { CondominiumSettingsModule } from './components/CondominiumSettingsModul
 import { HelpModule } from './components/HelpModule.tsx';
 import { LoginScreen } from './components/LoginScreen.tsx';
 import { useAuth } from './context/AuthContext.tsx';
+import { usePushNotifications } from './hooks/usePushNotifications.ts';
 import type {
   UserSession,
   Unit,
@@ -127,6 +128,10 @@ export default function App() {
   const [feedbackMessage, setFeedbackMessage] = useState<string | null>(null);
   const [isAuditModalOpen, setIsAuditModalOpen] = useState(false);
   const [selectedRecordingId, setSelectedRecordingId] = useState<string | null>(null);
+  
+  // Notificações Push
+  const { triggerLocalNotification, permission } = usePushNotifications();
+  const [notifiedCallIds, setNotifiedCallIds] = useState<Set<string>>(new Set());
 
   const handleOpenAuditModal = (recordingId: string) => {
     setSelectedRecordingId(recordingId);
@@ -194,8 +199,20 @@ export default function App() {
       const incoming = activeCallRes?.activeCall;
       setActiveCall(incoming);
       // Se houver chamada tocando para a nossa unidade ou síndico, abre o WebPhone automaticamente
-      if (incoming && incoming.state === 'chamando' && !isWebPhoneOpen) {
-        setIsWebPhoneOpen(true);
+      if (incoming && incoming.state === 'chamando') {
+        if (!isWebPhoneOpen) {
+          setIsWebPhoneOpen(true);
+        }
+        
+        // Dispara a Notificação Push se ainda não foi notificada nesta chamada
+        if (permission === 'granted' && !notifiedCallIds.has(incoming.id)) {
+          triggerLocalNotification(
+            '🔔 Chamada de Interfone (XPE)',
+            `Visitante na ${incoming.origin} aguardando atendimento.`,
+            '/icon.svg'
+          );
+          setNotifiedCallIds((prev) => new Set(prev).add(incoming.id));
+        }
       }
     } catch (err) {
       console.warn('Erro ao atualizar dados:', err);
@@ -315,11 +332,18 @@ export default function App() {
 
   // Encerrar Chamada
   const handleHangupCall = async () => {
+    const wasRinging = activeCall?.state === 'chamando';
     try {
       await fetch('/api/v1/calls/hangup', { method: 'POST' });
       setActiveCall(null);
-      setFeedbackMessage('Atendimento finalizado. Gravação protegida e registrada na auditoria.');
-      setTimeout(() => setFeedbackMessage(null), 4000);
+      
+      if (wasRinging) {
+        setFeedbackMessage('Chamada recusada. URA da MaIA assumiu o atendimento do visitante no Totem.');
+      } else {
+        setFeedbackMessage('Atendimento finalizado. Gravação protegida e registrada na auditoria.');
+      }
+      
+      setTimeout(() => setFeedbackMessage(null), 5000);
       refreshAllData();
     } catch (err) {
       console.error(err);
@@ -520,18 +544,6 @@ export default function App() {
             />
           )}
         </main>
-
-        {/* RODAPÉ DO SISTEMA */}
-        <footer className="bg-slate-950 border-t border-slate-800 py-4 text-center text-xs text-slate-500 font-mono">
-          <div className="max-w-7xl mx-auto px-4 flex flex-col sm:flex-row items-center justify-between gap-2">
-            <div>
-              Enlace-DoorIA v1.0 • Piloto São Luís - MA • Asterisk 20.8 LTS Pure • XPE-3115-IP • NovaDigital Zigbee 3.0
-            </div>
-            <div className="text-cyan-400">
-              Regra Principal: Operação Local-First Ativa (Sem Nuvem Obrigatória)
-            </div>
-          </div>
-        </footer>
       </div>
 
       {/* MODAIS DO SISTEMA */}

@@ -22,6 +22,7 @@ import {
   Car,
   Home,
   Database,
+  Sparkles,
 } from 'lucide-react';
 import type { UserSession, CondominiumConfig } from '../types.ts';
 
@@ -1175,7 +1176,47 @@ export const CondominiumSettingsModule: React.FC<CondominiumSettingsModuleProps>
                 </div>
               </div>
 
-              <div className="p-4 rounded-xl bg-[#ebf2ff] dark:bg-[#0a2352] border border-[#dde8ff] dark:border-[#193b7a] flex items-center justify-between flex-wrap gap-3">
+              {/* Inteligência Artificial & Cloud Integration */}
+              <div className="mt-6 border-t border-[#dde5f0] dark:border-[#1c2e4e] pt-5">
+                <div className="flex items-center gap-2 mb-4">
+                  <Sparkles className="w-4 h-4 text-purple-500" />
+                  <h4 className="text-xs font-bold text-[#0d1b35] dark:text-slate-100 uppercase tracking-wider">
+                    Inteligência Artificial (MaIA) & Integração Nuvem
+                  </h4>
+                </div>
+                
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                  <div className="space-y-1.5">
+                    <label className="text-xs font-bold text-[#0d1b35] dark:text-slate-200">Gateway de IA (Opcional)</label>
+                    <div className="flex items-center gap-2">
+                      <input
+                        type="text"
+                        value={formData.cloudIntegration?.aiGatewayUrl || ''}
+                        onChange={(e) => handleUpdate('cloudIntegration', 'aiGatewayUrl', e.target.value)}
+                        className="flex-1 px-3.5 py-2 text-xs rounded-xl border border-[#dde5f0] dark:border-[#1c2e4e] bg-[#f8fafc] dark:bg-[#091223] text-[#0d1b35] dark:text-slate-100 font-mono focus:border-purple-500"
+                        placeholder="Ex: 9router.enlace.slz.br"
+                      />
+                    </div>
+                    <span className="text-[10px] text-[#5a6a85] dark:text-[#94a3b8]">URL base de roteamento de IA (Proxy/Gateway).</span>
+                  </div>
+
+                  <div className="space-y-1.5">
+                    <label className="text-xs font-bold text-[#0d1b35] dark:text-slate-200">Chave da API (Token)</label>
+                    <div className="flex items-center gap-2">
+                      <input
+                        type="password"
+                        value={formData.cloudIntegration?.geminiApiKey || ''}
+                        onChange={(e) => handleUpdate('cloudIntegration', 'geminiApiKey', e.target.value)}
+                        className="flex-1 px-3.5 py-2 text-xs rounded-xl border border-[#dde5f0] dark:border-[#1c2e4e] bg-[#f8fafc] dark:bg-[#091223] text-[#0d1b35] dark:text-slate-100 font-mono focus:border-purple-500"
+                        placeholder="xxxxxxxxxxxxx"
+                      />
+                    </div>
+                    <span className="text-[10px] text-[#5a6a85] dark:text-[#94a3b8]">Insira a chave/token da API. Quando preenchida aqui, ela sobrepõe a configuração local.</span>
+                  </div>
+                </div>
+              </div>
+
+              <div className="p-4 rounded-xl bg-[#ebf2ff] dark:bg-[#0a2352] border border-[#dde8ff] dark:border-[#193b7a] flex items-center justify-between flex-wrap gap-3 mt-6">
                 <div className="flex items-center gap-2.5">
                   <div className="w-2.5 h-2.5 rounded-full bg-[#18c7a8] animate-pulse"></div>
                   <div className="text-xs font-bold text-[#0a50ff] dark:text-[#60a5fa]">
