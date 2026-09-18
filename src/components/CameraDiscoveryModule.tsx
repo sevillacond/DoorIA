@@ -379,19 +379,18 @@ export const CameraDiscoveryModule: React.FC<CameraDiscoveryModuleProps> = ({ on
                     </div>
 
                     <div className="bg-[#0d1b35] dark:bg-slate-950 border border-slate-800 dark:border-slate-800 rounded-xl p-2.5 font-mono text-[10px] text-slate-300 dark:text-slate-400 space-y-1 shadow-inner">
-                      <div className="truncate">
-                        <span className="text-slate-400 dark:text-slate-500 font-sans">Main: </span>
-                        <span className="text-cyan-300 dark:text-cyan-400 font-bold">{cam.suggestedRtspMain}</span>
+                      <div className="truncate flex items-center gap-1.5 text-cyan-300 dark:text-cyan-400 font-semibold font-sans">
+                        <span className="inline-block w-2 h-2 rounded-full bg-emerald-400"></span>
+                        Stream WebRTC Go2RTC (Sub-50ms)
                       </div>
-                      <div className="truncate">
-                        <span className="text-slate-400 dark:text-slate-500 font-sans">Sub: </span>
-                        <span className="text-slate-400">{cam.suggestedRtspSub}</span>
+                      <div className="text-slate-400 text-[10px] font-sans">
+                        Perfis ONVIF: {cam.supportedProfiles.join(' • ')}
                       </div>
                     </div>
 
                     <div className="text-[10px] text-[#5a6a85] dark:text-slate-500 italic flex items-center gap-1 px-1">
                       <Lock className="w-3 h-3 text-slate-400 dark:text-slate-600" />
-                      <span>{cam.defaultCredentialsHint}</span>
+                      <span>Credenciais gerenciadas de forma isolada pelo backend</span>
                     </div>
                   </div>
 
@@ -607,21 +606,14 @@ export const CameraDiscoveryModule: React.FC<CameraDiscoveryModuleProps> = ({ on
                   </div>
                 </div>
 
-                {/* Pré-visualização da URL RTSP gerada para o fabricante */}
+                {/* Canal de Entrega Seguro WebRTC / Go2RTC */}
                 <div className="p-3 bg-[#0d1b35] dark:bg-slate-950 rounded-xl border border-slate-800 dark:border-slate-800 space-y-1">
-                  <div className="text-[10px] font-bold text-slate-400 uppercase">
-                    String RTSP Gerada ({selectedCameraForImport.manufacturer}):
+                  <div className="text-[10px] font-bold text-slate-400 uppercase flex items-center gap-1.5">
+                    <span className="inline-block w-2 h-2 rounded-full bg-emerald-400"></span>
+                    Canal Seguro WebRTC / Go2RTC ({selectedCameraForImport.manufacturer}):
                   </div>
-                  <div className="font-mono text-[11px] text-cyan-300 dark:text-cyan-400 break-all font-bold">
-                    {useSubStream
-                      ? selectedCameraForImport.suggestedRtspSub.replace(
-                          'admin:*****',
-                          `${username}:${password ? '*****' : '*****'}`
-                        )
-                      : selectedCameraForImport.suggestedRtspMain.replace(
-                          'admin:*****',
-                          `${username}:${password ? '*****' : '*****'}`
-                        )}
+                  <div className="font-sans text-[11px] text-cyan-300 dark:text-cyan-400 leading-relaxed font-medium">
+                    O stream será roteado internamente via Go2RTC sem expor URLs RTSP ou credenciais de infraestrutura ao navegador.
                   </div>
                 </div>
 

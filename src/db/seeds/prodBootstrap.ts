@@ -71,7 +71,7 @@ export async function runProductionBootstrap() {
           monthlyInterestPercentage: 1.0,
         },
         technicalSettings: {
-          localServerIp: process.env.LOCAL_SERVER_IP || '127.0.0.1',
+          localServerIp: process.env.LOCAL_SERVER_IP || (isProduction ? '' : '127.0.0.1'),
           asteriskVersion: 'Asterisk 20 LTS Pure PJSIP',
           asteriskWssPort: 8089,
           allowSelfSignedCerts: !isProduction,
@@ -89,7 +89,7 @@ export async function runProductionBootstrap() {
           name: 'Portão Social Pedestre (Calçada)',
           type: 'pedestre',
           relayPin: 1,
-          relayIp: process.env.RELAY_CONTROLLER_IP || '192.168.1.160',
+          relayIp: process.env.RELAY_CONTROLLER_IP || (isProduction ? '' : '192.168.1.160'),
           dtmfCode: '*07',
           status: 'fechado',
           isOpen: false,
@@ -99,7 +99,7 @@ export async function runProductionBootstrap() {
           name: 'Portão Garagem Veicular',
           type: 'garagem',
           relayPin: 2,
-          relayIp: process.env.RELAY_CONTROLLER_IP || '192.168.1.160',
+          relayIp: process.env.RELAY_CONTROLLER_IP || (isProduction ? '' : '192.168.1.160'),
           dtmfCode: '*08',
           status: 'fechado',
           isOpen: false,
@@ -108,7 +108,7 @@ export async function runProductionBootstrap() {
     }
 
     // 3. Usuário Super Admin Inicial Seguro
-    const adminUser = process.env.INITIAL_ADMIN_USER || 'admin';
+    const adminUser = process.env.INITIAL_ADMIN_USER || (isProduction ? '' : 'admin');
     const adminPass = process.env.INITIAL_ADMIN_PASSWORD;
 
     const existingAdmin = await db.select().from(systemUsers).where(eq(systemUsers.username, adminUser)).limit(1);

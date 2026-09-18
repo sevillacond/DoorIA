@@ -34,24 +34,33 @@ export function maskRtspCredentials(url: string | undefined | null): string {
 }
 
 /**
- * Sanitiza um objeto de câmera para envio seguro à API ou interface web
+ * Sanitiza um objeto de câmera para envio seguro à API ou interface web (PWA).
+ * Regra Arquitetural Obrigatória:
+ * O frontend NUNCA recebe URLs RTSP (rtsp://...), senhas, credenciais ou pistas.
+ * A entrega de mídia ao navegador é exclusivamente controlada via WebRTC / Go2RTC backend proxy.
  */
-export function sanitizeCameraForClient<T extends { rtspUrl?: string; suggestedRtspMain?: string; suggestedRtspSub?: string; defaultCredentialsHint?: string }>(camera: T): T {
+export function sanitizeCameraForClient<T extends { id?: string; rtspUrl?: string; suggestedRtspMain?: string; suggestedRtspSub?: string; defaultCredentialsHint?: string }>(camera: T): T {
   const sanitized = { ...camera };
-  if (sanitized.rtspUrl) {
-    sanitized.rtspUrl = sanitizeRtspUrl(sanitized.rtspUrl);
-  }
-  if (sanitized.suggestedRtspMain) {
-    sanitized.suggestedRtspMain = sanitizeRtspUrl(sanitized.suggestedRtspMain);
-  }
-  if (sanitized.suggestedRtspSub) {
-    sanitized.suggestedRtspSub = sanitizeRtspUrl(sanitized.suggestedRtspSub);
-  }
-  // Remove campos de credenciais diretas, senhas ou pistas
+
+  // Remove completamente qualquer URL RTSP ou dados brutos de streaming local de câmera
+  delete (sanitized as any).rtspUrl;
+  delete (sanitized as any).suggestedRtspMain;
+  delete (sanitized as any).suggestedRtspSub;
+  delete (sanitized as any).suggestedGo2rtcConfig;
+
+  // Remove campos de credenciais diretas, senhas, usuários de câmera ou pistas
   delete (sanitized as any).password;
   delete (sanitized as any).pass;
   delete (sanitized as any).credentials;
   delete (sanitized as any).secret;
   delete (sanitized as any).defaultCredentialsHint;
+  delete (sanitized as any).username;
+
+  // Injeta metadados de protocolo seguro WebRTC (Go2RTC)
+  (sanitized as any).streamProtocol = 'webrtc';
+  if ((sanitized as any).id) {
+    (sanitized as any).streamEndpoint = `/api/v1/stream/${(sanitized as any).id}`;
+  }
+
   return sanitized;
 }

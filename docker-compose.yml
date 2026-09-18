@@ -39,26 +39,41 @@ services:
     environment:
       NODE_ENV: production
       SESSION_SECRET: ${SESSION_SECRET:?Erro de Seguranca: SESSION_SECRET e estritamente obrigatorio e deve ser configurado no arquivo .env}
+      CONDO_ID: ${CONDO_ID:-condo-master}
+      CONDO_CNPJ: ${CONDO_CNPJ:?Erro de Seguranca: CONDO_CNPJ e estritamente obrigatorio em producao}
+      CONDO_NAME: ${CONDO_NAME:?Erro de Seguranca: CONDO_NAME e estritamente obrigatorio em producao}
+      CONDO_CITY: ${CONDO_CITY:?Erro de Seguranca: CONDO_CITY e estritamente obrigatorio em producao}
+      CONDO_STATE: ${CONDO_STATE:?Erro de Seguranca: CONDO_STATE e estritamente obrigatorio em producao}
+      CONDO_UNITS_COUNT: ${CONDO_UNITS_COUNT:?Erro de Seguranca: CONDO_UNITS_COUNT e estritamente obrigatorio em producao}
+      LOCAL_SERVER_IP: ${LOCAL_SERVER_IP:?Erro de Seguranca: LOCAL_SERVER_IP e estritamente obrigatorio em producao}
+      INITIAL_ADMIN_USER: ${INITIAL_ADMIN_USER:?Erro de Seguranca: INITIAL_ADMIN_USER e estritamente obrigatorio em producao}
       INITIAL_ADMIN_PASSWORD: ${INITIAL_ADMIN_PASSWORD:?Erro de Seguranca: INITIAL_ADMIN_PASSWORD e estritamente obrigatorio em producao}
       INITIAL_ADMIN_EMAIL: ${INITIAL_ADMIN_EMAIL:?Erro de Seguranca: INITIAL_ADMIN_EMAIL e estritamente obrigatorio em producao}
-      DATABASE_URL: postgresql://${POSTGRES_USER:-dooria}:${POSTGRES_PASSWORD:?Erro: POSTGRES_PASSWORD obrigatorio}@postgres:5432/${POSTGRES_DB:-dooria_db}
+      POSTGRES_HOST: postgres
+      POSTGRES_PORT: 5432
+      POSTGRES_DB: ${POSTGRES_DB:-dooria_db}
+      POSTGRES_USER: ${POSTGRES_USER:-dooria}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?Erro: POSTGRES_PASSWORD obrigatorio}
       PGHOST: postgres
       PGPORT: 5432
       PGUSER: ${POSTGRES_USER:-dooria}
       PGPASSWORD: ${POSTGRES_PASSWORD:?Erro: PGPASSWORD obrigatorio}
       PGDATABASE: ${POSTGRES_DB:-dooria_db}
+      DATABASE_URL: postgresql://${POSTGRES_USER:-dooria}:${POSTGRES_PASSWORD:?Erro: POSTGRES_PASSWORD obrigatorio}@postgres:5432/${POSTGRES_DB:-dooria_db}
       ASTERISK_HOST: ${ASTERISK_HOST:?Erro de Seguranca: ASTERISK_HOST e estritamente obrigatorio em producao}
       ASTERISK_AMI_PORT: ${ASTERISK_AMI_PORT:-5038}
       ASTERISK_AMI_USERNAME: ${ASTERISK_AMI_USERNAME:?Erro de Seguranca: ASTERISK_AMI_USERNAME e estritamente obrigatorio}
       ASTERISK_AMI_SECRET: ${ASTERISK_AMI_SECRET:?Erro de Seguranca: ASTERISK_AMI_SECRET e estritamente obrigatorio}
       ASTERISK_SIP_SERVER: ${ASTERISK_SIP_SERVER:-${ASTERISK_HOST}}
       ASTERISK_SIP_PORT: ${ASTERISK_SIP_PORT:-5060}
+      ASTERISK_WSS_PORT: ${ASTERISK_WSS_PORT:-8089}
       XPE_IP: ${XPE_IP:?Erro de Seguranca: XPE_IP e estritamente obrigatorio em producao}
       XPE_SIP_USERNAME: ${XPE_SIP_USERNAME:-8000}
       XPE_SIP_SECRET: ${XPE_SIP_SECRET:?Erro de Seguranca: XPE_SIP_SECRET e estritamente obrigatorio em producao}
       XPE_RTSP_USERNAME: ${XPE_RTSP_USERNAME:?Erro de Seguranca: XPE_RTSP_USERNAME e estritamente obrigatorio em producao}
       XPE_RTSP_PASSWORD: ${XPE_RTSP_PASSWORD:?Erro de Seguranca: XPE_RTSP_PASSWORD e estritamente obrigatorio em producao}
       RELAY_CONTROLLER_IP: ${RELAY_CONTROLLER_IP:?Erro de Seguranca: RELAY_CONTROLLER_IP e estritamente obrigatorio em producao}
+      GO2RTC_API_URL: ${GO2RTC_API_URL:-http://localhost:1984}
       GEMINI_API_KEY: ${GEMINI_API_KEY:-}
     ports:
       - "3000:3000"

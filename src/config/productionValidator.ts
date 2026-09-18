@@ -164,6 +164,18 @@ export function validateProductionConfig(isProduction = process.env.NODE_ENV ===
       errors.push('[CRÍTICO] ASTERISK_AMI_PORT é obrigatório em produção (padrão 5038).');
     }
 
+    const asteriskAmiUser = (process.env.ASTERISK_AMI_USERNAME || process.env.ASTERISK_AMI_USER || '').trim();
+    if (!asteriskAmiUser) {
+      errors.push('[CRÍTICO] ASTERISK_AMI_USERNAME é obrigatório em produção para autenticação no socket AMI.');
+    }
+
+    const asteriskAmiSecret = (process.env.ASTERISK_AMI_SECRET || '').trim();
+    if (!asteriskAmiSecret) {
+      errors.push('[CRÍTICO] ASTERISK_AMI_SECRET é obrigatório em produção.');
+    } else if (BANNED_SECRETS.includes(asteriskAmiSecret)) {
+      errors.push('[CRÍTICO] ASTERISK_AMI_SECRET não pode utilizar valor padrão ou de exemplo conhecido.');
+    }
+
     const asteriskSipServer = (process.env.ASTERISK_SIP_SERVER || process.env.ASTERISK_HOST || '').trim();
     if (!asteriskSipServer || asteriskSipServer === '127.0.0.1') {
       errors.push('[CRÍTICO] ASTERISK_SIP_SERVER em produção não pode ser 127.0.0.1.');

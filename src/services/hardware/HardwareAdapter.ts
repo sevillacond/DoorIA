@@ -1,4 +1,7 @@
 import type { Gate } from '../../types.ts';
+import type { PhysicalSensorReader, PhysicalSensorReading, PhysicalSensorState } from './SensorReader.ts';
+
+export type { PhysicalSensorReader, PhysicalSensorReading, PhysicalSensorState };
 
 export type HardwareCommandStatus = 'COMMAND_SENT' | 'HARDWARE_CONFIRMED' | 'HARDWARE_FAILURE';
 
@@ -15,7 +18,8 @@ export interface HardwareRelayResult {
   pulseDurationMs: number;
   timestamp: string;
   hasPhysicalFeedbackSensor: boolean;
-  physicalSensorState?: 'aberto' | 'fechado' | 'desconhecido';
+  physicalSensorState?: PhysicalSensorState;
+  sensorReading?: PhysicalSensorReading;
   correlationId?: string;
   failureDetails?: string;
 }

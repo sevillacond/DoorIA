@@ -113,7 +113,7 @@ export const gates = pgTable('gates', {
   name: varchar('name', { length: 128 }).notNull(),
   type: varchar('type', { length: 32 }).notNull(), // pedestre, garagem, servico
   relayPin: integer('relay_pin').notNull().default(1),
-  relayIp: varchar('relay_ip', { length: 64 }).default('192.168.1.160'),
+  relayIp: varchar('relay_ip', { length: 64 }),
   dtmfCode: varchar('dtmf_code', { length: 16 }).notNull(), // *07, *08
   isOpen: boolean('is_open').default(false),
   status: varchar('status', { length: 32 }).notNull().default('fechado'), // fechado, abrindo, aberto, fechando

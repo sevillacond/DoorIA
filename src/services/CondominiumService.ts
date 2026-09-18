@@ -70,7 +70,7 @@ export class CondominiumService {
             monthlyInterestPercentage: 1.0,
           },
           technicalSettings: (r.technicalSettings as any) || {
-            localServerIp: process.env.LOCAL_SERVER_IP || '127.0.0.1',
+            localServerIp: process.env.LOCAL_SERVER_IP || (process.env.NODE_ENV === 'production' ? '' : '127.0.0.1'),
             asteriskVersion: 'Asterisk 20 LTS Pure PJSIP',
             asteriskWssPort: 8089,
             allowSelfSignedCerts: true,

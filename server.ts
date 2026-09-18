@@ -470,11 +470,8 @@ async function startServer() {
         return policy.allowed;
       });
 
-      // Sanitiza URLs de RTSP antes de entregar ao cliente: credenciais NUNCA chegam ao frontend
-      const sanitized = authorizedCameras.map((c) => sanitizeCameraForClient({
-        ...c,
-        rtspUrl: sanitizeRtspUrl(c.rtspUrl),
-      }));
+      // Sanitiza dados de câmeras antes de entregar ao cliente: RTSP e credenciais NUNCA chegam ao frontend
+      const sanitized = authorizedCameras.map((c) => sanitizeCameraForClient(c));
 
       res.json(sanitized);
     } catch (err: any) {
@@ -529,7 +526,8 @@ async function startServer() {
         success: true,
         cameraId: cam.id,
         webrtcUrl: `/api/v1/webrtc?src=${cam.id}`,
-        rtspUrl: sanitizeRtspUrl(cam.rtspUrl),
+        streamProtocol: 'webrtc',
+        streamEndpoint: `/api/v1/stream/${cam.id}`,
         status: cam.status,
       });
     } catch (err: any) {
@@ -1031,10 +1029,7 @@ async function startServer() {
   app.get('/api/v1/devices/cameras', requireAuth, async (req, res) => {
     try {
       const cams = await DatabaseRepository.getCameras();
-      const sanitized = cams.map((c) => sanitizeCameraForClient({
-        ...c,
-        rtspUrl: sanitizeRtspUrl(c.rtspUrl),
-      }));
+      const sanitized = cams.map((c) => sanitizeCameraForClient(c));
       res.json(sanitized);
     } catch (err: any) {
       handleDbError(err, res);
@@ -1126,16 +1121,18 @@ async function startServer() {
 
   app.post('/api/v1/discovery/scan', requireAuth, requireRole(['super_admin', 'admin_sistema']), (req, res) => {
     publishEvent('DISCOVERY_SCAN_COMPLETED', 'onvif_discovery', { devicesFound: discoveredCams.length });
-    res.json({ success: true, devices: discoveredCams });
+    res.json({ success: true, devices: discoveredCams.map((c) => sanitizeCameraForClient(c)) });
   });
 
   app.post('/api/v1/discovery/test-stream', requireAuth, (req, res) => {
-    const { ip, rtspPort } = req.body;
+    const { ip } = req.body;
     res.json({
       success: true,
       latencyEstimateMs: 42,
       videoCodec: 'H.264 High Profile',
-      rtspUrl: sanitizeRtspUrl(`rtsp://${ip}:${rtspPort || 554}/cam/realmonitor?channel=1&subtype=0`),
+      streamProtocol: 'webrtc',
+      streamEndpoint: `/api/v1/stream/preview?ip=${encodeURIComponent(ip || '')}`,
+      status: 'online',
     });
   });
 
