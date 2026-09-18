@@ -1,16 +1,23 @@
 import type { Gate } from '../../types.ts';
 
+export type HardwareCommandStatus = 'COMMAND_SENT' | 'HARDWARE_CONFIRMED' | 'HARDWARE_FAILURE';
+
 export interface HardwareRelayResult {
   success: boolean;
   executed: boolean;
   isSimulated: boolean;
   hardwareMode: 'simulated' | 'real_hardware';
+  commandStatus: HardwareCommandStatus;
   message: string;
   statusCode: number;
   relayPin: number;
   relayIp?: string;
   pulseDurationMs: number;
   timestamp: string;
+  hasPhysicalFeedbackSensor: boolean;
+  physicalSensorState?: 'aberto' | 'fechado' | 'desconhecido';
+  correlationId?: string;
+  failureDetails?: string;
 }
 
 export interface HardwareDtmfResult {
@@ -19,6 +26,7 @@ export interface HardwareDtmfResult {
   digit: string;
   channel: string;
   message: string;
+  commandStatus: HardwareCommandStatus;
 }
 
 export interface HardwareHealthResult {
@@ -38,7 +46,7 @@ export interface HardwareAdapter {
   /**
    * Envia comando de pulso para relé físico ou simulado
    */
-  triggerRelay(gate: Gate, pulseDurationSeconds: number): Promise<HardwareRelayResult>;
+  triggerRelay(gate: Gate, pulseDurationSeconds: number, correlationId?: string): Promise<HardwareRelayResult>;
 
   /**
    * Injeta sinalização DTMF no Asterisk

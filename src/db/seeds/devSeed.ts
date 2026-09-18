@@ -29,44 +29,29 @@ export async function runDevSeed() {
     throw new Error('Falha de Segurança: devSeed não pode ser executado em ambiente de produção (NODE_ENV=production).');
   }
 
-  console.log('[DevSeed] Populando dados de demonstração/teste local...');
+  console.log('[DevSeed] Populando dados de desenvolvimento/demonstração no PostgreSQL 16 LTS...');
 
   try {
-    // 1. Condomínio Mestre Demonstrativo
+    // 1. Condomínio de Demonstração
     await db
       .insert(condominiums)
       .values({
-        id: 'condo-demo-01',
-        name: 'Condomínio Residencial Exemplo',
-        tradingName: 'Residencial Exemplo',
-        cnpj: '00.000.000/0001-99',
+        id: 'condo-master',
+        name: 'Condomínio Residencial Demonstração',
+        tradingName: 'Residencial Solar das Palmeiras',
+        cnpj: '12.345.678/0001-90',
         address: {
-          street: 'Rua das Amendoeiras',
-          number: '100',
-          neighborhood: 'Bairro Modelo',
-          city: 'Cidade Exemplo',
+          street: 'Avenida dos Holandeses',
+          number: '1000',
+          neighborhood: 'Calhau',
+          city: 'São Luís',
           state: 'MA',
-          zipCode: '65000-000',
+          zipCode: '65071-380',
         },
-        unitsCount: 12,
-        blocks: ['Bloco A'],
-        floorsCount: 3,
-        parkingSpotsCount: 18,
-        managementPhone: '(98) 3200-0000',
-        emergencyPhone: '(98) 98000-0000',
-        email: 'gestao@condominio.local',
-        sindico: {
-          name: 'Síndico de Demonstração',
-          phone: '(98) 98000-1111',
-          email: 'sindico@condominio.local',
-          apartment: '304',
-        },
-        administrator: {
-          name: 'Administradora Exemplo',
-          cnpj: '00.000.000/0001-00',
-          phone: '(98) 3200-1111',
-          email: 'contato@admin.local',
-        },
+        unitsCount: 16,
+        blocks: ['Bloco A', 'Bloco B'],
+        floorsCount: 4,
+        parkingSpotsCount: 20,
         operationalSettings: {
           pedestrianGatePulseSeconds: 5,
           vehicleGatePulseSeconds: 15,
@@ -82,41 +67,42 @@ export async function runDevSeed() {
           localFirstOfflineMode: true,
           requireVisitorPhoto: true,
         },
-        financialSettings: {
-          dueDay: 10,
-          standardFee: 450.0,
-          reserveFundPercentage: 10,
-          latePenaltyPercentage: 2.0,
-          monthlyInterestPercentage: 1.0,
-        },
-        technicalSettings: {
-          localServerIp: '127.0.0.1',
-          asteriskVersion: 'Asterisk 20 LTS Pure PJSIP',
-          asteriskWssPort: 8089,
-          allowSelfSignedCerts: true,
-        },
       })
       .onConflictDoNothing();
 
-    // 2. Unidades Habitacionais (101 a 304)
-    const unitList = [
-      { id: 'u-101', number: '101', floor: 1, sipExtension: '101', intercomCode: '101', ownerName: 'Morador 101', financialStatus: 'em_dia' },
-      { id: 'u-102', number: '102', floor: 1, sipExtension: '102', intercomCode: '102', ownerName: 'Morador 102', financialStatus: 'em_dia' },
-      { id: 'u-103', number: '103', floor: 1, sipExtension: '103', intercomCode: '103', ownerName: 'Morador 103', financialStatus: 'atrasado' },
-      { id: 'u-104', number: '104', floor: 1, sipExtension: '104', intercomCode: '104', ownerName: 'Morador 104', financialStatus: 'em_dia' },
-      { id: 'u-201', number: '201', floor: 2, sipExtension: '201', intercomCode: '201', ownerName: 'Morador 201', financialStatus: 'em_dia' },
-      { id: 'u-202', number: '202', floor: 2, sipExtension: '202', intercomCode: '202', ownerName: 'Morador 202', financialStatus: 'em_dia' },
-      { id: 'u-203', number: '203', floor: 2, sipExtension: '203', intercomCode: '203', ownerName: 'Morador 203', financialStatus: 'acordo' },
-      { id: 'u-204', number: '204', floor: 2, sipExtension: '204', intercomCode: '204', ownerName: 'Morador 204', financialStatus: 'em_dia' },
-      { id: 'u-301', number: '301', floor: 3, sipExtension: '301', intercomCode: '301', ownerName: 'Morador 301', financialStatus: 'em_dia' },
-      { id: 'u-302', number: '302', floor: 3, sipExtension: '302', intercomCode: '302', ownerName: 'Morador 302', financialStatus: 'em_dia' },
-      { id: 'u-303', number: '303', floor: 3, sipExtension: '303', intercomCode: '303', ownerName: 'Morador 303', financialStatus: 'em_dia' },
-      { id: 'u-304', number: '304', floor: 3, sipExtension: '304', intercomCode: '304', ownerName: 'Morador 304', financialStatus: 'em_dia' },
+    // 2. Unidades e Moradores de Teste
+    const demoUnits = [
+      { id: 'u-101', number: '101', block: 'Bloco A', floor: 1, sipExtension: '2101', intercomCode: '101', ownerName: 'Carlos Eduardo Mendes' },
+      { id: 'u-102', number: '102', block: 'Bloco A', floor: 1, sipExtension: '2102', intercomCode: '102', ownerName: 'Mariana Lima Santos' },
+      { id: 'u-201', number: '201', block: 'Bloco A', floor: 2, sipExtension: '2201', intercomCode: '201', ownerName: 'Roberto Albuquerque' },
+      { id: 'u-202', number: '202', block: 'Bloco A', floor: 2, sipExtension: '2202', intercomCode: '202', ownerName: 'Fernanda Castelo Branco' },
     ];
 
-    for (const u of unitList) {
+    for (const u of demoUnits) {
       await db.insert(units).values(u).onConflictDoNothing();
     }
+
+    await db
+      .insert(residents)
+      .values([
+        {
+          id: 'res-101',
+          unitId: 'u-101',
+          name: 'Carlos Eduardo Mendes',
+          phone: '(98) 98123-4567',
+          email: 'carlos.mendes@gmail.com',
+          isMainContact: true,
+        },
+        {
+          id: 'res-201',
+          unitId: 'u-201',
+          name: 'Roberto Albuquerque',
+          phone: '(98) 98877-6655',
+          email: 'sindico@solardaspalmeiras.com.br',
+          isMainContact: true,
+        },
+      ])
+      .onConflictDoNothing();
 
     // 3. Portões
     await db
@@ -169,6 +155,80 @@ export async function runDevSeed() {
           unitId: 'u-201',
           unitNumber: '201',
           active: true,
+        },
+      ])
+      .onConflictDoNothing();
+
+    // 5. Dispositivos IoT (Dev)
+    await db
+      .insert(iotDevices)
+      .values([
+        {
+          id: 'dev-rele-pedestre',
+          name: 'Relé Eletromecânico Portão Pedestre',
+          type: 'rele',
+          protocol: 'zigbee_3_0',
+          gateway: 'NovaDigital_HNZ_CB3',
+          state: 'desligado',
+          online: true,
+          location: 'Quadro de Comando da Guarita',
+        },
+        {
+          id: 'dev-sensor-movimento-garagem',
+          name: 'Sensor PIR Presença Aclive Garagem',
+          type: 'sensor_presenca',
+          protocol: 'zigbee_3_0',
+          gateway: 'NovaDigital_HNZ_CB3',
+          state: 'sem_movimento',
+          batteryLevel: 94,
+          online: true,
+          location: 'Rampa de Acesso Subsolo',
+        },
+        {
+          id: 'dev-rele-holofote-hall',
+          name: 'Interruptor Inteligente Hall Social',
+          type: 'iluminacao',
+          protocol: 'zigbee_3_0',
+          gateway: 'NovaDigital_HNZ_CB3',
+          state: 'desligado',
+          online: true,
+          location: 'Hall de Entrada Social',
+        },
+        {
+          id: 'dev-sirene-panico',
+          name: 'Sirene Audiovisual Estroboscópica',
+          type: 'sirene',
+          protocol: 'zigbee_3_0',
+          gateway: 'NovaDigital_HNZ_CB3',
+          state: 'desligado',
+          batteryLevel: 100,
+          online: true,
+          location: 'Fachada Externa Guarita',
+        },
+      ])
+      .onConflictDoNothing();
+
+    // 6. Regras de Automação (Dev)
+    await db
+      .insert(automationRules)
+      .values([
+        {
+          id: 'rule-luz-garagem',
+          name: 'Iluminação Noturna por Sensor na Garagem',
+          description: 'Acende as lâmpadas da rampa ao detectar presença após às 18h',
+          triggerEvent: 'MOTION_GARAGEM',
+          condition: 'Horário >= 18:00 OU Horário <= 06:00',
+          action: 'Ligar Relé Iluminação Rampa por 180 segundos',
+          enabled: true,
+        },
+        {
+          id: 'rule-panico-fechaduras',
+          name: 'Bloqueio de Emergência em Pânico',
+          description: 'Ao acionar botão SOS na guarita, tranca todos os portões e ativa sirene',
+          triggerEvent: 'SOS_TRIGGERED',
+          condition: 'Qualquer horário',
+          action: 'Travar portões, ligar sirene e disparar notificação push imediata',
+          enabled: true,
         },
       ])
       .onConflictDoNothing();

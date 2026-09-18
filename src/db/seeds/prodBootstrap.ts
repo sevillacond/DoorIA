@@ -3,27 +3,34 @@ import crypto from 'crypto';
 import { db } from '../index.ts';
 import { condominiums, systemUsers, gates } from '../schema.ts';
 import { eq } from 'drizzle-orm';
+import { validateProductionConfig } from '../../config/productionValidator.ts';
 
 /**
  * Bootstrap Mínimo e Seguro para Ambientes de Produção (PostgreSQL 16 LTS)
- * Não cria dados de moradores, veículos ou faturas fictícias.
- * Inicializa apenas:
- * 1. Estrutura base do condomínio (a partir de ENV ou cadastro inicial)
- * 2. Portões operacionais fundamentais (Pedestre e Garagem com DTMF padrão *07 e *08)
- * 3. Conta mestre de Super Administrador (com salt criptográfico seguro)
+ * 
+ * Regras Obrigatórias de Segurança:
+ * 1. Executa validateProductionConfig() antes de qualquer inserção.
+ * 2. NENHUMA senha administrativa é impressa em stdout, stderr, logs ou auditoria.
+ * 3. Não utiliza dados ou CNPJ fictícios em produção.
+ * 4. Senhas são armazenadas exclusivamente com criptografia forte scrypt + salt aleatório.
  */
 export async function runProductionBootstrap() {
-  console.log('[Prod Bootstrap] Iniciando bootstrap seguro de produção...');
+  console.log('[Prod Bootstrap] Validando parâmetros e iniciando bootstrap seguro de produção...');
+
+  // Validação estrita de variáveis de produção
+  validateProductionConfig();
+
+  const isProduction = process.env.NODE_ENV === 'production';
 
   try {
     // 1. Condomínio Mestre
     const condoId = process.env.CONDO_ID || 'condo-master';
-    const condoName = process.env.CONDO_NAME || 'Condomínio Residencial';
-    const condoCnpj = process.env.CONDO_CNPJ || '00.000.000/0001-00';
+    const condoName = process.env.CONDO_NAME || (isProduction ? '' : 'Condomínio Residencial Demonstração');
+    const condoCnpj = process.env.CONDO_CNPJ || '';
 
     const existingCondo = await db.select().from(condominiums).where(eq(condominiums.id, condoId)).limit(1);
     if (!existingCondo || existingCondo.length === 0) {
-      console.log('[Prod Bootstrap] Inicializando registro de condomínio base...');
+      console.log('[Prod Bootstrap] Inicializando registro de condomínio com identidade oficial...');
       await db.insert(condominiums).values({
         id: condoId,
         name: condoName,
@@ -67,7 +74,7 @@ export async function runProductionBootstrap() {
           localServerIp: process.env.LOCAL_SERVER_IP || '127.0.0.1',
           asteriskVersion: 'Asterisk 20 LTS Pure PJSIP',
           asteriskWssPort: 8089,
-          allowSelfSignedCerts: true,
+          allowSelfSignedCerts: !isProduction,
         },
       });
     }
@@ -104,21 +111,19 @@ export async function runProductionBootstrap() {
     const adminUser = process.env.INITIAL_ADMIN_USER || 'admin';
     const adminPass = process.env.INITIAL_ADMIN_PASSWORD;
 
-    if (!adminPass && process.env.NODE_ENV === 'production') {
-      console.warn('[Prod Bootstrap] ⚠️ INITIAL_ADMIN_PASSWORD não definido nas variáveis de ambiente.');
-    }
-
     const existingAdmin = await db.select().from(systemUsers).where(eq(systemUsers.username, adminUser)).limit(1);
     if (!existingAdmin || existingAdmin.length === 0) {
-      const generatedPass = adminPass || crypto.randomBytes(16).toString('hex');
-      const salt = crypto.randomBytes(16).toString('hex');
-      const passwordHash = crypto.scryptSync(generatedPass, salt, 64).toString('hex');
-
-      console.log(`[Prod Bootstrap] Criando usuário inicial '${adminUser}' (Super Admin)...`);
-      if (!adminPass) {
-        console.warn(`[Prod Bootstrap] 🔑 Senha temporária de primeiro acesso gerada: ${generatedPass}`);
-        console.warn(`[Prod Bootstrap] ⚠️ Altere esta senha imediatamente após o primeiro acesso.`);
+      if (isProduction && !adminPass) {
+        throw new Error('Falha crítica: INITIAL_ADMIN_PASSWORD deve ser fornecido em produção via variável de ambiente segura.');
       }
+
+      // Senha fornecida ou gerada em ambiente não-produção
+      const finalPass = adminPass || crypto.randomBytes(32).toString('hex');
+      const salt = crypto.randomBytes(16).toString('hex');
+      const passwordHash = crypto.scryptSync(finalPass, salt, 64).toString('hex');
+
+      console.log(`[Prod Bootstrap] Provisionando conta de Super Admin inicial '${adminUser}' com salt criptográfico...`);
+      // ATENÇÃO DE SEGURANÇA: NUNCA imprimir a senha em logs, console ou saída de texto!
 
       await db.insert(systemUsers).values({
         id: 'usr-superadmin',
@@ -126,23 +131,18 @@ export async function runProductionBootstrap() {
         passwordHash,
         salt,
         displayName: 'Administrador do Sistema',
-        email: process.env.INITIAL_ADMIN_EMAIL || 'admin@condominio.local',
+        email: process.env.INITIAL_ADMIN_EMAIL || (isProduction ? '' : 'admin@condominio.local'),
         role: 'super_admin',
         active: true,
         mfaEnabled: false,
       });
+      console.log('[Prod Bootstrap] Conta de Super Admin inicial provisionada de forma segura.');
     }
 
-    console.log('[Prod Bootstrap] ✅ Bootstrap de produção concluído com sucesso!');
+    console.log('[Prod Bootstrap] ✅ Bootstrap de produção concluído com sucesso e segurança atestada.');
     return { success: true };
   } catch (error: any) {
     console.error('[Prod Bootstrap] ❌ Erro durante o bootstrap de produção:', error.message);
     throw error;
   }
-}
-
-if (process.argv[1]?.includes('prodBootstrap.ts')) {
-  runProductionBootstrap()
-    .then(() => process.exit(0))
-    .catch(() => process.exit(1));
 }

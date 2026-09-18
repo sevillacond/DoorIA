@@ -5,6 +5,10 @@ import './index.css';
 import { ThemeProvider } from './context/ThemeContext.tsx';
 import { AuthProvider } from './context/AuthContext.tsx';
 import { ErrorBoundary } from './components/ErrorBoundary.tsx';
+import { installFetchInterceptor } from './utils/authClient.ts';
+
+// Inicializa o interceptador de cabeçalhos de autenticação para chamadas de API
+installFetchInterceptor();
 
 createRoot(document.getElementById('root')!).render(
   <StrictMode>

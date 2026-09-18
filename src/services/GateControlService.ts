@@ -1,7 +1,7 @@
 import { PolicyEngine } from './PolicyEngine.ts';
 import { AuditService } from './AuditService.ts';
 import type { Gate, UserSession } from '../types.ts';
-import { getHardwareAdapter, type HardwareRelayResult } from './hardware/index.ts';
+import { getHardwareAdapter, type HardwareRelayResult, type HardwareCommandStatus } from './hardware/index.ts';
 
 export interface TriggerGateParams {
   gateId: string;
@@ -23,13 +23,20 @@ export interface TriggerGateResult {
   statusCode: number;
   isSimulated: boolean;
   hardwareMode: 'simulated' | 'real_hardware';
+  commandStatus: HardwareCommandStatus;
+  hasPhysicalFeedbackSensor: boolean;
   relayResult?: HardwareRelayResult;
 }
 
 export class GateControlService {
   /**
    * Executa o fluxo de segurança obrigatório para liberação de portões:
-   * Autenticação -> RBAC -> Policy Engine -> Validação de Contexto -> Auditoria -> Hardware Adapter (Real vs Simulado)
+   * Autenticação -> RBAC -> Policy Engine -> Validação de Contexto -> Auditoria -> Hardware Adapter
+   * 
+   * Correção 7 (Separação Rigorosa):
+   * - Modo Simulado: Apenas computação lógica e previsão visual. Não finge acionar equipamento real.
+   * - Modo Real: Diferencia claramente COMMAND_SENT de HARDWARE_CONFIRMED e HARDWARE_FAILURE.
+   *   O setTimeout() NUNCA é usado como confirmação de estado de hardware físico real.
    */
   public static async trigger(
     gate: Gate,
@@ -37,6 +44,7 @@ export class GateControlService {
   ): Promise<TriggerGateResult> {
     const { session, context, triggerSource } = params;
     const adapter = getHardwareAdapter();
+    const correlationId = context.correlationId || `gate-trig-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`;
 
     // 1. AVALIAÇÃO RIGOROSA PELO POLICY ENGINE
     const evaluation = PolicyEngine.evaluate({
@@ -57,7 +65,7 @@ export class GateControlService {
       },
     });
 
-    // 2. TRATAMENTO DE ACESSO NEGADO
+    // 2. TRATAMENTO DE ACESSO NEGADO PELO POLICY ENGINE
     if (!evaluation.allowed) {
       await AuditService.record({
         actor: session.name,
@@ -68,7 +76,7 @@ export class GateControlService {
         reason: evaluation.reason,
         ipAddress: context.ipAddress,
         userAgent: context.userAgent,
-        correlationId: context.correlationId,
+        correlationId,
         dtmfCommand: gate.dtmfCode,
         details: {
           triggerSource,
@@ -78,6 +86,7 @@ export class GateControlService {
           activeCallTargetUnit: context.activeCallTargetUnit,
           hardwareMode: adapter.mode,
           isSimulated: adapter.isSimulated,
+          commandStatus: 'HARDWARE_FAILURE',
         },
       });
 
@@ -87,14 +96,16 @@ export class GateControlService {
         statusCode: 403,
         isSimulated: adapter.isSimulated,
         hardwareMode: adapter.mode,
+        commandStatus: 'HARDWARE_FAILURE',
+        hasPhysicalFeedbackSensor: false,
       };
     }
 
-    // 3. EXECUÇÃO VIA HARDWARE ADAPTER (SEPARANDO REAL DE SIMULAÇÃO)
+    // 3. EXECUÇÃO VIA HARDWARE ADAPTER
     const pulseDuration = gate.type === 'garagem' ? 2 : 1;
-    const relayResult = await adapter.triggerRelay(gate, pulseDuration);
+    const relayResult = await adapter.triggerRelay(gate, pulseDuration, correlationId);
 
-    // 4. REGISTRO IMUTÁVEL DE AUDITORIA COM IDENTIFICAÇÃO DE MODO
+    // 4. REGISTRO IMUTÁVEL DE AUDITORIA COM IDENTIFICAÇÃO ESTRITA DE MODO E RESULTADO
     await AuditService.record({
       actor: session.name,
       role: session.role,
@@ -103,7 +114,7 @@ export class GateControlService {
       status: relayResult.success ? 'PERMITIDO' : 'ALERTA',
       ipAddress: context.ipAddress,
       userAgent: context.userAgent,
-      correlationId: context.correlationId,
+      correlationId,
       dtmfCommand: gate.dtmfCode,
       details: {
         triggerSource,
@@ -114,8 +125,11 @@ export class GateControlService {
         activeCallTargetUnit: context.activeCallTargetUnit,
         hardwareMode: adapter.mode,
         isSimulated: adapter.isSimulated,
-        hardwareExecuted: relayResult.executed,
-        hardwareExecutionStatus: relayResult.success ? 'SUCCESS' : 'HARDWARE_FAILURE',
+        commandStatus: relayResult.commandStatus,
+        hasPhysicalFeedbackSensor: relayResult.hasPhysicalFeedbackSensor,
+        physicalSensorState: relayResult.physicalSensorState,
+        hardwareFailureDetails: relayResult.failureDetails,
+        timestamp: relayResult.timestamp,
       },
     });
 
@@ -126,17 +140,18 @@ export class GateControlService {
         statusCode: relayResult.statusCode,
         isSimulated: adapter.isSimulated,
         hardwareMode: adapter.mode,
+        commandStatus: 'HARDWARE_FAILURE',
+        hasPhysicalFeedbackSensor: relayResult.hasPhysicalFeedbackSensor,
         relayResult,
       };
     }
 
-    // 5. ATUALIZAÇÃO DO ESTADO DO PORTÃO
-    gate.status = adapter.isSimulated ? 'aberto' : 'abrindo';
-    gate.lastOpenedAt = new Date().toISOString();
+    // 5. TRATAMENTO DO ESTADO DO PORTÃO
+    gate.lastOpenedAt = relayResult.timestamp;
     gate.lastOpenedBy = `${session.name} (${session.role}) [${adapter.isSimulated ? 'SIMULADO' : 'HARDWARE_REAL'}]`;
 
-    // Ciclo eletromecânico
-    setTimeout(() => {
+    if (adapter.isSimulated) {
+      // No modo simulado, setTimeout é usado EXCLUSIVAMENTE para projeção visual no painel de demonstração
       gate.status = 'aberto';
       setTimeout(() => {
         gate.status = 'fechando';
@@ -144,7 +159,17 @@ export class GateControlService {
           gate.status = 'fechado';
         }, 3000);
       }, gate.type === 'garagem' ? 10000 : 5000);
-    }, 1200);
+    } else {
+      // No modo real de hardware:
+      // NUNCA usar setTimeout como confirmação de que o portão físico fechou ou abriu!
+      // Se há sensor de fim de curso, refletimos o sensor; senão, indicamos apenas o pulso emitido.
+      if (relayResult.commandStatus === 'HARDWARE_CONFIRMED') {
+        gate.status = 'aberto';
+      } else {
+        // Pulso enviado ao relé; não inventar confirmação mecânica
+        gate.status = 'abrindo';
+      }
+    }
 
     return {
       success: true,
@@ -153,6 +178,8 @@ export class GateControlService {
       statusCode: 200,
       isSimulated: adapter.isSimulated,
       hardwareMode: adapter.mode,
+      commandStatus: relayResult.commandStatus,
+      hasPhysicalFeedbackSensor: relayResult.hasPhysicalFeedbackSensor,
       relayResult,
     };
   }

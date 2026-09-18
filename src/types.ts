@@ -433,16 +433,16 @@ export interface SystemStatus {
   };
   xpe3115: {
     status: 'online' | 'offline';
-    ip: '192.168.1.150';
-    firmware: 'v3.2.0-secure';
-    audioCodec: 'G.711u / Opus';
-    videoCodec: 'H.264 Baseline';
+    ip: string;
+    firmware: string;
+    audioCodec: string;
+    videoCodec: string;
   };
   zigbeeGateway: {
-    model: 'NovaDigital HNZ-CB3 Zigbee 3.0 Ethernet';
-    ip: '192.168.1.160';
-    status: 'online';
-    localFirstNoCloud: true;
+    model: string;
+    ip: string;
+    status: 'online' | 'offline';
+    localFirstNoCloud: boolean;
     devicesConnected: number;
   };
   policyEngine: {

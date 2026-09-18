@@ -57,6 +57,7 @@ import type {
   SystemStatus,
   CallPurpose,
 } from './types.ts';
+import { getSessionToken, setSessionToken, apiFetch } from './utils/authClient.ts';
 
 export default function App() {
   const { user, loading: authLoading } = useAuth();
@@ -160,26 +161,31 @@ export default function App() {
         statusRes,
         activeCallRes,
       ] = await Promise.all([
-        fetch('/api/v1/auth/me').then((r) => r.json()),
-        fetch('/api/v1/units').then((r) => r.json()),
-        fetch('/api/v1/gates').then((r) => r.json()),
-        fetch('/api/v1/cameras').then((r) => r.json()),
-        fetch('/api/v1/packages').then((r) => r.json()),
-        fetch('/api/v1/visitors/invites').then((r) => r.json()),
-        fetch('/api/v1/vehicles').then((r) => r.json()),
-        fetch('/api/v1/calls/history').then((r) => r.json()),
-        fetch('/api/v1/finance/bills').then((r) => r.json()),
-        fetch('/api/v1/finance/summary').then((r) => r.json()),
-        fetch('/api/v1/finance/agreements').then((r) => r.json()),
-        fetch('/api/v1/iot/devices').then((r) => r.json()),
-        fetch('/api/v1/iot/automations').then((r) => r.json()),
-        fetch('/api/v1/events').then((r) => r.json()),
-        fetch('/api/v1/audit').then((r) => r.json()),
-        fetch('/api/v1/system/status').then((r) => r.json()),
-        fetch('/api/v1/calls/active').then((r) => r.json()),
+        apiFetch('/api/v1/auth/me').then((r) => r.json()),
+        apiFetch('/api/v1/units').then((r) => r.json()),
+        apiFetch('/api/v1/gates').then((r) => r.json()),
+        apiFetch('/api/v1/cameras').then((r) => r.json()),
+        apiFetch('/api/v1/packages').then((r) => r.json()),
+        apiFetch('/api/v1/visitors/invites').then((r) => r.json()),
+        apiFetch('/api/v1/vehicles').then((r) => r.json()),
+        apiFetch('/api/v1/calls/history').then((r) => r.json()),
+        apiFetch('/api/v1/finance/bills').then((r) => r.json()),
+        apiFetch('/api/v1/finance/summary').then((r) => r.json()),
+        apiFetch('/api/v1/finance/agreements').then((r) => r.json()),
+        apiFetch('/api/v1/iot/devices').then((r) => r.json()),
+        apiFetch('/api/v1/iot/automations').then((r) => r.json()),
+        apiFetch('/api/v1/events').then((r) => r.json()),
+        apiFetch('/api/v1/audit').then((r) => r.json()),
+        apiFetch('/api/v1/system/status').then((r) => r.json()),
+        apiFetch('/api/v1/calls/active').then((r) => r.json()),
       ]);
 
-      if (sessRes?.id) setSession(sessRes);
+      if (sessRes?.id) {
+        setSession(sessRes);
+        if (sessRes.token) {
+          setSessionToken(sessRes.token);
+        }
+      }
       if (Array.isArray(unitsRes)) setUnits(unitsRes);
       if (Array.isArray(gatesRes)) setGates(gatesRes);
       if (Array.isArray(camsRes)) setCameras(camsRes);
@@ -229,13 +235,16 @@ export default function App() {
   // Alternar Papel RBAC
   const handleSwitchRole = async (role: 'morador' | 'sindico' | 'super_admin', unitNumber?: string) => {
     try {
-      const res = await fetch('/api/v1/auth/switch-role', {
+      const res = await apiFetch('/api/v1/auth/switch-role', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ role, unitNumber }),
       });
       const data = await res.json();
       if (data.success && data.session) {
+        if (data.token) {
+          setSessionToken(data.token);
+        }
         setSession(data.session);
         setActiveTab('inicio');
         setFeedbackMessage(`Sessão alterada para perfil: ${data.session.role.toUpperCase()}`);
@@ -247,10 +256,17 @@ export default function App() {
     }
   };
 
+  // Garante que haja um token assinado ativo na inicialização em desenvolvimento
+  useEffect(() => {
+    if (!getSessionToken()) {
+      handleSwitchRole('morador', '101');
+    }
+  }, []);
+
   // Iniciar chamada pelo Totem XPE
   const handleStartXpeCall = async (unitNumber: string, purpose: CallPurpose) => {
     try {
-      const res = await fetch('/api/v1/calls/xpe/start', {
+      const res = await apiFetch('/api/v1/calls/xpe/start', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ unitNumber, purpose }),
@@ -275,7 +291,7 @@ export default function App() {
     qrToken?: string | null
   ) => {
     try {
-      const res = await fetch('/api/v1/calls/qr/start', {
+      const res = await apiFetch('/api/v1/calls/qr/start', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ unitNumber, purpose, cameraGranted, microphoneGranted: micGranted, qrToken }),
@@ -296,7 +312,7 @@ export default function App() {
   // Atender chamada no WebPhone
   const handleAnswerCall = async () => {
     try {
-      const res = await fetch('/api/v1/calls/answer', { method: 'POST' });
+      const res = await apiFetch('/api/v1/calls/answer', { method: 'POST' });
       const data = await res.json();
       if (data.call) {
         setActiveCall(data.call);
@@ -312,7 +328,7 @@ export default function App() {
   // Enviar DTMF (*07 ou *08)
   const handleSendDtmf = async (dtmf: '*07' | '*08') => {
     try {
-      const res = await fetch('/api/v1/calls/dtmf', {
+      const res = await apiFetch('/api/v1/calls/dtmf', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ dtmf }),
@@ -334,7 +350,7 @@ export default function App() {
   const handleHangupCall = async () => {
     const wasRinging = activeCall?.state === 'chamando';
     try {
-      await fetch('/api/v1/calls/hangup', { method: 'POST' });
+      await apiFetch('/api/v1/calls/hangup', { method: 'POST' });
       setActiveCall(null);
       
       if (wasRinging) {
@@ -353,7 +369,7 @@ export default function App() {
   // Criar Convite QR
   const handleCreateVisitorInvite = async (name: string, type: 'visitante' | 'entrega' | 'prestador') => {
     try {
-      const res = await fetch('/api/v1/visitors/invites', {
+      const res = await apiFetch('/api/v1/visitors/invites', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ visitorName: name, type }),
@@ -372,7 +388,7 @@ export default function App() {
   // Alternar dispositivo IoT Zigbee
   const handleToggleIoTDevice = async (deviceId: string) => {
     try {
-      await fetch(`/api/v1/iot/devices/${deviceId}/toggle`, { method: 'POST' });
+      await apiFetch(`/api/v1/iot/devices/${deviceId}/toggle`, { method: 'POST' });
       refreshAllData();
     } catch (err) {
       console.error(err);

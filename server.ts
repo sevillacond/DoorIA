@@ -2,7 +2,7 @@ import 'dotenv/config';
 import express from 'express';
 import path from 'path';
 import crypto from 'crypto';
-import { GoogleGenAI, Type } from '@google/genai';
+import { GoogleGenAI } from '@google/genai';
 import { createServer as createViteServer } from 'vite';
 import type {
   UserRole,
@@ -36,10 +36,11 @@ import { PolicyEngine } from './src/services/PolicyEngine.ts';
 import { GateControlService } from './src/services/GateControlService.ts';
 import { AuthService } from './src/services/AuthService.ts';
 import { EnlacePay } from './src/services/EnlacePay.ts';
-import { QrCodeService } from './src/services/QrCodeService.ts';
 import { CondominiumService } from './src/services/CondominiumService.ts';
 import { DatabaseRepository, DatabaseUnavailableError } from './src/services/DatabaseRepository.ts';
-import { parametrizeDiscoveredCamera, MANUFACTURER_PROFILES } from './src/services/CameraDiscovery.ts';
+import { parametrizeDiscoveredCamera } from './src/services/CameraDiscovery.ts';
+import { validateProductionConfig } from './src/config/productionValidator.ts';
+import { sanitizeRtspUrl } from './src/utils/rtspSanitizer.ts';
 
 const PORT = 3000;
 
@@ -47,10 +48,7 @@ const PORT = 3000;
 // VALIDAÇÃO DE STARTUP E SEGREDOS CRÍTICOS EM PRODUÇÃO
 // ============================================================================
 if (process.env.NODE_ENV === 'production') {
-  if (!process.env.SESSION_SECRET) {
-    console.error('❌ FATAL STARTUP ERROR: SESSION_SECRET não configurado.');
-    throw new Error('FATAL STARTUP ERROR: A variável de ambiente SESSION_SECRET é obrigatória em ambiente de produção.');
-  }
+  validateProductionConfig();
 }
 
 // Estado operacional transiente (sessões em andamento, chamadas ativas e barramento de eventos)
@@ -60,43 +58,6 @@ const eventBusHistory: EventBusMessage[] = [];
 const auditLogs: AuditLogEntry[] = [];
 const lprLogs: LprLogEntry[] = [];
 const pushSubscriptions: Array<{ endpoint: string; userAgent: string; timestamp: number }> = [];
-
-// Dispositivos de automação física e regras de automação local
-const iotDevices: IoTDevice[] = [
-  {
-    id: 'iot-1',
-    name: 'Iluminação Frontal Portaria',
-    type: 'iluminacao',
-    protocol: 'zigbee_3_0',
-    gateway: 'NovaDigital_HNZ_CB3',
-    state: 'desligado',
-    online: true,
-    location: 'Acesso Social Externo',
-  },
-  {
-    id: 'iot-2',
-    name: 'Sensor de Presença Garagem',
-    type: 'sensor_presenca',
-    protocol: 'zigbee_3_0',
-    gateway: 'NovaDigital_HNZ_CB3',
-    state: 'sem_movimento',
-    batteryLevel: 94,
-    online: true,
-    location: 'Corredor Garagem Veicular',
-  },
-];
-
-const automationRules: AutomationRule[] = [
-  {
-    id: 'rule-1',
-    name: 'Iluminação Noturna em Chamada XPE',
-    description: 'Quando chamada for iniciada no totem, acender iluminação frontal.',
-    enabled: true,
-    triggerEvent: 'CALL_STARTED',
-    condition: 'Horário Noturno',
-    action: 'Ligar Iluminação Frontal',
-  },
-];
 
 // Barramento de Eventos
 function publishEvent(type: EventBusMessage['type'], source: string, payload: Record<string, unknown>) {
@@ -157,27 +118,13 @@ function logAudit(
   return log;
 }
 
-// Pool de Descoberta de Câmeras na LAN (go2rtc / ONVIF Discovery)
-const discoveredCamerasPool: DiscoveredCamera[] = [
-  parametrizeDiscoveredCamera(
-    {
-      ip: process.env.XPE_IP || '192.168.1.150',
-      mac: '00:1A:3F:8A:2C:11',
-      manufacturerHint: 'Intelbras',
-      modelHint: 'Intelbras XPE 3115-IP (Câmera Integrada)',
-      port: 80,
-      discoveryMethod: 'WS-Discovery',
-    },
-    []
-  ),
-];
-
-// Configuração do Totem Intelbras XPE 3115-IP obtida dinamicamente
+// Configuração do Totem Intelbras XPE 3115-IP obtida dinamicamente e sanitizada
 function getXpeRuntimeConfig(condo?: CondominiumConfig | null): XpeConfig {
   const ip = process.env.XPE_IP || '192.168.1.150';
-  const sipServer = process.env.ASTERISK_SIP_SERVER || '127.0.0.1';
+  const sipServer = process.env.ASTERISK_SIP_SERVER || process.env.ASTERISK_HOST || '127.0.0.1';
   const dtmfPed = condo?.operationalSettings?.dtmfPedestrian || '*07';
   const dtmfGar = condo?.operationalSettings?.dtmfVehicle || '*08';
+  const hasRtspPass = !!process.env.XPE_RTSP_PASSWORD;
 
   return {
     ip,
@@ -185,9 +132,9 @@ function getXpeRuntimeConfig(condo?: CondominiumConfig | null): XpeConfig {
     gateway: '192.168.1.1',
     httpPort: 80,
     sipServer,
-    sipPort: 5060,
-    sipExtension: '8000',
-    sipSecret: process.env.XPE_SIP_SECRET || 'secret_xpe_token',
+    sipPort: parseInt(process.env.ASTERISK_SIP_PORT || '5060', 10),
+    sipExtension: process.env.XPE_SIP_USERNAME || '8000',
+    sipSecret: process.env.XPE_SIP_SECRET ? '********' : 'NÃO CONFIGURADO',
     audioCodec: 'PCMU',
     videoCodec: 'H.264',
     dtmfMode: 'RFC2833',
@@ -214,9 +161,9 @@ function getXpeRuntimeConfig(condo?: CondominiumConfig | null): XpeConfig {
       channel: 1,
       subType: 0,
       rtspPort: 554,
-      username: 'admin',
-      password: process.env.XPE_RTSP_PASSWORD || 'admin',
-      url: `rtsp://admin:${process.env.XPE_RTSP_PASSWORD || 'admin'}@${ip}:554/cam/realmonitor?channel=1&subtype=0`,
+      username: process.env.XPE_RTSP_USERNAME || 'admin',
+      password: hasRtspPass ? '********' : 'NÃO CONFIGURADO',
+      url: sanitizeRtspUrl(`rtsp://${ip}:554/cam/realmonitor?channel=1&subtype=0`),
     },
     lastSyncedAt: new Date().toISOString(),
     status: 'online',
@@ -244,29 +191,62 @@ async function startServer() {
   const app = express();
   app.use(express.json());
 
-  // Sessão padrão para desenvolvimento (em produção, o token de sessão é estritamente exigido)
-  let currentSession: UserSession = process.env.NODE_ENV === 'production'
-    ? {
-        id: 'usr-anonymous',
-        name: 'Não Autenticado',
-        email: 'anonymous@condominio.local',
-        role: 'morador',
-        mfaEnabled: false,
-      }
-    : AuthService.getPresetSession('morador', '101');
-
-  // Middleware de autenticação por token no cabeçalho Authorization
+  // Middleware de autenticação estrita por token no cabeçalho Authorization
+  // Não cria usuários anônimos e não faz fallback de morador
   app.use((req, res, next) => {
     const authHeader = req.headers.authorization;
     if (authHeader && authHeader.startsWith('Bearer ')) {
-      const token = authHeader.substring(7);
+      const token = authHeader.substring(7).trim();
       const verified = AuthService.verifySessionToken(token);
       if (verified) {
-        currentSession = verified;
+        (req as any).user = verified;
+        return next();
       }
     }
+
+    // Em modo de desenvolvimento local / preview no iframe:
+    // Se a requisição não trouxer token no cabeçalho, provê sessão inicial de desenvolvimento
+    // para garantir carregamento instantâneo no iframe antes da sincronização do token
+    if (process.env.NODE_ENV !== 'production') {
+      (req as any).user = AuthService.getPresetSession('morador', '101');
+      return next();
+    }
+
+    (req as any).user = null;
     next();
   });
+
+  // Middleware: Exige que o usuário esteja autenticado
+  const requireAuth: express.RequestHandler = (req, res, next) => {
+    const user = (req as any).user as UserSession | null;
+    if (!user) {
+      return res.status(401).json({
+        error: 'Não autorizado. Autenticação obrigatória para acessar este recurso.',
+        code: 'UNAUTHORIZED',
+      });
+    }
+    next();
+  };
+
+  // Middleware: Exige papéis específicos (RBAC)
+  const requireRole = (allowedRoles: UserRole[]): express.RequestHandler => {
+    return (req, res, next) => {
+      const user = (req as any).user as UserSession | null;
+      if (!user) {
+        return res.status(401).json({
+          error: 'Não autorizado. Faça login para continuar.',
+          code: 'UNAUTHORIZED',
+        });
+      }
+      if (!allowedRoles.includes(user.role)) {
+        return res.status(403).json({
+          error: 'Acesso negado. Seu perfil de usuário não possui permissão para esta operação.',
+          code: 'FORBIDDEN',
+        });
+      }
+      next();
+    };
+  };
 
   // Handler de Erro Padronizado do Banco de Dados
   function handleDbError(err: any, res: express.Response) {
@@ -281,10 +261,18 @@ async function startServer() {
   }
 
   // ============================================================================
-  // 1. AUTENTICAÇÃO E SESSÃO
+  // 1. AUTENTICAÇÃO E SESSÃO (RBAC LOCAL-FIRST SEGURO)
   // ============================================================================
   app.get('/api/v1/auth/me', (req, res) => {
-    res.json(currentSession);
+    const user = (req as any).user as UserSession | null;
+    if (!user) {
+      return res.status(401).json({
+        error: 'Sessão não autenticada. Envie um token de sessão válido no cabeçalho Authorization: Bearer <token>.',
+        code: 'UNAUTHENTICATED',
+      });
+    }
+    const token = AuthService.createSessionToken(user);
+    res.json({ ...user, token });
   });
 
   app.post('/api/v1/auth/login', async (req, res) => {
@@ -299,9 +287,7 @@ async function startServer() {
       return res.status(401).json({ error: 'Credenciais inválidas ou usuário inativo.' });
     }
 
-    currentSession = session;
     const token = AuthService.createSessionToken(session);
-
     logAudit(session.name, session.role, 'LOGIN_SUCESSO', 'AuthService', 'PERMITIDO', { username });
     res.json({ success: true, session, token });
   });
@@ -314,34 +300,27 @@ async function startServer() {
     }
 
     const { role, unitNumber } = req.body;
-    currentSession = AuthService.getPresetSession(role as UserRole, unitNumber);
-    const sessionToken = AuthService.createSessionToken(currentSession);
+    const session = AuthService.getPresetSession(role as UserRole, unitNumber);
+    const token = AuthService.createSessionToken(session);
 
-    logAudit(currentSession.name, currentSession.role, 'TROCA_DE_SESSAO_AUTORIZADA', 'Sistema de Autenticação', 'PERMITIDO', {
-      newRole: currentSession.role,
-      unitNumber: currentSession.unitNumber,
+    logAudit(session.name, session.role, 'TROCA_DE_SESSAO_AUTORIZADA', 'Sistema de Autenticação', 'PERMITIDO', {
+      newRole: session.role,
+      unitNumber: session.unitNumber,
     });
 
-    res.json({ success: true, session: currentSession, token: sessionToken });
+    res.json({ success: true, session, token });
   });
 
   app.post('/api/v1/auth/logout', (req, res) => {
     const authHeader = req.headers.authorization;
     if (authHeader && authHeader.startsWith('Bearer ')) {
-      AuthService.revokeSession(authHeader.substring(7));
+      AuthService.revokeSession(authHeader.substring(7).trim());
     }
-    currentSession = {
-      id: 'usr-anonymous',
-      name: 'Não Autenticado',
-      email: 'anonymous@condominio.local',
-      role: 'morador',
-      mfaEnabled: false,
-    };
     res.json({ success: true, message: 'Sessão encerrada com sucesso.' });
   });
 
   // ============================================================================
-  // 2. CONDOMÍNIO (POSTGRESQL / DRIZZLE ORM)
+  // 2. CONFIGURAÇÕES DO CONDOMÍNIO (POSTGRESQL 16 LTS)
   // ============================================================================
   app.get('/api/v1/condominium', async (req, res) => {
     try {
@@ -362,15 +341,12 @@ async function startServer() {
     }
   });
 
-  app.put('/api/v1/condominium', async (req, res) => {
-    if (['morador', 'operador'].includes(currentSession.role)) {
-      return res.status(403).json({ error: 'Permissão negada. Apenas Administradores ou Síndicos podem alterar as configurações.' });
-    }
-
+  app.put('/api/v1/condominium', requireAuth, requireRole(['super_admin', 'sindico', 'admin_sistema']), async (req, res) => {
+    const user = (req as any).user as UserSession;
     try {
       const updated = await CondominiumService.updateConfig(req.body);
-      logAudit(currentSession.name, currentSession.role, 'CONFIGURACOES_CONDOMINIO_ATUALIZADAS', updated.name, 'PERMITIDO', {
-        updatedBy: currentSession.name,
+      logAudit(user.name, user.role, 'CONFIGURACOES_CONDOMINIO_ATUALIZADAS', updated.name, 'PERMITIDO', {
+        updatedBy: user.name,
       });
       res.json({ success: true, data: updated });
     } catch (err: any) {
@@ -402,7 +378,8 @@ async function startServer() {
     }
   });
 
-  app.post('/api/v1/gates/:id/trigger', async (req, res) => {
+  app.post('/api/v1/gates/:id/trigger', requireAuth, async (req, res) => {
+    const user = (req as any).user as UserSession;
     const gateId = req.params.id;
     try {
       const gatesList = await DatabaseRepository.getGates();
@@ -411,7 +388,7 @@ async function startServer() {
 
       const result = await GateControlService.trigger(gate, {
         gateId: gate.id,
-        session: currentSession,
+        session: user,
         context: {
           callActive: !!activeCall,
           activeCallTargetUnit: activeCall?.targetUnitNumber,
@@ -422,7 +399,7 @@ async function startServer() {
       });
 
       if (result.success) {
-        publishEvent('GATE_OPENED', 'manual_trigger', { gateId: gate.id, openedBy: currentSession.name });
+        publishEvent('GATE_OPENED', 'manual_trigger', { gateId: gate.id, openedBy: user.name });
         res.json({ success: true, message: result.message, gate: result.gate });
       } else {
         res.status(result.statusCode).json({ error: result.message });
@@ -432,7 +409,8 @@ async function startServer() {
     }
   });
 
-  app.post('/api/v1/calls/dtmf', async (req, res) => {
+  app.post('/api/v1/calls/dtmf', requireAuth, async (req, res) => {
+    const user = (req as any).user as UserSession;
     const dtmf = req.body.dtmf || req.body.digit || req.body.code;
     if (!['*07', '*08'].includes(dtmf)) {
       return res.status(400).json({ error: 'Código DTMF não suportado. Utilize *07 (Pedestre) ou *08 (Garagem).' });
@@ -449,7 +427,7 @@ async function startServer() {
 
       const result = await GateControlService.trigger(gate, {
         gateId: gate.id,
-        session: currentSession,
+        session: user,
         context: {
           callActive: !!activeCall,
           activeCallTargetUnit: activeCall?.targetUnitNumber,
@@ -460,7 +438,7 @@ async function startServer() {
       });
 
       if (result.success) {
-        publishEvent('ACCESS_GRANTED', 'policy_engine', { gate: targetGateType, dtmf, authorizedBy: currentSession.name });
+        publishEvent('ACCESS_GRANTED', 'policy_engine', { gate: targetGateType, dtmf, authorizedBy: user.name });
         publishEvent('GATE_OPENED', 'access_core', { gateId: gate.id, gateName: gate.name, dtmf });
         res.json({ success: true, message: result.message, gate: result.gate });
       } else {
@@ -473,16 +451,21 @@ async function startServer() {
   });
 
   // ============================================================================
-  // 5. CÂMERAS CFTV E STREAMING (RBAC / ABAC COM POLICY ENGINE & AUDITORIA)
+  // 5. CÂMERAS CFTV E STREAMING (POLICY ENGINE & AUDITORIA)
   // ============================================================================
   app.get('/api/v1/cameras', async (req, res) => {
+    const user = (req as any).user as UserSession | null;
     try {
       const allCameras = await DatabaseRepository.getCameras();
 
-      // Filtragem por PolicyEngine conforme papel do usuário autenticado
+      // Se usuário autenticado, filtra com o PolicyEngine; caso contrário lista câmeras públicas/permitidas
       const authorizedCameras = allCameras.filter((cam) => {
+        if (!user) {
+          // Usuários não autenticados só veem a câmera pública da portaria se não houver restrição
+          return cam.isXpeIntegrated;
+        }
         const policy = PolicyEngine.evaluate({
-          actor: { id: currentSession.id, role: currentSession.role, unitNumber: currentSession.unitNumber },
+          actor: { id: user.id, role: user.role, unitNumber: user.unitNumber },
           action: 'ACESSAR_CAMERA',
           resource: {
             target: cam.id,
@@ -497,13 +480,20 @@ async function startServer() {
         return policy.allowed;
       });
 
-      res.json(authorizedCameras);
+      // Sanitiza URLs de RTSP antes de entregar ao cliente
+      const sanitized = authorizedCameras.map((c) => ({
+        ...c,
+        rtspUrl: sanitizeRtspUrl(c.rtspUrl),
+      }));
+
+      res.json(sanitized);
     } catch (err: any) {
       handleDbError(err, res);
     }
   });
 
-  app.get('/api/v1/cameras/:id/stream', async (req, res) => {
+  app.get('/api/v1/cameras/:id/stream', requireAuth, async (req, res) => {
+    const user = (req as any).user as UserSession;
     const { id } = req.params;
     try {
       const allCameras = await DatabaseRepository.getCameras();
@@ -515,7 +505,7 @@ async function startServer() {
 
       // Validação estrita no PolicyEngine antes de fornecer acesso ao stream
       const policy = PolicyEngine.evaluate({
-        actor: { id: currentSession.id, role: currentSession.role, unitNumber: currentSession.unitNumber },
+        actor: { id: user.id, role: user.role, unitNumber: user.unitNumber },
         action: 'ACESSAR_CAMERA',
         resource: {
           target: cam.id,
@@ -529,8 +519,8 @@ async function startServer() {
       });
 
       logAudit(
-        currentSession.name,
-        currentSession.role,
+        user.name,
+        user.role,
         'SOLICITACAO_STREAM_CAMERA',
         cam.name,
         policy.allowed ? 'PERMITIDO' : 'NEGADO',
@@ -545,12 +535,11 @@ async function startServer() {
         });
       }
 
-      // Redireciona ou entrega parâmetros de streaming go2rtc WebRTC
       res.json({
         success: true,
         cameraId: cam.id,
         webrtcUrl: `/api/v1/webrtc?src=${cam.id}`,
-        rtspUrl: cam.rtspUrl,
+        rtspUrl: sanitizeRtspUrl(cam.rtspUrl),
         status: cam.status,
       });
     } catch (err: any) {
@@ -562,16 +551,18 @@ async function startServer() {
   // 6. MÓDULO FINANCEIRO (ENLACE PAY & PAYMENT PROVIDER)
   // ============================================================================
   app.get('/api/v1/finance/bills', async (req, res) => {
+    const user = (req as any).user as UserSession | null;
     try {
-      const isResident = currentSession.role === 'morador';
-      const bills = await DatabaseRepository.getFinancialBills(isResident ? currentSession.unitNumber : undefined);
+      const isResident = user?.role === 'morador';
+      const bills = await DatabaseRepository.getFinancialBills(isResident ? user?.unitNumber : undefined);
       res.json(bills);
     } catch (err: any) {
       handleDbError(err, res);
     }
   });
 
-  app.post('/api/v1/finance/bills/:id/pay', async (req, res) => {
+  app.post('/api/v1/finance/bills/:id/pay', requireAuth, async (req, res) => {
+    const user = (req as any).user as UserSession;
     const { id } = req.params;
     const { paymentMethod = 'pix' } = req.body;
 
@@ -584,14 +575,14 @@ async function startServer() {
       }
 
       // RBAC: Morador só pode pagar a fatura de sua própria unidade
-      if (currentSession.role === 'morador' && bill.unitNumber !== currentSession.unitNumber) {
-        logAudit(currentSession.name, currentSession.role, 'TENTATIVA_PAGAMENTO_TERCEIROS', `Fatura ${id}`, 'NEGADO', {});
+      if (user.role === 'morador' && bill.unitNumber !== user.unitNumber) {
+        logAudit(user.name, user.role, 'TENTATIVA_PAGAMENTO_TERCEIROS', `Fatura ${id}`, 'NEGADO', {});
         return res.status(403).json({ error: 'Permissão negada. Você só pode liquidar faturas da sua própria unidade.' });
       }
 
       const settlement = await EnlacePay.settleBill(bill, paymentMethod as 'pix' | 'boleto' | 'enlace_pay');
 
-      logAudit(currentSession.name, currentSession.role, 'PAGAMENTO_FATURA_LIQUIDADO', `Unidade ${bill.unitNumber}`, 'PERMITIDO', {
+      logAudit(user.name, user.role, 'PAGAMENTO_FATURA_LIQUIDADO', `Unidade ${bill.unitNumber}`, 'PERMITIDO', {
         billId: bill.id,
         valorTotal: bill.valorTotal,
         paymentMethod,
@@ -636,37 +627,25 @@ async function startServer() {
     }
   });
 
-  const sampleAgreements: Agreement[] = [
-    {
-      id: 'agr-01',
-      unitId: 'u-103',
-      unitNumber: '103',
-      totalOriginal: 2840.0,
-      totalNegociado: 2600.0,
-      entrada: 600.0,
-      parcelasTotal: 4,
-      parcelasPagas: 2,
-      valorParcela: 500.0,
-      diaVencimento: 10,
-      dataCriacao: new Date(Date.now() - 30 * 86400000).toISOString(),
-      status: 'ativo',
-    },
-  ];
-
-  app.get('/api/v1/finance/agreements', (req, res) => {
-    if (currentSession.role === 'morador' && currentSession.unitNumber) {
-      return res.json(sampleAgreements.filter((a) => a.unitNumber === currentSession.unitNumber));
+  app.get('/api/v1/finance/agreements', async (req, res) => {
+    const user = (req as any).user as UserSession | null;
+    try {
+      const unitNumber = user?.role === 'morador' ? user.unitNumber : undefined;
+      const agreements = await DatabaseRepository.getFinancialAgreements(unitNumber);
+      res.json(agreements);
+    } catch (err: any) {
+      handleDbError(err, res);
     }
-    res.json(sampleAgreements);
   });
 
   // ============================================================================
-  // 7. ENCOMENDAS E VISITANTES
+  // 7. ENCOMENDAS E VISITANTES (POSTGRESQL DRIZZLE ORM)
   // ============================================================================
   app.get('/api/v1/packages', async (req, res) => {
+    const user = (req as any).user as UserSession | null;
     try {
       const packages = await DatabaseRepository.getPackages(
-        currentSession.role === 'morador' ? currentSession.unitId : undefined
+        user?.role === 'morador' ? user.unitId : undefined
       );
       res.json(packages);
     } catch (err: any) {
@@ -674,7 +653,8 @@ async function startServer() {
     }
   });
 
-  app.post('/api/v1/packages', async (req, res) => {
+  app.post('/api/v1/packages', requireAuth, requireRole(['super_admin', 'sindico', 'operador']), async (req, res) => {
+    const user = (req as any).user as UserSession;
     const { unitNumber, courier, trackingCode, description } = req.body;
     const pin = Math.floor(1000 + Math.random() * 9000).toString();
     const pkg: PackageDelivery = {
@@ -688,23 +668,24 @@ async function startServer() {
       pickupCode: pin,
     };
     publishEvent('PACKAGE_RECEIVED', 'portaria_social', { unitNumber, courier, pickupCode: pin });
-    logAudit(currentSession.name, currentSession.role, 'ENCOMENDA_RECEBIDA', `Unidade ${unitNumber}`, 'PERMITIDO', { courier, trackingCode });
+    logAudit(user.name, user.role, 'ENCOMENDA_RECEBIDA', `Unidade ${unitNumber}`, 'PERMITIDO', { courier, trackingCode });
     res.json({ success: true, package: pkg });
   });
 
-  app.post('/api/v1/packages/:id/pickup', (req, res) => {
+  app.post('/api/v1/packages/:id/pickup', requireAuth, (req, res) => {
     res.json({ success: true, message: 'Encomenda entregue ao morador com sucesso.' });
   });
 
-  app.post('/api/v1/packages/:id/notify', (req, res) => {
+  app.post('/api/v1/packages/:id/notify', requireAuth, (req, res) => {
     publishEvent('PUSH_NOTIFICATION_DISPATCHED', 'portaria_social', { packageId: req.params.id });
     res.json({ success: true, message: 'Morador notificado com sucesso via Push.' });
   });
 
   app.get('/api/v1/visitors/invites', async (req, res) => {
+    const user = (req as any).user as UserSession | null;
     try {
       const invites = await DatabaseRepository.getVisitorInvites(
-        currentSession.role === 'morador' ? currentSession.unitId : undefined
+        user?.role === 'morador' ? user.unitId : undefined
       );
       res.json(invites);
     } catch (err: any) {
@@ -712,11 +693,12 @@ async function startServer() {
     }
   });
 
-  app.post('/api/v1/visitors/invites', async (req, res) => {
+  app.post('/api/v1/visitors/invites', requireAuth, async (req, res) => {
+    const user = (req as any).user as UserSession;
     const { visitorName, type, targetUnitNumber } = req.body;
     const invite: VisitorInvite = {
       id: `inv-${Date.now()}`,
-      unitId: `u-${targetUnitNumber || currentSession.unitNumber || '101'}`,
+      unitId: `u-${targetUnitNumber || user.unitNumber || '101'}`,
       visitorName: visitorName || 'Visitante',
       type: type === 'entrega' || type === 'prestador' ? type : 'visitante',
       qrToken: `door-qr-${Date.now()}-${crypto.randomBytes(4).toString('hex')}`,
@@ -729,7 +711,7 @@ async function startServer() {
     res.json({ success: true, invite });
   });
 
-  app.delete('/api/v1/visitors/invites/:id', (req, res) => {
+  app.delete('/api/v1/visitors/invites/:id', requireAuth, (req, res) => {
     res.json({ success: true, message: 'Convite revogado com sucesso.' });
   });
 
@@ -737,9 +719,10 @@ async function startServer() {
   // 8. VEÍCULOS E LPR (RECONHECIMENTO DE PLACAS)
   // ============================================================================
   app.get('/api/v1/vehicles', async (req, res) => {
+    const user = (req as any).user as UserSession | null;
     try {
       const vehiclesList = await DatabaseRepository.getVehicles(
-        currentSession.role === 'morador' ? currentSession.unitId : undefined
+        user?.role === 'morador' ? user.unitId : undefined
       );
       res.json(vehiclesList);
     } catch (err: any) {
@@ -826,8 +809,9 @@ async function startServer() {
   });
 
   app.get('/api/v1/calls/history', (req, res) => {
-    if (currentSession.role === 'morador' && currentSession.unitNumber) {
-      return res.json(callHistory.filter((c) => c.unitNumber === currentSession.unitNumber));
+    const user = (req as any).user as UserSession | null;
+    if (user?.role === 'morador' && user?.unitNumber) {
+      return res.json(callHistory.filter((c) => c.unitNumber === user.unitNumber));
     }
     res.json(callHistory);
   });
@@ -872,18 +856,19 @@ async function startServer() {
     }
   });
 
-  app.post('/api/v1/calls/answer', (req, res) => {
+  app.post('/api/v1/calls/answer', requireAuth, (req, res) => {
+    const user = (req as any).user as UserSession;
     if (!activeCall) return res.status(404).json({ error: 'Nenhuma chamada ativa para atender.' });
 
     activeCall.state = 'em_atendimento';
     activeCall.answeredAt = new Date().toISOString();
-    activeCall.answeredByEndpoint = `WebPhone-${currentSession.unitNumber || 'Sindico'}`;
+    activeCall.answeredByEndpoint = `WebPhone-${user.unitNumber || 'Sindico'}`;
 
     publishEvent('CALL_ANSWERED', 'pjsip_webrtc', { callId: activeCall.id });
     res.json({ success: true, call: activeCall });
   });
 
-  app.post('/api/v1/calls/hangup', (req, res) => {
+  app.post('/api/v1/calls/hangup', requireAuth, (req, res) => {
     if (!activeCall) return res.json({ success: true, message: 'Nenhuma chamada ativa.' });
 
     const logEntry: CallLog = {
@@ -906,7 +891,7 @@ async function startServer() {
   });
 
   // ============================================================================
-  // 10. ASSISTENTE XPE 3115-IP (INTEGRAÇÃO E CONFIGURAÇÃO TÉCNICA)
+  // 10. ASSISTENTE XPE 3115-IP (CONFIGURAÇÃO TÉCNICA SANITIZADA)
   // ============================================================================
   app.get('/api/v1/xpe/config', async (req, res) => {
     const condo = await CondominiumService.getConfig();
@@ -918,6 +903,14 @@ async function startServer() {
   // ============================================================================
   app.get('/api/v1/system/status', async (req, res) => {
     const dbHealth = await checkPostgresHealth();
+    let iotCount = 0;
+    try {
+      const devices = await DatabaseRepository.getIotDevices();
+      iotCount = devices.length;
+    } catch {
+      iotCount = 0;
+    }
+
     const status: SystemStatus = {
       asterisk: {
         status: 'online',
@@ -928,17 +921,17 @@ async function startServer() {
       },
       xpe3115: {
         status: 'online',
-        ip: '192.168.1.150',
+        ip: process.env.XPE_IP || '192.168.1.150',
         firmware: 'v3.2.0-secure',
         audioCodec: 'G.711u / Opus',
         videoCodec: 'H.264 Baseline',
       },
       zigbeeGateway: {
         model: 'NovaDigital HNZ-CB3 Zigbee 3.0 Ethernet',
-        ip: '192.168.1.160',
+        ip: process.env.RELAY_CONTROLLER_IP || '192.168.1.160',
         status: 'online',
         localFirstNoCloud: true,
-        devicesConnected: iotDevices.length,
+        devicesConnected: iotCount,
       },
       policyEngine: {
         status: 'online',
@@ -970,8 +963,9 @@ async function startServer() {
   });
 
   app.get('/api/v1/audit', (req, res) => {
-    if (currentSession.role === 'morador') {
-      return res.json(auditLogs.filter((l) => l.actor.includes(currentSession.unitNumber || '')));
+    const user = (req as any).user as UserSession | null;
+    if (user?.role === 'morador') {
+      return res.json(auditLogs.filter((l) => l.actor.includes(user.unitNumber || '')));
     }
     res.json(auditLogs);
   });
@@ -984,6 +978,7 @@ async function startServer() {
   // 12. MAIA (INTELIGÊNCIA OPERACIONAL)
   // ============================================================================
   app.post('/api/v1/ai/maia', async (req, res) => {
+    const user = (req as any).user as UserSession | null;
     const { prompt } = req.body;
     if (!prompt) return res.status(400).json({ error: 'Prompt obrigatório.' });
 
@@ -994,7 +989,7 @@ async function startServer() {
           model: 'gemini-2.5-flash',
           contents: prompt,
           config: {
-            systemInstruction: `Você é a MaIA, concierge digital do condomínio. Fale em português brasileiro com cordialidade e precisão. Usuário: ${currentSession.name} (${currentSession.role}).`,
+            systemInstruction: `Você é a MaIA, concierge digital do condomínio. Fale em português brasileiro com cordialidade e precisão. Usuário: ${user ? `${user.name} (${user.role})` : 'Visitante'}.`,
           },
         });
         reply = response.text || reply;
@@ -1010,25 +1005,37 @@ async function startServer() {
   });
 
   // ============================================================================
-  // 13. IOT & AUTOMAÇÕES FÍSICAS (ZIGBEE / ETHERNET)
+  // 13. IOT & AUTOMAÇÕES FÍSICAS (BANCO DE DADOS POSTGRESQL / DRIZZLE)
   // ============================================================================
-  app.get('/api/v1/iot/devices', (req, res) => {
-    res.json(iotDevices);
-  });
-
-  app.post('/api/v1/iot/devices/:id/toggle', (req, res) => {
-    const { id } = req.params;
-    const dev = iotDevices.find((d) => d.id === id);
-    if (!dev) return res.status(404).json({ error: 'Dispositivo IoT não encontrado.' });
-    if (dev.type === 'iluminacao' || dev.type === 'rele' || dev.type === 'sirene') {
-      dev.state = dev.state === 'ligado' ? 'desligado' : 'ligado';
-      publishEvent('MAIA_ACTION_EXECUTED', 'iot_gateway', { deviceId: id, newState: dev.state });
+  app.get('/api/v1/iot/devices', async (req, res) => {
+    try {
+      const devices = await DatabaseRepository.getIotDevices();
+      res.json(devices);
+    } catch (err: any) {
+      handleDbError(err, res);
     }
-    res.json({ success: true, device: dev });
   });
 
-  app.get('/api/v1/iot/automations', (req, res) => {
-    res.json(automationRules);
+  app.post('/api/v1/iot/devices/:id/toggle', requireAuth, requireRole(['super_admin', 'sindico', 'admin_sistema']), async (req, res) => {
+    const { id } = req.params;
+    try {
+      const updated = await DatabaseRepository.toggleIotDevice(id);
+      if (!updated) return res.status(404).json({ error: 'Dispositivo IoT não encontrado.' });
+
+      publishEvent('MAIA_ACTION_EXECUTED', 'iot_gateway', { deviceId: id, newState: updated.state });
+      res.json({ success: true, device: updated });
+    } catch (err: any) {
+      handleDbError(err, res);
+    }
+  });
+
+  app.get('/api/v1/iot/automations', async (req, res) => {
+    try {
+      const rules = await DatabaseRepository.getAutomationRules();
+      res.json(rules);
+    } catch (err: any) {
+      handleDbError(err, res);
+    }
   });
 
   // ============================================================================
@@ -1037,125 +1044,42 @@ async function startServer() {
   app.get('/api/v1/devices/cameras', async (req, res) => {
     try {
       const cams = await DatabaseRepository.getCameras();
-      res.json(cams);
+      const sanitized = cams.map((c) => ({
+        ...c,
+        rtspUrl: sanitizeRtspUrl(c.rtspUrl),
+      }));
+      res.json(sanitized);
     } catch (err: any) {
       handleDbError(err, res);
     }
   });
 
-  app.post('/api/v1/devices/cameras', async (req, res) => {
+  app.post('/api/v1/devices/cameras', requireAuth, requireRole(['super_admin', 'sindico', 'admin_sistema']), async (req, res) => {
     publishEvent('CAMERA_ADDED', 'device_manager', { name: req.body?.name });
     res.json({ success: true, message: 'Câmera cadastrada com sucesso.' });
   });
 
-  app.delete('/api/v1/devices/cameras/:id', async (req, res) => {
+  app.delete('/api/v1/devices/cameras/:id', requireAuth, requireRole(['super_admin', 'sindico', 'admin_sistema']), async (req, res) => {
     publishEvent('CAMERA_REMOVED', 'device_manager', { cameraId: req.params.id });
     res.json({ success: true, message: 'Câmera removida com sucesso.' });
   });
 
-  app.get('/api/v1/devices/iot', (req, res) => {
-    res.json(iotDevices);
-  });
-
-  // ============================================================================
-  // 15. CONFIGURAÇÕES DO CONDOMÍNIO
-  // ============================================================================
-  app.get('/api/v1/condominium', async (req, res) => {
+  app.get('/api/v1/devices/iot', async (req, res) => {
     try {
-      const config = await CondominiumService.getConfig();
-      res.json(config);
+      const devices = await DatabaseRepository.getIotDevices();
+      res.json(devices);
     } catch (err: any) {
       handleDbError(err, res);
     }
   });
 
-  app.put('/api/v1/condominium', async (req, res) => {
-    try {
-      const updated = await CondominiumService.updateConfig(req.body);
-      publishEvent('CONDOMINIUM_CONFIG_UPDATED', 'condo_admin', { name: updated.name });
-      res.json({ success: true, config: updated });
-    } catch (err: any) {
-      handleDbError(err, res);
-    }
-  });
-
-  app.post('/api/v1/condominium/reset', async (req, res) => {
-    res.json({ success: true, message: 'Configurações redefinidas com sucesso.' });
-  });
-
   // ============================================================================
-  // 16. MORADORES POR UNIDADE
-  // ============================================================================
-  app.get('/api/v1/units/:id/residents', async (req, res) => {
-    const { id } = req.params;
-    try {
-      const unitsList = await DatabaseRepository.getUnits();
-      const u = unitsList.find((x) => x.id === id);
-      res.json(u?.residents || []);
-    } catch (err: any) {
-      handleDbError(err, res);
-    }
-  });
-
-  app.post('/api/v1/units/:id/residents', async (req, res) => {
-    res.json({ success: true, message: 'Morador cadastrado na unidade com sucesso.' });
-  });
-
-  app.delete('/api/v1/units/:id/residents/:resId', async (req, res) => {
-    res.json({ success: true, message: 'Morador desvinculado com sucesso.' });
-  });
-
-  // ============================================================================
-  // 17. ASSISTENTE XPE 3115-IP (TESTES E SINCRONIZAÇÃO)
-  // ============================================================================
-  app.post('/api/v1/xpe/test-connection', (req, res) => {
-    const { ip, httpPort } = req.body;
-    res.json({
-      success: true,
-      latencyMs: 12,
-      ip: ip || '192.168.1.150',
-      port: httpPort || 80,
-      httpStatus: 200,
-      banner: 'Intelbras XPE 3115-IP Embedded Web Server',
-    });
-  });
-
-  app.post('/api/v1/xpe/test-sip', (req, res) => {
-    const { sipServer, sipExtension, sipPort } = req.body;
-    res.json({
-      success: true,
-      registered: true,
-      sipServer: sipServer || '127.0.0.1',
-      sipExtension: sipExtension || '1000',
-      pjsipContact: `sip:${sipExtension || '1000'}@${sipServer || '127.0.0.1'}:${sipPort || 5060}`,
-      statusMessage: 'Endpoint PJSIP registrado e operacional com Asterisk 20 LTS',
-    });
-  });
-
-  app.post('/api/v1/xpe/test-relay', async (req, res) => {
-    const { relayNumber, durationSeconds } = req.body;
-    publishEvent('XPE_RELAY_TRIGGERED', 'xpe_wizard', { relayNumber, durationSeconds });
-    logAudit('Assistente Técnico', 'admin', 'TESTE_RELE_XPE', `Relé ${relayNumber}`, 'PERMITIDO', { durationSeconds });
-    res.json({
-      success: true,
-      relayNumber: relayNumber || 1,
-      durationSeconds: durationSeconds || 3,
-      message: `Pulso de acionamento do Relé ${relayNumber} executado com sucesso.`,
-    });
-  });
-
-  app.post('/api/v1/xpe/save-config', (req, res) => {
-    publishEvent('XPE_CONFIG_SAVED', 'xpe_wizard', { timestamp: new Date().toISOString() });
-    res.json({ success: true, message: 'Configurações do XPE 3115-IP salvas e sincronizadas.' });
-  });
-
-  // ============================================================================
-  // 18. DISCOVERY DE CÂMERAS ONVIF / RTSP
+  // 15. DISCOVERY DE CÂMERAS ONVIF / RTSP (SEM CREDENCIAIS EM TEXTO CLARO)
   // ============================================================================
   const discoveredCams: DiscoveredCamera[] = [
     {
       id: 'disc-cam-01',
-      ip: '192.168.1.150',
+      ip: process.env.XPE_IP || '192.168.1.150',
       model: 'Intelbras XPE 3115-IP',
       manufacturer: 'Intelbras',
       mac: '48:28:2F:10:22:9A',
@@ -1164,11 +1088,11 @@ async function startServer() {
       httpPort: 80,
       discoveryMethod: 'WS-Discovery',
       supportedProfiles: ['ONVIF_Profile_T', 'ONVIF_Profile_S'],
-      suggestedRtspMain: 'rtsp://admin:admin@192.168.1.150:554/cam/realmonitor?channel=1&subtype=0',
-      suggestedRtspSub: 'rtsp://admin:admin@192.168.1.150:554/cam/realmonitor?channel=1&subtype=1',
-      suggestedGo2rtcConfig: 'xpe_3115:\n  - rtsp://admin:admin@192.168.1.150:554/cam/realmonitor?channel=1&subtype=0',
+      suggestedRtspMain: sanitizeRtspUrl(`rtsp://${process.env.XPE_IP || '192.168.1.150'}:554/cam/realmonitor?channel=1&subtype=0`),
+      suggestedRtspSub: sanitizeRtspUrl(`rtsp://${process.env.XPE_IP || '192.168.1.150'}:554/cam/realmonitor?channel=1&subtype=1`),
+      suggestedGo2rtcConfig: `xpe_3115:\n  - ${sanitizeRtspUrl(`rtsp://${process.env.XPE_IP || '192.168.1.150'}:554/cam/realmonitor?channel=1&subtype=0`)}`,
       isConfigured: true,
-      defaultCredentialsHint: 'admin / admin',
+      defaultCredentialsHint: 'Parametrizada na inicialização do instalador',
       detectedCodec: 'H.264',
     },
     {
@@ -1182,11 +1106,11 @@ async function startServer() {
       httpPort: 80,
       discoveryMethod: 'WS-Discovery',
       supportedProfiles: ['ONVIF_Profile_T'],
-      suggestedRtspMain: 'rtsp://admin:admin@192.168.1.102:554/cam/realmonitor?channel=1&subtype=0',
-      suggestedRtspSub: 'rtsp://admin:admin@192.168.1.102:554/cam/realmonitor?channel=1&subtype=1',
-      suggestedGo2rtcConfig: 'cam_lpr:\n  - rtsp://admin:admin@192.168.1.102:554/cam/realmonitor?channel=1&subtype=0',
+      suggestedRtspMain: sanitizeRtspUrl('rtsp://192.168.1.102:554/cam/realmonitor?channel=1&subtype=0'),
+      suggestedRtspSub: sanitizeRtspUrl('rtsp://192.168.1.102:554/cam/realmonitor?channel=1&subtype=1'),
+      suggestedGo2rtcConfig: `cam_lpr:\n  - ${sanitizeRtspUrl('rtsp://192.168.1.102:554/cam/realmonitor?channel=1&subtype=0')}`,
       isConfigured: false,
-      defaultCredentialsHint: 'admin / admin',
+      defaultCredentialsHint: 'Parametrizada na inicialização do instalador',
       detectedCodec: 'H.264',
     },
     {
@@ -1200,11 +1124,11 @@ async function startServer() {
       httpPort: 80,
       discoveryMethod: 'SSDP',
       supportedProfiles: ['ONVIF_Profile_S'],
-      suggestedRtspMain: 'rtsp://admin:admin12345@192.168.1.103:554/Streaming/Channels/101',
-      suggestedRtspSub: 'rtsp://admin:admin12345@192.168.1.103:554/Streaming/Channels/102',
-      suggestedGo2rtcConfig: 'cam_hik:\n  - rtsp://admin:admin12345@192.168.1.103:554/Streaming/Channels/101',
+      suggestedRtspMain: sanitizeRtspUrl('rtsp://192.168.1.103:554/Streaming/Channels/101'),
+      suggestedRtspSub: sanitizeRtspUrl('rtsp://192.168.1.103:554/Streaming/Channels/102'),
+      suggestedGo2rtcConfig: `cam_hik:\n  - ${sanitizeRtspUrl('rtsp://192.168.1.103:554/Streaming/Channels/101')}`,
       isConfigured: false,
-      defaultCredentialsHint: 'admin / SADP Tool',
+      defaultCredentialsHint: 'Configurada via SADP Tool no onboarding',
       detectedCodec: 'H.264',
     },
   ];
@@ -1213,45 +1137,47 @@ async function startServer() {
     res.json(discoveredCams);
   });
 
-  app.post('/api/v1/discovery/scan', (req, res) => {
+  app.post('/api/v1/discovery/scan', requireAuth, requireRole(['super_admin', 'admin_sistema']), (req, res) => {
     publishEvent('DISCOVERY_SCAN_COMPLETED', 'onvif_discovery', { devicesFound: discoveredCams.length });
     res.json({ success: true, devices: discoveredCams });
   });
 
-  app.post('/api/v1/discovery/test-stream', (req, res) => {
+  app.post('/api/v1/discovery/test-stream', requireAuth, (req, res) => {
     const { ip, rtspPort } = req.body;
     res.json({
       success: true,
       latencyEstimateMs: 42,
       videoCodec: 'H.264 High Profile',
-      rtspUrl: `rtsp://${ip}:${rtspPort || 554}/cam/realmonitor?channel=1&subtype=0`,
+      rtspUrl: sanitizeRtspUrl(`rtsp://${ip}:${rtspPort || 554}/cam/realmonitor?channel=1&subtype=0`),
     });
   });
 
-  app.post('/api/v1/discovery/import', (req, res) => {
+  app.post('/api/v1/discovery/import', requireAuth, requireRole(['super_admin', 'admin_sistema']), (req, res) => {
     const { customName, customLocation } = req.body;
     publishEvent('CAMERA_PARAMETRIZED_VIA_DISCOVERY', 'onvif_discovery', { customName, customLocation });
     res.json({ success: true, message: `Câmera '${customName}' importada para o CFTV.` });
   });
 
   // ============================================================================
-  // 19. BOTÃO DE PÂNICO E SOS
+  // 16. BOTÃO DE PÂNICO E SOS
   // ============================================================================
-  app.post('/api/v1/panic/trigger', (req, res) => {
+  app.post('/api/v1/panic/trigger', requireAuth, (req, res) => {
+    const user = (req as any).user as UserSession;
     const { reason, location } = req.body;
-    publishEvent('SOS_TRIGGERED', 'painel_panico', { reason, location, triggeredBy: currentSession.name });
-    logAudit(currentSession.name, currentSession.role, 'PANICO_ACIONADO', location || 'Condomínio', 'ALERTA', { reason });
+    publishEvent('SOS_TRIGGERED', 'painel_panico', { reason, location, triggeredBy: user.name });
+    logAudit(user.name, user.role, 'PANICO_ACIONADO', location || 'Condomínio', 'ALERTA', { reason });
     res.json({ success: true, message: 'Alerta de pânico transmitido para a portaria e síndico!' });
   });
 
   // ============================================================================
-  // 20. AUDITORIA DE GRAVAÇÕES (LGPD E CONFORMIDADE)
+  // 17. AUDITORIA DE GRAVAÇÕES (LGPD E CONFORMIDADE)
   // ============================================================================
-  app.get('/api/v1/recordings/:id/audit', (req, res) => {
-    const { id } = req.params;
-    if (currentSession.role === 'morador') {
+  app.get('/api/v1/recordings/:id/audit', requireAuth, (req, res) => {
+    const user = (req as any).user as UserSession;
+    if (user.role === 'morador') {
       return res.status(403).json({ error: 'Acesso restrito a arquivos brutos de gravação (LGPD).' });
     }
+    const { id } = req.params;
     const auditData: CallRecordingAuditData = {
       recordingId: id,
       callId: id,
@@ -1285,7 +1211,7 @@ async function startServer() {
   });
 
   // ============================================================================
-  // 21. NOTIFICAÇÕES PUSH NATIVAS
+  // 18. NOTIFICAÇÕES PUSH NATIVAS
   // ============================================================================
   app.post('/api/v1/notifications/subscribe', (req, res) => {
     const { endpoint, userAgent, timestamp } = req.body;
@@ -1296,7 +1222,7 @@ async function startServer() {
     res.json({ success: true });
   });
 
-  app.post('/api/v1/notifications/test', (req, res) => {
+  app.post('/api/v1/notifications/test', requireAuth, (req, res) => {
     const { type } = req.body;
     const title = type === 'gate' ? '🔓 Portão Acionado' : type === 'package' ? '📦 Encomenda Recebida' : '🔔 Chamada de Interfone: Portaria Social';
     const body = type === 'gate' ? 'O portão de pedestre foi aberto com sucesso.' : type === 'package' ? 'Uma nova encomenda chegou na portaria para sua unidade.' : 'Visitante aguardando no XPE 3115-IP.';
@@ -1305,14 +1231,33 @@ async function startServer() {
   });
 
   // ============================================================================
-  // 22. LOGGER DE ERROS
+  // 19. ASSISTENTE XPE E ACIONAMENTO REMOTO
+  // ============================================================================
+  app.post('/api/v1/xpe/trigger-relay', requireAuth, requireRole(['super_admin', 'sindico', 'admin_sistema']), (req, res) => {
+    const { relayNumber, durationSeconds } = req.body;
+    publishEvent('XPE_RELAY_TRIGGERED', 'xpe_diagnostic', { relayNumber, durationSeconds });
+    res.json({
+      success: true,
+      relayNumber: relayNumber || 1,
+      durationSeconds: durationSeconds || 3,
+      message: `Pulso de acionamento do Relé ${relayNumber} executado com sucesso.`,
+    });
+  });
+
+  app.post('/api/v1/xpe/save-config', requireAuth, requireRole(['super_admin', 'sindico', 'admin_sistema']), (req, res) => {
+    publishEvent('XPE_CONFIG_SAVED', 'xpe_wizard', { timestamp: new Date().toISOString() });
+    res.json({ success: true, message: 'Configurações do XPE 3115-IP salvas e sincronizadas.' });
+  });
+
+  // ============================================================================
+  // 20. LOGGER DE ERROS
   // ============================================================================
   app.all('/api/v1/log-error', (req, res) => {
     res.json({ success: true });
   });
 
   // ============================================================================
-  // 23. PROTEÇÃO 404 JSON PARA APIS (IMPEDE QUE O VITE SIRVA HTML PARA /api/*)
+  // 21. PROTEÇÃO 404 JSON PARA APIS (IMPEDE QUE O VITE SIRVA HTML PARA /api/*)
   // ============================================================================
   app.all('/api/*', (req, res) => {
     res.status(404).json({ error: `Rota de API '${req.path}' não encontrada.` });

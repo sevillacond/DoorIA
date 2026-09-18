@@ -4,6 +4,7 @@
  */
 
 import type { DiscoveredCamera, CameraDevice } from '../types.ts';
+import { sanitizeRtspUrl } from '../utils/rtspSanitizer.ts';
 
 export interface ManufacturerProfile {
   name: 'Intelbras' | 'Hikvision' | 'Dahua' | 'Axis' | 'Uniview' | 'ONVIF Genérica';
@@ -23,78 +24,78 @@ export const MANUFACTURER_PROFILES: Record<string, ManufacturerProfile> = {
     defaultOnvifPort: 80,
     defaultRtspPort: 554,
     defaultHttpPort: 80,
-    mainStreamPattern: (ip, user = 'admin', pass = 'admin', port = 554) =>
+    mainStreamPattern: (ip, user = '***', pass = '***', port = 554) =>
       `rtsp://${user}:${pass}@${ip}:${port}/cam/realmonitor?channel=1&subtype=0`,
-    subStreamPattern: (ip, user = 'admin', pass = 'admin', port = 554) =>
+    subStreamPattern: (ip, user = '***', pass = '***', port = 554) =>
       `rtsp://${user}:${pass}@${ip}:${port}/cam/realmonitor?channel=1&subtype=1`,
     recommendedProfile: 'ONVIF_Profile_T',
-    defaultCredentialsHint: 'admin / admin ou senha configurada no primeiro boot (ISIC Lite / Intelbras SIM Next)',
-    generateGo2rtcConfig: (name, rtspUrl) => `${name.toLowerCase().replace(/[^a-z0-9]/g, '_')}:\n  - ${rtspUrl}\n  - ffmpeg:${name.toLowerCase().replace(/[^a-z0-9]/g, '_')}#video=h264#hardware=auto`,
+    defaultCredentialsHint: 'Credenciais definidas pelo instalador na ativação inicial (Intelbras SIM Next / ISIC Lite)',
+    generateGo2rtcConfig: (name, rtspUrl) => `${name.toLowerCase().replace(/[^a-z0-9]/g, '_')}:\n  - ${sanitizeRtspUrl(rtspUrl)}\n  - ffmpeg:${name.toLowerCase().replace(/[^a-z0-9]/g, '_')}#video=h264#hardware=auto`,
   },
   Hikvision: {
     name: 'Hikvision',
     defaultOnvifPort: 80,
     defaultRtspPort: 554,
     defaultHttpPort: 80,
-    mainStreamPattern: (ip, user = 'admin', pass = 'admin12345', port = 554) =>
+    mainStreamPattern: (ip, user = '***', pass = '***', port = 554) =>
       `rtsp://${user}:${pass}@${ip}:${port}/Streaming/Channels/101`,
-    subStreamPattern: (ip, user = 'admin', pass = 'admin12345', port = 554) =>
+    subStreamPattern: (ip, user = '***', pass = '***', port = 554) =>
       `rtsp://${user}:${pass}@${ip}:${port}/Streaming/Channels/102`,
     recommendedProfile: 'ONVIF_Profile_T',
-    defaultCredentialsHint: 'admin / senha definida no SADP Tool (Ativação obrigatória)',
-    generateGo2rtcConfig: (name, rtspUrl) => `${name.toLowerCase().replace(/[^a-z0-9]/g, '_')}:\n  - ${rtspUrl}\n  - "exec:ffmpeg -i ${rtspUrl} -c:v copy -f rtsp {output}"`,
+    defaultCredentialsHint: 'Credenciais definidas pelo instalador via SADP Tool (Ativação obrigatória)',
+    generateGo2rtcConfig: (name, rtspUrl) => `${name.toLowerCase().replace(/[^a-z0-9]/g, '_')}:\n  - ${sanitizeRtspUrl(rtspUrl)}\n  - "exec:ffmpeg -i ${sanitizeRtspUrl(rtspUrl)} -c:v copy -f rtsp {output}"`,
   },
   Dahua: {
     name: 'Dahua',
     defaultOnvifPort: 80,
     defaultRtspPort: 554,
     defaultHttpPort: 80,
-    mainStreamPattern: (ip, user = 'admin', pass = 'admin', port = 554) =>
+    mainStreamPattern: (ip, user = '***', pass = '***', port = 554) =>
       `rtsp://${user}:${pass}@${ip}:${port}/cam/realmonitor?channel=1&subtype=0`,
-    subStreamPattern: (ip, user = 'admin', pass = 'admin', port = 554) =>
+    subStreamPattern: (ip, user = '***', pass = '***', port = 554) =>
       `rtsp://${user}:${pass}@${ip}:${port}/cam/realmonitor?channel=1&subtype=1`,
     recommendedProfile: 'ONVIF_Profile_T',
-    defaultCredentialsHint: 'admin / admin ou senha ConfigTool Dahua',
-    generateGo2rtcConfig: (name, rtspUrl) => `${name.toLowerCase().replace(/[^a-z0-9]/g, '_')}:\n  - ${rtspUrl}`,
+    defaultCredentialsHint: 'Credenciais definidas na inicialização pelo ConfigTool Dahua',
+    generateGo2rtcConfig: (name, rtspUrl) => `${name.toLowerCase().replace(/[^a-z0-9]/g, '_')}:\n  - ${sanitizeRtspUrl(rtspUrl)}`,
   },
   Axis: {
     name: 'Axis',
     defaultOnvifPort: 80,
     defaultRtspPort: 554,
     defaultHttpPort: 80,
-    mainStreamPattern: (ip, user = 'root', pass = 'pass', port = 554) =>
+    mainStreamPattern: (ip, user = '***', pass = '***', port = 554) =>
       `rtsp://${user}:${pass}@${ip}:${port}/axis-media/media.amp?videocodec=h264`,
-    subStreamPattern: (ip, user = 'root', pass = 'pass', port = 554) =>
+    subStreamPattern: (ip, user = '***', pass = '***', port = 554) =>
       `rtsp://${user}:${pass}@${ip}:${port}/axis-media/media.amp?videocodec=h264&resolution=640x360`,
     recommendedProfile: 'ONVIF_Profile_T',
-    defaultCredentialsHint: 'root / configurada no AXIS IP Utility',
-    generateGo2rtcConfig: (name, rtspUrl) => `${name.toLowerCase().replace(/[^a-z0-9]/g, '_')}:\n  - ${rtspUrl}`,
+    defaultCredentialsHint: 'Credenciais configuradas na inicialização via AXIS IP Utility',
+    generateGo2rtcConfig: (name, rtspUrl) => `${name.toLowerCase().replace(/[^a-z0-9]/g, '_')}:\n  - ${sanitizeRtspUrl(rtspUrl)}`,
   },
   Uniview: {
     name: 'Uniview',
     defaultOnvifPort: 80,
     defaultRtspPort: 554,
     defaultHttpPort: 80,
-    mainStreamPattern: (ip, user = 'admin', pass = '123456', port = 554) =>
+    mainStreamPattern: (ip, user = '***', pass = '***', port = 554) =>
       `rtsp://${user}:${pass}@${ip}:${port}/unicast/c1/s0/live`,
-    subStreamPattern: (ip, user = 'admin', pass = '123456', port = 554) =>
+    subStreamPattern: (ip, user = '***', pass = '***', port = 554) =>
       `rtsp://${user}:${pass}@${ip}:${port}/unicast/c1/s1/live`,
     recommendedProfile: 'ONVIF_Profile_S',
-    defaultCredentialsHint: 'admin / 123456 (EZStation UNV)',
-    generateGo2rtcConfig: (name, rtspUrl) => `${name.toLowerCase().replace(/[^a-z0-9]/g, '_')}:\n  - ${rtspUrl}`,
+    defaultCredentialsHint: 'Credenciais configuradas no onboarding via EZStation UNV',
+    generateGo2rtcConfig: (name, rtspUrl) => `${name.toLowerCase().replace(/[^a-z0-9]/g, '_')}:\n  - ${sanitizeRtspUrl(rtspUrl)}`,
   },
   'ONVIF Genérica': {
     name: 'ONVIF Genérica',
     defaultOnvifPort: 8899,
     defaultRtspPort: 554,
     defaultHttpPort: 80,
-    mainStreamPattern: (ip, user = 'admin', pass = 'admin', port = 554) =>
+    mainStreamPattern: (ip, user = '***', pass = '***', port = 554) =>
       `rtsp://${user}:${pass}@${ip}:${port}/onvif1`,
-    subStreamPattern: (ip, user = 'admin', pass = 'admin', port = 554) =>
+    subStreamPattern: (ip, user = '***', pass = '***', port = 554) =>
       `rtsp://${user}:${pass}@${ip}:${port}/onvif2`,
     recommendedProfile: 'ONVIF_Profile_S',
-    defaultCredentialsHint: 'admin / admin ou sem senha',
-    generateGo2rtcConfig: (name, rtspUrl) => `${name.toLowerCase().replace(/[^a-z0-9]/g, '_')}:\n  - ${rtspUrl}`,
+    defaultCredentialsHint: 'Credenciais ONVIF parametrizadas na interface do dispositivo',
+    generateGo2rtcConfig: (name, rtspUrl) => `${name.toLowerCase().replace(/[^a-z0-9]/g, '_')}:\n  - ${sanitizeRtspUrl(rtspUrl)}`,
   },
 };
 
@@ -119,7 +120,8 @@ export function buildWsDiscoveryProbeXml(messageId: string = `urn:uuid:${Date.no
 }
 
 /**
- * Parametriza automaticamente uma câmera recém-descoberta com base no fabricante
+ * Parametriza automaticamente uma câmera recém-descoberta com base no fabricante.
+ * As credenciais são SEMPRE mascaradas para garantir segurança em relatórios e APIs.
  */
 export function parametrizeDiscoveredCamera(
   raw: {
@@ -159,8 +161,8 @@ export function parametrizeDiscoveredCamera(
     (cam) => (cam.ip && cam.ip === raw.ip) || cam.rtspUrl.includes(raw.ip)
   );
 
-  const mainRtsp = profile.mainStreamPattern(raw.ip, 'admin', '*****', rtspPort);
-  const subRtsp = profile.subStreamPattern(raw.ip, 'admin', '*****', rtspPort);
+  const mainRtsp = sanitizeRtspUrl(profile.mainStreamPattern(raw.ip, '***', '***', rtspPort));
+  const subRtsp = sanitizeRtspUrl(profile.subStreamPattern(raw.ip, '***', '***', rtspPort));
   const go2rtcConfig = profile.generateGo2rtcConfig(model, mainRtsp);
 
   return {

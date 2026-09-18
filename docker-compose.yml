@@ -9,7 +9,7 @@ services:
     environment:
       POSTGRES_DB: ${POSTGRES_DB:-dooria_db}
       POSTGRES_USER: ${POSTGRES_USER:-dooria}
-      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-dooria_local_pass_2026}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?Erro de Seguranca: POSTGRES_PASSWORD e estritamente obrigatorio e deve ser configurado no arquivo .env}
       PGDATA: /var/lib/postgresql/data/pgdata
     # Porta interna na rede do Docker por padrão (descomentar apenas para depuração direta em dev)
     # ports:
@@ -38,14 +38,14 @@ services:
         condition: service_healthy
     environment:
       NODE_ENV: production
-      DATABASE_URL: postgresql://${POSTGRES_USER:-dooria}:${POSTGRES_PASSWORD:-dooria_local_pass_2026}@postgres:5432/${POSTGRES_DB:-dooria_db}
+      DATABASE_URL: postgresql://${POSTGRES_USER:-dooria}:${POSTGRES_PASSWORD:?Erro: POSTGRES_PASSWORD obrigatorio}@postgres:5432/${POSTGRES_DB:-dooria_db}
       PGHOST: postgres
       PGPORT: 5432
       PGUSER: ${POSTGRES_USER:-dooria}
-      PGPASSWORD: ${POSTGRES_PASSWORD:-dooria_local_pass_2026}
+      PGPASSWORD: ${POSTGRES_PASSWORD:?Erro: PGPASSWORD obrigatorio}
       PGDATABASE: ${POSTGRES_DB:-dooria_db}
       GEMINI_API_KEY: ${GEMINI_API_KEY:-}
-      SESSION_SECRET: ${SESSION_SECRET:-dooria_session_secret_local_2026}
+      SESSION_SECRET: ${SESSION_SECRET:?Erro de Seguranca: SESSION_SECRET e estritamente obrigatorio e deve ser configurado no arquivo .env}
     ports:
       - "3000:3000"
     networks:

@@ -64,9 +64,9 @@ services:
     container_name: dooria-postgres
     restart: always
     environment:
-      POSTGRES_DB: dooria_db
-      POSTGRES_USER: dooria
-      POSTGRES_PASSWORD: dooria_secret
+      POSTGRES_DB: ${POSTGRES_DB:-dooria_db}
+      POSTGRES_USER: ${POSTGRES_USER:-dooria}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?Erro: POSTGRES_PASSWORD obrigatorio}
       PGDATA: /var/lib/postgresql/data/pgdata
     ports:
       - "5432:5432"
@@ -74,7 +74,7 @@ services:
       - dooria_pg_data:/var/lib/postgresql/data
       - ./src/db/init.sql:/docker-entrypoint-initdb.d/init.sql:ro
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U dooria -d dooria_db"]
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-dooria} -d ${POSTGRES_DB:-dooria_db}"]
       interval: 5s
       timeout: 5s
       retries: 5
@@ -91,12 +91,13 @@ services:
         condition: service_healthy
     environment:
       NODE_ENV: production
-      DATABASE_URL: postgresql://dooria:dooria_secret@postgres:5432/dooria_db
+      DATABASE_URL: postgresql://${POSTGRES_USER:-dooria}:${POSTGRES_PASSWORD:?Erro: POSTGRES_PASSWORD obrigatorio}@postgres:5432/${POSTGRES_DB:-dooria_db}
       PGHOST: postgres
       PGPORT: 5432
-      PGUSER: dooria
-      PGPASSWORD: dooria_secret
-      PGDATABASE: dooria_db
+      PGUSER: ${POSTGRES_USER:-dooria}
+      PGPASSWORD: ${POSTGRES_PASSWORD:?Erro: PGPASSWORD obrigatorio}
+      PGDATABASE: ${POSTGRES_DB:-dooria_db}
+      SESSION_SECRET: ${SESSION_SECRET:?Erro: SESSION_SECRET obrigatorio}
       GEMINI_API_KEY: ${GEMINI_API_KEY:-}
     ports:
       - "3000:3000"

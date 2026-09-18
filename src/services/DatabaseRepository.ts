@@ -6,12 +6,27 @@ import {
   cameraDevices as dbCameras,
   vehicles as dbVehicles,
   financialBills as dbBills,
+  financialAgreements as dbAgreements,
   packageDeliveries as dbPackages,
   visitorInvites as dbInvites,
   systemUsers as dbUsers,
+  iotDevices as dbIotDevices,
+  automationRules as dbAutomationRules,
 } from '../db/schema.ts';
 import { eq, desc } from 'drizzle-orm';
-import type { Unit, Resident, Gate, CameraDevice, Vehicle, FinancialBill, PackageDelivery, VisitorInvite } from '../types.ts';
+import type {
+  Unit,
+  Resident,
+  Gate,
+  CameraDevice,
+  Vehicle,
+  FinancialBill,
+  PackageDelivery,
+  VisitorInvite,
+  IoTDevice,
+  AutomationRule,
+  Agreement,
+} from '../types.ts';
 
 export class DatabaseUnavailableError extends Error {
   public statusCode = 503;
@@ -215,6 +230,40 @@ export class DatabaseRepository {
   }
 
   /**
+   * Obtém acordos de parcelamento financeiro
+   */
+  public static async getFinancialAgreements(unitNumber?: string): Promise<Agreement[]> {
+    try {
+      let records;
+      if (unitNumber) {
+        records = await db.select().from(dbAgreements).where(eq(dbAgreements.unitNumber, unitNumber));
+      } else {
+        records = await db.select().from(dbAgreements);
+      }
+
+      return records.map((a) => ({
+        id: a.id,
+        unitId: a.unitId,
+        unitNumber: a.unitNumber,
+        totalOriginal: Number(a.totalOriginal),
+        totalNegociado: Number(a.totalNegociado),
+        entrada: Number(a.entrada || 0),
+        parcelasTotal: a.parcelasTotal,
+        parcelasPagas: a.parcelasPagas || 0,
+        valorParcela: Number(a.valorParcela),
+        diaVencimento: a.diaVencimento,
+        dataCriacao: a.dataCriacao ? a.dataCriacao.toISOString() : new Date().toISOString(),
+        status: a.status as any,
+      }));
+    } catch (error: any) {
+      if (process.env.NODE_ENV === 'production') {
+        throw new DatabaseUnavailableError(`Erro ao consultar acordos no PostgreSQL: ${error.message}`);
+      }
+      return [];
+    }
+  }
+
+  /**
    * Obtém encomendas recebidas
    */
   public static async getPackages(unitId?: string): Promise<PackageDelivery[]> {
@@ -275,6 +324,87 @@ export class DatabaseRepository {
     } catch (error: any) {
       if (process.env.NODE_ENV === 'production') {
         throw new DatabaseUnavailableError(`Erro ao consultar convites no PostgreSQL: ${error.message}`);
+      }
+      return [];
+    }
+  }
+
+  /**
+   * Obtém dispositivos IoT cadastrados no banco
+   */
+  public static async getIotDevices(): Promise<IoTDevice[]> {
+    try {
+      const records = await db.select().from(dbIotDevices);
+      return records.map((d) => ({
+        id: d.id,
+        name: d.name,
+        type: d.type as any,
+        protocol: d.protocol as any,
+        gateway: d.gateway as any,
+        state: d.state as any,
+        batteryLevel: d.batteryLevel ?? undefined,
+        online: d.online,
+        location: d.location,
+      }));
+    } catch (error: any) {
+      if (process.env.NODE_ENV === 'production') {
+        throw new DatabaseUnavailableError(`Erro ao consultar dispositivos IoT no PostgreSQL: ${error.message}`);
+      }
+      return [];
+    }
+  }
+
+  /**
+   * Alterna o estado de um dispositivo IoT no banco
+   */
+  public static async toggleIotDevice(id: string): Promise<IoTDevice | null> {
+    try {
+      const records = await db.select().from(dbIotDevices).where(eq(dbIotDevices.id, id)).limit(1);
+      if (!records || records.length === 0) return null;
+
+      const device = records[0];
+      const newState = device.state === 'ligado' ? 'desligado' : 'ligado';
+
+      await db.update(dbIotDevices).set({ state: newState }).where(eq(dbIotDevices.id, id));
+
+      return {
+        id: device.id,
+        name: device.name,
+        type: device.type as any,
+        protocol: device.protocol as any,
+        gateway: device.gateway as any,
+        state: newState as any,
+        batteryLevel: device.batteryLevel ?? undefined,
+        online: device.online,
+        location: device.location,
+      };
+    } catch (error: any) {
+      if (process.env.NODE_ENV === 'production') {
+        throw new DatabaseUnavailableError(`Erro ao atualizar dispositivo IoT no PostgreSQL: ${error.message}`);
+      }
+      return null;
+    }
+  }
+
+  /**
+   * Obtém regras de automação cadastradas no banco
+   */
+  public static async getAutomationRules(): Promise<AutomationRule[]> {
+    try {
+      const records = await db.select().from(dbAutomationRules);
+      return records.map((r) => ({
+        id: r.id,
+        name: r.name,
+        description: r.description,
+        enabled: r.enabled,
+        triggerEvent: r.triggerEvent,
+        condition: r.condition,
+        action: r.action,
+        lastExecutedAt: r.lastExecutedAt ? r.lastExecutedAt.toISOString() : undefined,
+      }));
+    } catch (error: any) {
+      if (process.env.NODE_ENV === 'production') {
+        throw new DatabaseUnavailableError(`Erro ao consultar regras de automação no PostgreSQL: ${error.message}`);
       }
       return [];
     }
