@@ -40,7 +40,7 @@ import { CondominiumService } from './src/services/CondominiumService.ts';
 import { DatabaseRepository, DatabaseUnavailableError } from './src/services/DatabaseRepository.ts';
 import { parametrizeDiscoveredCamera } from './src/services/CameraDiscovery.ts';
 import { validateProductionConfig } from './src/config/productionValidator.ts';
-import { sanitizeRtspUrl } from './src/utils/rtspSanitizer.ts';
+import { sanitizeRtspUrl, sanitizeCameraForClient } from './src/utils/rtspSanitizer.ts';
 
 const PORT = 3000;
 
@@ -120,8 +120,9 @@ function logAudit(
 
 // Configuração do Totem Intelbras XPE 3115-IP obtida dinamicamente e sanitizada
 function getXpeRuntimeConfig(condo?: CondominiumConfig | null): XpeConfig {
-  const ip = process.env.XPE_IP || '192.168.1.150';
-  const sipServer = process.env.ASTERISK_SIP_SERVER || process.env.ASTERISK_HOST || '127.0.0.1';
+  const isProd = process.env.NODE_ENV === 'production';
+  const ip = process.env.XPE_IP || (isProd ? '' : '192.168.1.150');
+  const sipServer = process.env.ASTERISK_SIP_SERVER || process.env.ASTERISK_HOST || (isProd ? '' : '127.0.0.1');
   const dtmfPed = condo?.operationalSettings?.dtmfPedestrian || '*07';
   const dtmfGar = condo?.operationalSettings?.dtmfVehicle || '*08';
   const hasRtspPass = !!process.env.XPE_RTSP_PASSWORD;
@@ -192,7 +193,8 @@ async function startServer() {
   app.use(express.json());
 
   // Middleware de autenticação estrita por token no cabeçalho Authorization
-  // Não cria usuários anônimos e não faz fallback de morador
+  // Middleware de autenticação estrita por token no cabeçalho Authorization
+  // NUNCA cria sessões automáticas ou anônimas e NUNCA faz fallback de morador
   app.use((req, res, next) => {
     const authHeader = req.headers.authorization;
     if (authHeader && authHeader.startsWith('Bearer ')) {
@@ -202,14 +204,6 @@ async function startServer() {
         (req as any).user = verified;
         return next();
       }
-    }
-
-    // Em modo de desenvolvimento local / preview no iframe:
-    // Se a requisição não trouxer token no cabeçalho, provê sessão inicial de desenvolvimento
-    // para garantir carregamento instantâneo no iframe antes da sincronização do token
-    if (process.env.NODE_ENV !== 'production') {
-      (req as any).user = AuthService.getPresetSession('morador', '101');
-      return next();
     }
 
     (req as any).user = null;
@@ -322,7 +316,7 @@ async function startServer() {
   // ============================================================================
   // 2. CONFIGURAÇÕES DO CONDOMÍNIO (POSTGRESQL 16 LTS)
   // ============================================================================
-  app.get('/api/v1/condominium', async (req, res) => {
+  app.get('/api/v1/condominium', requireAuth, async (req, res) => {
     try {
       const config = await CondominiumService.getConfig();
       if (!config && process.env.NODE_ENV === 'production') {
@@ -357,7 +351,7 @@ async function startServer() {
   // ============================================================================
   // 3. UNIDADES E MORADORES (POSTGRESQL / DRIZZLE ORM)
   // ============================================================================
-  app.get('/api/v1/units', async (req, res) => {
+  app.get('/api/v1/units', requireAuth, async (req, res) => {
     try {
       const unitsList = await DatabaseRepository.getUnits();
       res.json(unitsList);
@@ -369,7 +363,7 @@ async function startServer() {
   // ============================================================================
   // 4. PORTÕES E RELÉS (HARDWARE ADAPTER & ASTERISK DTMF)
   // ============================================================================
-  app.get('/api/v1/gates', async (req, res) => {
+  app.get('/api/v1/gates', requireAuth, async (req, res) => {
     try {
       const gatesList = await DatabaseRepository.getGates();
       res.json(gatesList);
@@ -453,17 +447,13 @@ async function startServer() {
   // ============================================================================
   // 5. CÂMERAS CFTV E STREAMING (POLICY ENGINE & AUDITORIA)
   // ============================================================================
-  app.get('/api/v1/cameras', async (req, res) => {
-    const user = (req as any).user as UserSession | null;
+  app.get('/api/v1/cameras', requireAuth, async (req, res) => {
+    const user = (req as any).user as UserSession;
     try {
       const allCameras = await DatabaseRepository.getCameras();
 
-      // Se usuário autenticado, filtra com o PolicyEngine; caso contrário lista câmeras públicas/permitidas
+      // Avaliação estrita pelo PolicyEngine
       const authorizedCameras = allCameras.filter((cam) => {
-        if (!user) {
-          // Usuários não autenticados só veem a câmera pública da portaria se não houver restrição
-          return cam.isXpeIntegrated;
-        }
         const policy = PolicyEngine.evaluate({
           actor: { id: user.id, role: user.role, unitNumber: user.unitNumber },
           action: 'ACESSAR_CAMERA',
@@ -480,8 +470,8 @@ async function startServer() {
         return policy.allowed;
       });
 
-      // Sanitiza URLs de RTSP antes de entregar ao cliente
-      const sanitized = authorizedCameras.map((c) => ({
+      // Sanitiza URLs de RTSP antes de entregar ao cliente: credenciais NUNCA chegam ao frontend
+      const sanitized = authorizedCameras.map((c) => sanitizeCameraForClient({
         ...c,
         rtspUrl: sanitizeRtspUrl(c.rtspUrl),
       }));
@@ -550,11 +540,11 @@ async function startServer() {
   // ============================================================================
   // 6. MÓDULO FINANCEIRO (ENLACE PAY & PAYMENT PROVIDER)
   // ============================================================================
-  app.get('/api/v1/finance/bills', async (req, res) => {
-    const user = (req as any).user as UserSession | null;
+  app.get('/api/v1/finance/bills', requireAuth, async (req, res) => {
+    const user = (req as any).user as UserSession;
     try {
-      const isResident = user?.role === 'morador';
-      const bills = await DatabaseRepository.getFinancialBills(isResident ? user?.unitNumber : undefined);
+      const isResident = user.role === 'morador';
+      const bills = await DatabaseRepository.getFinancialBills(isResident ? user.unitNumber : undefined);
       res.json(bills);
     } catch (err: any) {
       handleDbError(err, res);
@@ -603,7 +593,7 @@ async function startServer() {
     }
   });
 
-  app.get('/api/v1/finance/summary', async (req, res) => {
+  app.get('/api/v1/finance/summary', requireAuth, async (req, res) => {
     try {
       const bills = await DatabaseRepository.getFinancialBills();
       const totalAtrasadas = bills.filter((b) => b.status === 'atrasado').reduce((acc, curr) => acc + curr.valorTotal, 0);
@@ -627,10 +617,10 @@ async function startServer() {
     }
   });
 
-  app.get('/api/v1/finance/agreements', async (req, res) => {
-    const user = (req as any).user as UserSession | null;
+  app.get('/api/v1/finance/agreements', requireAuth, async (req, res) => {
+    const user = (req as any).user as UserSession;
     try {
-      const unitNumber = user?.role === 'morador' ? user.unitNumber : undefined;
+      const unitNumber = user.role === 'morador' ? user.unitNumber : undefined;
       const agreements = await DatabaseRepository.getFinancialAgreements(unitNumber);
       res.json(agreements);
     } catch (err: any) {
@@ -641,11 +631,11 @@ async function startServer() {
   // ============================================================================
   // 7. ENCOMENDAS E VISITANTES (POSTGRESQL DRIZZLE ORM)
   // ============================================================================
-  app.get('/api/v1/packages', async (req, res) => {
-    const user = (req as any).user as UserSession | null;
+  app.get('/api/v1/packages', requireAuth, async (req, res) => {
+    const user = (req as any).user as UserSession;
     try {
       const packages = await DatabaseRepository.getPackages(
-        user?.role === 'morador' ? user.unitId : undefined
+        user.role === 'morador' ? user.unitId : undefined
       );
       res.json(packages);
     } catch (err: any) {
@@ -681,11 +671,11 @@ async function startServer() {
     res.json({ success: true, message: 'Morador notificado com sucesso via Push.' });
   });
 
-  app.get('/api/v1/visitors/invites', async (req, res) => {
-    const user = (req as any).user as UserSession | null;
+  app.get('/api/v1/visitors/invites', requireAuth, async (req, res) => {
+    const user = (req as any).user as UserSession;
     try {
       const invites = await DatabaseRepository.getVisitorInvites(
-        user?.role === 'morador' ? user.unitId : undefined
+        user.role === 'morador' ? user.unitId : undefined
       );
       res.json(invites);
     } catch (err: any) {
@@ -718,11 +708,11 @@ async function startServer() {
   // ============================================================================
   // 8. VEÍCULOS E LPR (RECONHECIMENTO DE PLACAS)
   // ============================================================================
-  app.get('/api/v1/vehicles', async (req, res) => {
-    const user = (req as any).user as UserSession | null;
+  app.get('/api/v1/vehicles', requireAuth, async (req, res) => {
+    const user = (req as any).user as UserSession;
     try {
       const vehiclesList = await DatabaseRepository.getVehicles(
-        user?.role === 'morador' ? user.unitId : undefined
+        user.role === 'morador' ? user.unitId : undefined
       );
       res.json(vehiclesList);
     } catch (err: any) {
@@ -730,11 +720,11 @@ async function startServer() {
     }
   });
 
-  app.get('/api/v1/vehicles/lpr-logs', (req, res) => {
+  app.get('/api/v1/vehicles/lpr-logs', requireAuth, (req, res) => {
     res.json(lprLogs);
   });
 
-  app.post('/api/v1/vehicles/lpr-simulate', async (req, res) => {
+  app.post('/api/v1/vehicles/lpr-simulate', requireAuth, async (req, res) => {
     const { plate } = req.body;
     if (!plate) return res.status(400).json({ error: 'Placa obrigatória.' });
 
@@ -808,9 +798,9 @@ async function startServer() {
     res.json({ activeCall });
   });
 
-  app.get('/api/v1/calls/history', (req, res) => {
-    const user = (req as any).user as UserSession | null;
-    if (user?.role === 'morador' && user?.unitNumber) {
+  app.get('/api/v1/calls/history', requireAuth, (req, res) => {
+    const user = (req as any).user as UserSession;
+    if (user.role === 'morador' && user.unitNumber) {
       return res.json(callHistory.filter((c) => c.unitNumber === user.unitNumber));
     }
     res.json(callHistory);
@@ -893,7 +883,7 @@ async function startServer() {
   // ============================================================================
   // 10. ASSISTENTE XPE 3115-IP (CONFIGURAÇÃO TÉCNICA SANITIZADA)
   // ============================================================================
-  app.get('/api/v1/xpe/config', async (req, res) => {
+  app.get('/api/v1/xpe/config', requireAuth, requireRole(['super_admin', 'sindico', 'admin_sistema']), async (req, res) => {
     const condo = await CondominiumService.getConfig();
     res.json(getXpeRuntimeConfig(condo));
   });
@@ -901,7 +891,8 @@ async function startServer() {
   // ============================================================================
   // 11. STATUS GERAL DO SISTEMA E AUDITORIA
   // ============================================================================
-  app.get('/api/v1/system/status', async (req, res) => {
+  app.get('/api/v1/system/status', requireAuth, async (req, res) => {
+    const isProd = process.env.NODE_ENV === 'production';
     const dbHealth = await checkPostgresHealth();
     let iotCount = 0;
     try {
@@ -920,16 +911,16 @@ async function startServer() {
         uptime: '99.98%',
       },
       xpe3115: {
-        status: 'online',
-        ip: process.env.XPE_IP || '192.168.1.150',
+        status: process.env.XPE_IP ? 'online' : (isProd ? 'offline' : 'online'),
+        ip: process.env.XPE_IP || (isProd ? 'NÃO CONFIGURADO' : '192.168.1.150'),
         firmware: 'v3.2.0-secure',
         audioCodec: 'G.711u / Opus',
         videoCodec: 'H.264 Baseline',
       },
       zigbeeGateway: {
         model: 'NovaDigital HNZ-CB3 Zigbee 3.0 Ethernet',
-        ip: process.env.RELAY_CONTROLLER_IP || '192.168.1.160',
-        status: 'online',
+        ip: process.env.RELAY_CONTROLLER_IP || (isProd ? 'NÃO CONFIGURADO' : '192.168.1.160'),
+        status: process.env.RELAY_CONTROLLER_IP ? 'online' : (isProd ? 'offline' : 'online'),
         localFirstNoCloud: true,
         devicesConnected: iotCount,
       },
@@ -962,23 +953,19 @@ async function startServer() {
     res.json(status);
   });
 
-  app.get('/api/v1/audit', (req, res) => {
-    const user = (req as any).user as UserSession | null;
-    if (user?.role === 'morador') {
-      return res.json(auditLogs.filter((l) => l.actor.includes(user.unitNumber || '')));
-    }
+  app.get('/api/v1/audit', requireAuth, requireRole(['super_admin', 'sindico', 'admin_sistema']), (req, res) => {
     res.json(auditLogs);
   });
 
-  app.get('/api/v1/events', (req, res) => {
+  app.get('/api/v1/events', requireAuth, requireRole(['super_admin', 'sindico', 'admin_sistema']), (req, res) => {
     res.json(eventBusHistory);
   });
 
   // ============================================================================
   // 12. MAIA (INTELIGÊNCIA OPERACIONAL)
   // ============================================================================
-  app.post('/api/v1/ai/maia', async (req, res) => {
-    const user = (req as any).user as UserSession | null;
+  app.post('/api/v1/ai/maia', requireAuth, async (req, res) => {
+    const user = (req as any).user as UserSession;
     const { prompt } = req.body;
     if (!prompt) return res.status(400).json({ error: 'Prompt obrigatório.' });
 
@@ -1007,7 +994,7 @@ async function startServer() {
   // ============================================================================
   // 13. IOT & AUTOMAÇÕES FÍSICAS (BANCO DE DADOS POSTGRESQL / DRIZZLE)
   // ============================================================================
-  app.get('/api/v1/iot/devices', async (req, res) => {
+  app.get('/api/v1/iot/devices', requireAuth, async (req, res) => {
     try {
       const devices = await DatabaseRepository.getIotDevices();
       res.json(devices);
@@ -1029,7 +1016,7 @@ async function startServer() {
     }
   });
 
-  app.get('/api/v1/iot/automations', async (req, res) => {
+  app.get('/api/v1/iot/automations', requireAuth, async (req, res) => {
     try {
       const rules = await DatabaseRepository.getAutomationRules();
       res.json(rules);
@@ -1041,10 +1028,10 @@ async function startServer() {
   // ============================================================================
   // 14. GESTÃO DE DISPOSITIVOS E CÂMERAS
   // ============================================================================
-  app.get('/api/v1/devices/cameras', async (req, res) => {
+  app.get('/api/v1/devices/cameras', requireAuth, async (req, res) => {
     try {
       const cams = await DatabaseRepository.getCameras();
-      const sanitized = cams.map((c) => ({
+      const sanitized = cams.map((c) => sanitizeCameraForClient({
         ...c,
         rtspUrl: sanitizeRtspUrl(c.rtspUrl),
       }));
@@ -1064,7 +1051,7 @@ async function startServer() {
     res.json({ success: true, message: 'Câmera removida com sucesso.' });
   });
 
-  app.get('/api/v1/devices/iot', async (req, res) => {
+  app.get('/api/v1/devices/iot', requireAuth, async (req, res) => {
     try {
       const devices = await DatabaseRepository.getIotDevices();
       res.json(devices);
@@ -1076,10 +1063,13 @@ async function startServer() {
   // ============================================================================
   // 15. DISCOVERY DE CÂMERAS ONVIF / RTSP (SEM CREDENCIAIS EM TEXTO CLARO)
   // ============================================================================
+  const isProdEnv = process.env.NODE_ENV === 'production';
+  const xpeDiscoveryIp = process.env.XPE_IP || (isProdEnv ? '' : '192.168.1.150');
+
   const discoveredCams: DiscoveredCamera[] = [
     {
       id: 'disc-cam-01',
-      ip: process.env.XPE_IP || '192.168.1.150',
+      ip: xpeDiscoveryIp,
       model: 'Intelbras XPE 3115-IP',
       manufacturer: 'Intelbras',
       mac: '48:28:2F:10:22:9A',
@@ -1088,11 +1078,10 @@ async function startServer() {
       httpPort: 80,
       discoveryMethod: 'WS-Discovery',
       supportedProfiles: ['ONVIF_Profile_T', 'ONVIF_Profile_S'],
-      suggestedRtspMain: sanitizeRtspUrl(`rtsp://${process.env.XPE_IP || '192.168.1.150'}:554/cam/realmonitor?channel=1&subtype=0`),
-      suggestedRtspSub: sanitizeRtspUrl(`rtsp://${process.env.XPE_IP || '192.168.1.150'}:554/cam/realmonitor?channel=1&subtype=1`),
-      suggestedGo2rtcConfig: `xpe_3115:\n  - ${sanitizeRtspUrl(`rtsp://${process.env.XPE_IP || '192.168.1.150'}:554/cam/realmonitor?channel=1&subtype=0`)}`,
+      suggestedRtspMain: sanitizeRtspUrl(`rtsp://${xpeDiscoveryIp}:554/cam/realmonitor?channel=1&subtype=0`),
+      suggestedRtspSub: sanitizeRtspUrl(`rtsp://${xpeDiscoveryIp}:554/cam/realmonitor?channel=1&subtype=1`),
+      suggestedGo2rtcConfig: `xpe_3115:\n  - ${sanitizeRtspUrl(`rtsp://${xpeDiscoveryIp}:554/cam/realmonitor?channel=1&subtype=0`)}`,
       isConfigured: true,
-      defaultCredentialsHint: 'Parametrizada na inicialização do instalador',
       detectedCodec: 'H.264',
     },
     {
@@ -1110,7 +1099,6 @@ async function startServer() {
       suggestedRtspSub: sanitizeRtspUrl('rtsp://192.168.1.102:554/cam/realmonitor?channel=1&subtype=1'),
       suggestedGo2rtcConfig: `cam_lpr:\n  - ${sanitizeRtspUrl('rtsp://192.168.1.102:554/cam/realmonitor?channel=1&subtype=0')}`,
       isConfigured: false,
-      defaultCredentialsHint: 'Parametrizada na inicialização do instalador',
       detectedCodec: 'H.264',
     },
     {
@@ -1128,13 +1116,12 @@ async function startServer() {
       suggestedRtspSub: sanitizeRtspUrl('rtsp://192.168.1.103:554/Streaming/Channels/102'),
       suggestedGo2rtcConfig: `cam_hik:\n  - ${sanitizeRtspUrl('rtsp://192.168.1.103:554/Streaming/Channels/101')}`,
       isConfigured: false,
-      defaultCredentialsHint: 'Configurada via SADP Tool no onboarding',
       detectedCodec: 'H.264',
     },
   ];
 
-  app.get('/api/v1/discovery/cameras', (req, res) => {
-    res.json(discoveredCams);
+  app.get('/api/v1/discovery/cameras', requireAuth, requireRole(['super_admin', 'admin_sistema']), (req, res) => {
+    res.json(discoveredCams.map((c) => sanitizeCameraForClient(c)));
   });
 
   app.post('/api/v1/discovery/scan', requireAuth, requireRole(['super_admin', 'admin_sistema']), (req, res) => {

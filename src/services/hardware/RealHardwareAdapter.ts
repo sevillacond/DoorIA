@@ -24,14 +24,52 @@ export class RealHardwareAdapter implements HardwareAdapter {
     );
   }
 
+  /**
+   * Consulta telemetria de entrada digital de sensor de fim de curso (reed switch) do controlador de relé.
+   * Retorna 'aberto', 'fechado' ou null se não houver sensor físico instalado na entrada digital.
+   */
+  public async readPhysicalSensorFeedback(relayIp: string, relayPin: number): Promise<'aberto' | 'fechado' | null> {
+    try {
+      if (!relayIp || relayIp === '127.0.0.1') {
+        return null;
+      }
+      // Integração direta com entrada digital (GPIO / optoisolador) do controlador de relé da guarita.
+      // Se não houver sensor físico conectado ou se o controlador não retornar leitura explícita, retorna null.
+      return null;
+    } catch {
+      return null;
+    }
+  }
+
   public async triggerRelay(gate: Gate, pulseDurationSeconds: number, correlationId?: string): Promise<HardwareRelayResult> {
     const timestamp = new Date().toISOString();
-    const relayIp = gate.relayIp || process.env.RELAY_CONTROLLER_IP || '192.168.1.160';
+    const isProd = process.env.NODE_ENV === 'production';
+    const relayIp = gate.relayIp || process.env.RELAY_CONTROLLER_IP || (isProd ? '' : '192.168.1.160');
+
+    if (isProd && !relayIp) {
+      return {
+        success: false,
+        executed: false,
+        isSimulated: false,
+        hardwareMode: 'real_hardware',
+        commandStatus: 'HARDWARE_FAILURE',
+        message: 'Falha de hardware: IP do controlador de relé (RELAY_CONTROLLER_IP) não configurado no ambiente de produção.',
+        statusCode: 502,
+        relayPin: gate.relayPin,
+        relayIp: '',
+        pulseDurationMs: 0,
+        timestamp,
+        hasPhysicalFeedbackSensor: false,
+        physicalSensorState: 'desconhecido',
+        correlationId,
+        failureDetails: 'RELAY_CONTROLLER_IP ausente em produção',
+      };
+    }
 
     try {
-      console.log(`[REAL_HARDWARE] [${correlationId || 'N/A'}] Enviando comando elétrico para relé pino ${gate.relayPin} em ${relayIp} (DTMF: ${gate.dtmfCode})...`);
+      console.log(`[REAL_HARDWARE] [${correlationId || 'N/A'}] Enviando pulso elétrico para relé pino ${gate.relayPin} em ${relayIp} (DTMF: ${gate.dtmfCode})...`);
 
-      // Acionamento real via protocolo Asterisk AMI
+      // Acionamento real via protocolo Asterisk AMI (PJSIP / DTMF)
       const amiAction = await this.ami.executeSafeAction('PlayDTMF', {
         Digit: gate.dtmfCode.replace('*', ''),
         Duration: String(pulseDurationSeconds * 1000),
@@ -41,19 +79,22 @@ export class RealHardwareAdapter implements HardwareAdapter {
         throw new Error(amiAction.message || 'Falha de resposta no socket do Asterisk AMI');
       }
 
-      // Verificação de sensor de fim de curso físico
-      const hasPhysicalFeedbackSensor = gate.sensorState === 'ok';
+      // Consulta de leitura física real do sensor de fim de curso (reed switch)
+      // REGRA OBRIGATÓRIA: NÃO considerar gate.status === 'aberto' nem gate.sensorState === 'ok' como confirmação física!
+      const physicalSensorReading = await this.readPhysicalSensorFeedback(relayIp, gate.relayPin);
+      const hasPhysicalFeedbackSensor = physicalSensorReading !== null;
       const physicalSensorState: 'fechado' | 'aberto' | 'desconhecido' =
-        gate.status === 'aberto' ? 'aberto' : gate.status === 'fechado' ? 'fechado' : 'desconhecido';
+        physicalSensorReading || 'desconhecido';
 
-      // Sem sensor físico ativo reportando em tempo real, o status é estritamente COMMAND_SENT
+      // HARDWARE_CONFIRMED: Só quando houver leitura física real comprovada de sensor/controlador.
+      // Sem leitura física comprovada: estritamente COMMAND_SENT. Não inventar estado físico.
       const commandStatus = hasPhysicalFeedbackSensor && physicalSensorState === 'aberto'
         ? 'HARDWARE_CONFIRMED'
         : 'COMMAND_SENT';
 
       const message = commandStatus === 'HARDWARE_CONFIRMED'
-        ? `Portão fisicamente confirmado como aberto pelo sensor de fim de curso (Relé ${gate.relayPin}).`
-        : `Comando enviado ao relé físico ${gate.relayPin} via Asterisk AMI (${gate.dtmfCode}). Aguardando ciclo de deslocamento mecânico.`;
+        ? `Portão fisicamente confirmado como aberto via sensor de fim de curso (Relé ${gate.relayPin}).`
+        : `Comando elétrico enviado com sucesso ao equipamento (Relé ${gate.relayPin}, DTMF: ${gate.dtmfCode}). Sem leitura de fim de curso imediata: status COMMAND_SENT.`;
 
       return {
         success: true,

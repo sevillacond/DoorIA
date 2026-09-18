@@ -124,18 +124,54 @@ export function validateProductionConfig(isProduction = process.env.NODE_ENV ===
       errors.push('[CRÍTICO] INITIAL_ADMIN_EMAIL em produção deve ser um endereço de e-mail corporativo/oficial válido.');
     }
 
-    // 6. CREDENCIAIS DE INFRAESTRUTURA (XPE / RTSP)
-    const xpeIp = process.env.XPE_IP;
-    if (xpeIp) {
-      const xpeSipSecret = process.env.XPE_SIP_SECRET;
-      if (!xpeSipSecret || BANNED_SECRETS.includes(xpeSipSecret)) {
-        errors.push('[CRÍTICO] XPE_SIP_SECRET é obrigatório e não pode ser um secret padrão conhecido quando XPE_IP estiver definido.');
-      }
+    // 6. CREDENCIAIS E INFRAESTRUTURA DE PRODUÇÃO (XPE / ASTERISK / AMI / RELÉ / RTSP)
+    const xpeIp = (process.env.XPE_IP || '').trim();
+    if (!xpeIp) {
+      errors.push('[CRÍTICO] XPE_IP é estritamente obrigatório em produção.');
+    } else if (xpeIp === '192.168.1.150' || xpeIp === '127.0.0.1') {
+      errors.push('[CRÍTICO] XPE_IP em produção não pode utilizar IP padrão de exemplo (192.168.1.150 ou 127.0.0.1).');
+    }
 
-      const xpeRtspPassword = process.env.XPE_RTSP_PASSWORD;
-      if (!xpeRtspPassword || BANNED_SECRETS.includes(xpeRtspPassword)) {
-        errors.push('[CRÍTICO] XPE_RTSP_PASSWORD é obrigatório e não pode ser "admin" ou valor padrão conhecido.');
-      }
+    const xpeSipSecret = (process.env.XPE_SIP_SECRET || '').trim();
+    if (!xpeSipSecret || BANNED_SECRETS.includes(xpeSipSecret)) {
+      errors.push('[CRÍTICO] XPE_SIP_SECRET é obrigatório em produção e não pode ser um segredo padrão conhecido.');
+    }
+
+    const xpeRtspUser = (process.env.XPE_RTSP_USERNAME || '').trim();
+    if (!xpeRtspUser) {
+      errors.push('[CRÍTICO] XPE_RTSP_USERNAME é obrigatório em produção.');
+    }
+
+    const xpeRtspPassword = (process.env.XPE_RTSP_PASSWORD || '').trim();
+    if (!xpeRtspPassword || BANNED_SECRETS.includes(xpeRtspPassword) || xpeRtspPassword === 'admin') {
+      errors.push('[CRÍTICO] XPE_RTSP_PASSWORD é obrigatório em produção e não pode ser "admin" ou valor padrão conhecido.');
+    }
+
+    const relayControllerIp = (process.env.RELAY_CONTROLLER_IP || '').trim();
+    if (!relayControllerIp) {
+      errors.push('[CRÍTICO] RELAY_CONTROLLER_IP é obrigatório em produção para acionamento de relés blindados.');
+    } else if (relayControllerIp === '192.168.1.160' || relayControllerIp === '127.0.0.1') {
+      errors.push('[CRÍTICO] RELAY_CONTROLLER_IP em produção não pode ser o IP padrão de exemplo (192.168.1.160 ou 127.0.0.1).');
+    }
+
+    const asteriskHost = (process.env.ASTERISK_HOST || '').trim();
+    if (!asteriskHost || asteriskHost === '127.0.0.1') {
+      errors.push('[CRÍTICO] ASTERISK_HOST em produção deve ser o IP estático do servidor de telefonia na guarita, e não 127.0.0.1.');
+    }
+
+    const asteriskAmiPort = parseInt(process.env.ASTERISK_AMI_PORT || '', 10);
+    if (isNaN(asteriskAmiPort) || asteriskAmiPort <= 0) {
+      errors.push('[CRÍTICO] ASTERISK_AMI_PORT é obrigatório em produção (padrão 5038).');
+    }
+
+    const asteriskSipServer = (process.env.ASTERISK_SIP_SERVER || process.env.ASTERISK_HOST || '').trim();
+    if (!asteriskSipServer || asteriskSipServer === '127.0.0.1') {
+      errors.push('[CRÍTICO] ASTERISK_SIP_SERVER em produção não pode ser 127.0.0.1.');
+    }
+
+    const asteriskSipPort = parseInt(process.env.ASTERISK_SIP_PORT || '5060', 10);
+    if (isNaN(asteriskSipPort) || asteriskSipPort <= 0) {
+      errors.push('[CRÍTICO] ASTERISK_SIP_PORT deve ser uma porta SIP válida em produção (ex: 5060).');
     }
   }
 

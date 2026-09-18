@@ -38,14 +38,28 @@ services:
         condition: service_healthy
     environment:
       NODE_ENV: production
+      SESSION_SECRET: ${SESSION_SECRET:?Erro de Seguranca: SESSION_SECRET e estritamente obrigatorio e deve ser configurado no arquivo .env}
+      INITIAL_ADMIN_PASSWORD: ${INITIAL_ADMIN_PASSWORD:?Erro de Seguranca: INITIAL_ADMIN_PASSWORD e estritamente obrigatorio em producao}
+      INITIAL_ADMIN_EMAIL: ${INITIAL_ADMIN_EMAIL:?Erro de Seguranca: INITIAL_ADMIN_EMAIL e estritamente obrigatorio em producao}
       DATABASE_URL: postgresql://${POSTGRES_USER:-dooria}:${POSTGRES_PASSWORD:?Erro: POSTGRES_PASSWORD obrigatorio}@postgres:5432/${POSTGRES_DB:-dooria_db}
       PGHOST: postgres
       PGPORT: 5432
       PGUSER: ${POSTGRES_USER:-dooria}
       PGPASSWORD: ${POSTGRES_PASSWORD:?Erro: PGPASSWORD obrigatorio}
       PGDATABASE: ${POSTGRES_DB:-dooria_db}
+      ASTERISK_HOST: ${ASTERISK_HOST:?Erro de Seguranca: ASTERISK_HOST e estritamente obrigatorio em producao}
+      ASTERISK_AMI_PORT: ${ASTERISK_AMI_PORT:-5038}
+      ASTERISK_AMI_USERNAME: ${ASTERISK_AMI_USERNAME:?Erro de Seguranca: ASTERISK_AMI_USERNAME e estritamente obrigatorio}
+      ASTERISK_AMI_SECRET: ${ASTERISK_AMI_SECRET:?Erro de Seguranca: ASTERISK_AMI_SECRET e estritamente obrigatorio}
+      ASTERISK_SIP_SERVER: ${ASTERISK_SIP_SERVER:-${ASTERISK_HOST}}
+      ASTERISK_SIP_PORT: ${ASTERISK_SIP_PORT:-5060}
+      XPE_IP: ${XPE_IP:?Erro de Seguranca: XPE_IP e estritamente obrigatorio em producao}
+      XPE_SIP_USERNAME: ${XPE_SIP_USERNAME:-8000}
+      XPE_SIP_SECRET: ${XPE_SIP_SECRET:?Erro de Seguranca: XPE_SIP_SECRET e estritamente obrigatorio em producao}
+      XPE_RTSP_USERNAME: ${XPE_RTSP_USERNAME:?Erro de Seguranca: XPE_RTSP_USERNAME e estritamente obrigatorio em producao}
+      XPE_RTSP_PASSWORD: ${XPE_RTSP_PASSWORD:?Erro de Seguranca: XPE_RTSP_PASSWORD e estritamente obrigatorio em producao}
+      RELAY_CONTROLLER_IP: ${RELAY_CONTROLLER_IP:?Erro de Seguranca: RELAY_CONTROLLER_IP e estritamente obrigatorio em producao}
       GEMINI_API_KEY: ${GEMINI_API_KEY:-}
-      SESSION_SECRET: ${SESSION_SECRET:?Erro de Seguranca: SESSION_SECRET e estritamente obrigatorio e deve ser configurado no arquivo .env}
     ports:
       - "3000:3000"
     networks:

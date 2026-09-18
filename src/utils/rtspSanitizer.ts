@@ -13,8 +13,8 @@
 export function sanitizeRtspUrl(url: string | undefined | null): string {
   if (!url) return '';
   try {
-    // Regex para substituir 'protocol://user:password@' por 'protocol://'
-    return url.replace(/^(rtsp|rtsps|http|https):\/\/([^:@]+):([^@]+)@/i, '$1://');
+    // Remove completamente qualquer credencial (ex: user:pass@, admin:***@, user@) mantendo estritamente protocolo, host e caminho
+    return url.replace(/^([a-zA-Z][a-zA-Z0-9+.-]*):\/\/[^@/]+@/i, '$1://');
   } catch {
     return '[STREAM_RESTRITO]';
   }
@@ -47,9 +47,11 @@ export function sanitizeCameraForClient<T extends { rtspUrl?: string; suggestedR
   if (sanitized.suggestedRtspSub) {
     sanitized.suggestedRtspSub = sanitizeRtspUrl(sanitized.suggestedRtspSub);
   }
-  // Remove pistas ou sugestões de senhas padrão
-  if ('defaultCredentialsHint' in sanitized) {
-    delete (sanitized as any).defaultCredentialsHint;
-  }
+  // Remove campos de credenciais diretas, senhas ou pistas
+  delete (sanitized as any).password;
+  delete (sanitized as any).pass;
+  delete (sanitized as any).credentials;
+  delete (sanitized as any).secret;
+  delete (sanitized as any).defaultCredentialsHint;
   return sanitized;
 }

@@ -161,13 +161,15 @@ export class GateControlService {
       }, gate.type === 'garagem' ? 10000 : 5000);
     } else {
       // No modo real de hardware:
-      // NUNCA usar setTimeout como confirmação de que o portão físico fechou ou abriu!
-      // Se há sensor de fim de curso, refletimos o sensor; senão, indicamos apenas o pulso emitido.
+      // TIMERS NÃO PODEM SIMULAR CONFIRMAÇÃO FÍSICA NO REAL HARDWARE ADAPTER!
+      // 'aberto' e 'fechado' somente devem ser atribuídos como estados físicos quando houver confirmação real (HARDWARE_CONFIRMED).
+      // COMMAND_SENT altera para o estado intermediário 'comando_enviado' e NUNCA para 'aberto' automaticamente.
       if (relayResult.commandStatus === 'HARDWARE_CONFIRMED') {
         gate.status = 'aberto';
+      } else if (relayResult.commandStatus === 'COMMAND_SENT') {
+        gate.status = 'comando_enviado';
       } else {
-        // Pulso enviado ao relé; não inventar confirmação mecânica
-        gate.status = 'abrindo';
+        gate.status = 'falha';
       }
     }
 

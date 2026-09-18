@@ -103,7 +103,7 @@ export interface Gate {
   name: string;
   type: 'pedestre' | 'garagem';
   dtmfCode: string;
-  status: 'fechado' | 'abrindo' | 'aberto' | 'fechando';
+  status: 'fechado' | 'abrindo' | 'aberto' | 'fechando' | 'comando_enviado' | 'falha';
   sensorState: 'ok' | 'alerta_aberto_tempo_excessivo' | 'sensor_obstruido';
   lastOpenedAt?: string;
   lastOpenedBy?: string;
@@ -143,7 +143,7 @@ export interface DiscoveredCamera {
   suggestedRtspSub: string;
   suggestedGo2rtcConfig: string;
   isConfigured: boolean;
-  defaultCredentialsHint: string;
+  defaultCredentialsHint?: string;
   detectedCodec: string;
 }
 
