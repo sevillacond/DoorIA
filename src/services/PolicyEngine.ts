@@ -19,6 +19,9 @@ export interface PolicyEvaluationRequest {
     targetUnitNumber?: string;
     dtmfCommand?: string;
     cameraLocation?: string;
+    isRestrictedArea?: boolean;
+    isXpeIntegrated?: boolean;
+    isPrivateArea?: boolean;
     amiAction?: string;
   };
   context: {
@@ -115,10 +118,90 @@ export class PolicyEngine {
       };
     }
 
-    // 4. ACESSO ÀS CÂMERAS CFTV
+    // 4. AUTORIZAÇÃO RIGOROSA DE CÂMERAS CFTV (RBAC / ABAC)
     if (action === 'ACESSAR_CAMERA') {
-      // Câmeras de áreas comuns e totem são autorizadas para moradores e equipe de gestão
-      return { allowed: true };
+      const loc = (resource.cameraLocation || '').toLowerCase();
+      const target = (resource.target || '').toLowerCase();
+      
+      const isRestricted = resource.isRestrictedArea || 
+        loc.includes('técnica') || loc.includes('servidor') || loc.includes('quadro') ||
+        loc.includes('guarita interna') || loc.includes('administração') || loc.includes('administracao') ||
+        loc.includes('máquinas') || loc.includes('maquinas');
+
+      // Super Admin: auditoria e manutenção técnica irrestrita
+      if (['super_admin', 'admin_sistema'].includes(actor.role)) {
+        return { allowed: true };
+      }
+
+      // Síndico / Gestor: acesso às áreas sociais, técnicas e operacionais (bloqueio de áreas estritamente privativas)
+      if (['sindico', 'admin_condominio'].includes(actor.role)) {
+        if (resource.isPrivateArea) {
+          return {
+            allowed: false,
+            policyCode: 'DENY_PRIVATE_AREA',
+            reason: 'LGPD: Imagens de áreas privativas não podem ser visualizadas pela sindicância sem mandato judicial.',
+          };
+        }
+        return { allowed: true };
+      }
+
+      // Operador de Portaria: acesso a câmeras de acesso e perímetros operacionais
+      if (actor.role === 'operador') {
+        if (isRestricted || resource.isPrivateArea) {
+          return {
+            allowed: false,
+            policyCode: 'DENY_OPERATOR_RESTRICTED',
+            reason: 'Acesso a câmeras de infraestrutura técnica interna restrito ao corpo de engenharia e sindicância.',
+          };
+        }
+        return { allowed: true };
+      }
+
+      // Morador: acesso restrito a áreas sociais comuns permitidas ou ao totem de chamada ativa
+      if (actor.role === 'morador') {
+        // Bloqueio categórico de áreas restritas
+        if (isRestricted) {
+          return {
+            allowed: false,
+            policyCode: 'DENY_RESTRICTED_CAMERA_AREA',
+            reason: 'Política de Segurança CFTV: Câmera de área técnica/restrita não autorizada para moradores.',
+          };
+        }
+
+        // Câmera integrada do Totem XPE: morador só pode assistir durante chamada ativa para sua unidade ou visualização externa geral
+        if (resource.isXpeIntegrated) {
+          if (context.callActive && context.activeCallTargetUnit && context.activeCallTargetUnit !== actor.unitNumber) {
+            return {
+              allowed: false,
+              policyCode: 'DENY_CROSS_UNIT_INTERCOM_VIDEO',
+              reason: 'Privacidade: Não é permitido interceptar vídeo de chamada destinada a outra unidade.',
+            };
+          }
+          return { allowed: true };
+        }
+
+        // Áreas sociais permitidas (lazer, circulação comum, portaria social, garagens gerais)
+        const isSocialCommon = 
+          loc.includes('comum') || loc.includes('lazer') || loc.includes('piscina') || 
+          loc.includes('salão') || loc.includes('social') || loc.includes('calçada') || 
+          loc.includes('garagem') || loc.includes('estacionamento') || loc.includes('hall');
+
+        if (isSocialCommon) {
+          return { allowed: true };
+        }
+
+        return {
+          allowed: false,
+          policyCode: 'DENY_CAMERA_NOT_PERMITTED_FOR_RESIDENT',
+          reason: 'Acesso não liberado pelo regimento interno de visualização de câmeras.',
+        };
+      }
+
+      return {
+        allowed: false,
+        policyCode: 'DENY_UNKNOWN_ROLE_CAMERA',
+        reason: 'Perfil de usuário não autorizado para visualização de CFTV.',
+      };
     }
 
     // 5. EMISSÃO DE CONVITES QR CODE
@@ -149,13 +232,25 @@ export class PolicyEngine {
       if (!['super_admin', 'sindico', 'operador'].includes(actor.role)) {
         return {
           allowed: false,
-          policyCode: 'DENY_AMI_ROLE',
-          reason: 'Comandos diretos ao Asterisk AMI exigem privilégio administrativo.',
+          policyCode: 'DENY_ROLE_AMI',
+          reason: 'Apenas Super Admin, Síndico ou Operador de Portaria podem disparar comandos de telefonia via AMI.',
         };
       }
       return { allowed: true };
     }
 
-    return { allowed: true };
+    // 7. CONFIGURAÇÕES CRÍTICAS DO SISTEMA
+    if (action === 'CONFIGURAR_SISTEMA') {
+      if (['super_admin', 'admin_sistema', 'sindico'].includes(actor.role)) {
+        return { allowed: true };
+      }
+      return {
+        allowed: false,
+        policyCode: 'DENY_SYSTEM_CONFIG',
+        reason: 'Apenas Super Admin ou Síndico têm permissão para alterar configurações estruturais do sistema.',
+      };
+    }
+
+    return { allowed: false, reason: 'Ação não mapeada na política de segurança.' };
   }
 }

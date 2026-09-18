@@ -1,6 +1,7 @@
 import { PolicyEngine } from './PolicyEngine.ts';
 import { AuditService } from './AuditService.ts';
 import type { Gate, UserSession } from '../types.ts';
+import { getHardwareAdapter, type HardwareRelayResult } from './hardware/index.ts';
 
 export interface TriggerGateParams {
   gateId: string;
@@ -20,20 +21,24 @@ export interface TriggerGateResult {
   message: string;
   gate?: Gate;
   statusCode: number;
+  isSimulated: boolean;
+  hardwareMode: 'simulated' | 'real_hardware';
+  relayResult?: HardwareRelayResult;
 }
 
 export class GateControlService {
   /**
-   * Executa o fluxo de segurança obrigatório para liberação física de portões:
-   * Autenticação -> RBAC -> Policy Engine -> Validação de Contexto -> Auditoria -> Asterisk/Relé
+   * Executa o fluxo de segurança obrigatório para liberação de portões:
+   * Autenticação -> RBAC -> Policy Engine -> Validação de Contexto -> Auditoria -> Hardware Adapter (Real vs Simulado)
    */
   public static async trigger(
     gate: Gate,
     params: TriggerGateParams
   ): Promise<TriggerGateResult> {
     const { session, context, triggerSource } = params;
+    const adapter = getHardwareAdapter();
 
-    // 1. AVALIAÇÃO PELO POLICY ENGINE
+    // 1. AVALIAÇÃO RIGOROSA PELO POLICY ENGINE
     const evaluation = PolicyEngine.evaluate({
       actor: {
         id: session.id,
@@ -71,23 +76,31 @@ export class GateControlService {
           policyCode: evaluation.policyCode,
           callActive: context.callActive,
           activeCallTargetUnit: context.activeCallTargetUnit,
+          hardwareMode: adapter.mode,
+          isSimulated: adapter.isSimulated,
         },
       });
 
       return {
         success: false,
-        message: evaluation.reason || 'Acionamento físico de portão negado pelas políticas de segurança.',
+        message: evaluation.reason || 'Acionamento de portão negado pelas políticas de segurança.',
         statusCode: 403,
+        isSimulated: adapter.isSimulated,
+        hardwareMode: adapter.mode,
       };
     }
 
-    // 3. AUTORIZADO: REGISTRO IMUTÁVEL DE AUDITORIA
+    // 3. EXECUÇÃO VIA HARDWARE ADAPTER (SEPARANDO REAL DE SIMULAÇÃO)
+    const pulseDuration = gate.type === 'garagem' ? 2 : 1;
+    const relayResult = await adapter.triggerRelay(gate, pulseDuration);
+
+    // 4. REGISTRO IMUTÁVEL DE AUDITORIA COM IDENTIFICAÇÃO DE MODO
     await AuditService.record({
       actor: session.name,
       role: session.role,
-      action: 'ABRIR_PORTAO',
+      action: adapter.isSimulated ? 'ABRIR_PORTAO_SIMULADO' : 'ABRIR_PORTAO_FISICO',
       target: `${gate.name} (${gate.dtmfCode})`,
-      status: 'PERMITIDO',
+      status: relayResult.success ? 'PERMITIDO' : 'ALERTA',
       ipAddress: context.ipAddress,
       userAgent: context.userAgent,
       correlationId: context.correlationId,
@@ -96,17 +109,33 @@ export class GateControlService {
         triggerSource,
         gateId: gate.id,
         relayPin: gate.relayPin,
-        relayIp: '192.168.1.160',
+        relayIp: relayResult.relayIp,
         callActive: context.callActive,
+        activeCallTargetUnit: context.activeCallTargetUnit,
+        hardwareMode: adapter.mode,
+        isSimulated: adapter.isSimulated,
+        hardwareExecuted: relayResult.executed,
+        hardwareExecutionStatus: relayResult.success ? 'SUCCESS' : 'HARDWARE_FAILURE',
       },
     });
 
-    // 4. ATUALIZAÇÃO DO ESTADO DO PORTÃO
-    gate.status = 'abrindo';
-    gate.lastOpenedAt = new Date().toISOString();
-    gate.lastOpenedBy = `${session.name} (${session.role})`;
+    if (!relayResult.success) {
+      return {
+        success: false,
+        message: relayResult.message,
+        statusCode: relayResult.statusCode,
+        isSimulated: adapter.isSimulated,
+        hardwareMode: adapter.mode,
+        relayResult,
+      };
+    }
 
-    // Simulação do ciclo eletromecânico do relé blindado (aberto -> fechando -> fechado)
+    // 5. ATUALIZAÇÃO DO ESTADO DO PORTÃO
+    gate.status = adapter.isSimulated ? 'aberto' : 'abrindo';
+    gate.lastOpenedAt = new Date().toISOString();
+    gate.lastOpenedBy = `${session.name} (${session.role}) [${adapter.isSimulated ? 'SIMULADO' : 'HARDWARE_REAL'}]`;
+
+    // Ciclo eletromecânico
     setTimeout(() => {
       gate.status = 'aberto';
       setTimeout(() => {
@@ -114,14 +143,17 @@ export class GateControlService {
         setTimeout(() => {
           gate.status = 'fechado';
         }, 3000);
-      }, gate.type === 'garagem' ? 12000 : 5000);
-    }, 1500);
+      }, gate.type === 'garagem' ? 10000 : 5000);
+    }, 1200);
 
     return {
       success: true,
-      message: `Comando aceito pelo Policy Engine. ${gate.name} acionado com sucesso via Relé ${gate.relayPin} (${gate.dtmfCode}).`,
+      message: relayResult.message,
       gate,
       statusCode: 200,
+      isSimulated: adapter.isSimulated,
+      hardwareMode: adapter.mode,
+      relayResult,
     };
   }
 }

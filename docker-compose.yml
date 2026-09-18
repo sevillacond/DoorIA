@@ -16,6 +16,7 @@ services:
     #   - "127.0.0.1:5432:5432"
     volumes:
       - dooria_pg_data:/var/lib/postgresql/data
+      # Apenas bootstrap de extensão; schema oficial é aplicado via migrations Drizzle (npm run db:migrate)
       - ./src/db/init.sql:/docker-entrypoint-initdb.d/01-init.sql:ro
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-dooria} -d ${POSTGRES_DB:-dooria_db}"]

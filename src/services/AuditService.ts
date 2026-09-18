@@ -76,7 +76,7 @@ export class AuditService {
         .onConflictDoNothing();
     } catch (err: any) {
       // Standby resiliente em caso de oscilação do banco local
-      if (!err.message?.includes('ECONNREFUSED')) {
+      if (!err.message?.includes('ECONNREFUSED') && !err.message?.includes('Failed query')) {
         console.warn('[AuditService] Erro ao persistir log no PostgreSQL:', err.message);
       }
     }

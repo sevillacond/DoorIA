@@ -108,6 +108,8 @@ export interface Gate {
   lastOpenedAt?: string;
   lastOpenedBy?: string;
   relayPin: number;
+  relayIp?: string;
+  isOpen?: boolean;
 }
 
 export interface CameraDevice {
@@ -204,15 +206,20 @@ export interface FinancialBill {
   unitNumber: string;
   competencia: string; // ex: "08/2026"
   vencimento: string; // ISO
-  valorOriginal: number;
-  diasAtraso: number;
-  multa: number; // 2%
-  juros: number; // 1% ao mês proporcional
-  correcao: number;
+  valorOriginal?: number;
+  diasAtraso?: number;
+  multa?: number; // 2%
+  juros?: number; // 1% ao mês proporcional
+  correcao?: number;
   valorTotal: number;
   status: 'pago' | 'pendente' | 'atrasado' | 'em_acordo';
   pagoEm?: string;
-  codigoBarras: string;
+  codigoBarras?: string;
+  taxaOrdinaria?: number;
+  pixCopiaCola?: string;
+  linhaDigitavel?: string;
+  metodoPagamento?: string;
+  externalId?: string;
 }
 
 export interface FinancialSummary {

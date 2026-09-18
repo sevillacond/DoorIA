@@ -1,22 +1,80 @@
 import crypto from 'crypto';
-import type { Request, Response, NextFunction } from 'express';
 import type { UserRole, UserSession } from '../types.ts';
-import { AuditService } from './AuditService.ts';
+import { db } from '../db/index.ts';
+import { systemUsers } from '../db/schema.ts';
+import { eq } from 'drizzle-orm';
 
-const SESSION_SECRET = process.env.SESSION_SECRET || 'dooria_local_auth_secret_key_2026';
+// Verificação de Segredos Críticos: Em produção, falha imediata se SESSION_SECRET estiver ausente
+function resolveSessionSecret(): string {
+  const secret = process.env.SESSION_SECRET;
+  if (!secret) {
+    if (process.env.NODE_ENV === 'production') {
+      throw new Error(
+        'FATAL STARTUP ERROR: A variável de ambiente SESSION_SECRET é estritamente obrigatória em ambiente de produção. ' +
+        'O DoorIA não pode iniciar com segredos ausentes ou padrões inseguros.'
+      );
+    }
+    console.warn(
+      '[AuthService] ⚠️ AVISO DE SEGURANÇA: SESSION_SECRET ausente em modo de desenvolvimento. ' +
+      'Gerando segredo criptográfico randômico efêmero para esta execução.'
+    );
+    return crypto.randomBytes(32).toString('hex');
+  }
+  return secret;
+}
 
-// Sessões ativas em memória (indexadas por token)
+const SESSION_SECRET = resolveSessionSecret();
+
+// Sessões ativas em memória (indexadas por token assinado)
 const activeSessions = new Map<string, { session: UserSession; expiresAt: number }>();
 
 export class AuthService {
+  /**
+   * Autentica um usuário contra a tabela oficial system_users no PostgreSQL
+   */
+  public static async authenticateUser(username: string, plainPassword: string): Promise<UserSession | null> {
+    try {
+      const records = await db.select().from(systemUsers).where(eq(systemUsers.username, username)).limit(1);
+      if (!records || records.length === 0) {
+        return null;
+      }
+
+      const user = records[0];
+      if (!user.active) {
+        return null;
+      }
+
+      // Validação do hash com salt utilizando scrypt
+      const derivedHash = crypto.scryptSync(plainPassword, user.salt, 64).toString('hex');
+      if (!crypto.timingSafeEqual(Buffer.from(derivedHash), Buffer.from(user.passwordHash))) {
+        return null;
+      }
+
+      return {
+        id: user.id,
+        name: user.displayName,
+        email: user.email || `${user.username}@condominio.local`,
+        role: user.role as UserRole,
+        unitId: user.unitId || undefined,
+        unitNumber: user.unitNumber || undefined,
+        mfaEnabled: user.mfaEnabled || false,
+      };
+    } catch (error: any) {
+      console.error('[AuthService] Erro ao consultar banco para autenticação:', error.message);
+      return null;
+    }
+  }
+
   /**
    * Gera um token de sessão criptográfico assinado com HMAC-SHA256
    */
   public static createSessionToken(session: UserSession, ttlHours = 24): string {
     const payload = JSON.stringify({
       id: session.id,
+      name: session.name,
       email: session.email,
       role: session.role,
+      unitId: session.unitId,
       unitNumber: session.unitNumber,
       issuedAt: Date.now(),
       expiresAt: Date.now() + ttlHours * 3600 * 1000,
@@ -69,6 +127,7 @@ export class AuthService {
         name: decoded.name || decoded.email,
         email: decoded.email,
         role: decoded.role,
+        unitId: decoded.unitId,
         unitNumber: decoded.unitNumber,
         mfaEnabled: true,
       };
@@ -88,35 +147,40 @@ export class AuthService {
   }
 
   /**
-   * Gera sessões padrão para o ambiente de testes/demonstração com isolamento
+   * Gera sessões para ambiente exclusivo de testes/demonstração.
+   * Em produção, lança erro fatal e é expressamente proibido.
    */
   public static getPresetSession(role: UserRole, unitNumber = '101'): UserSession {
+    if (process.env.NODE_ENV === 'production') {
+      throw new Error('Falha de Segurança: Sessões pré-configuradas (demo) são terminantemente proibidas em ambiente de produção.');
+    }
+
     if (role === 'sindico') {
       return {
-        id: 'usr-fernando-201',
-        name: 'Fernando Henrique Rocha (Síndico)',
-        email: 'sindico.solar@gmail.com',
+        id: 'usr-dev-sindico',
+        name: 'Síndico Geral (Dev Demo)',
+        email: 'sindico.demo@condominio.local',
         role: 'sindico',
-        unitId: 'u-201',
-        unitNumber: '201',
+        unitId: 'u-admin-01',
+        unitNumber: '101',
         mfaEnabled: true,
       };
     }
 
     if (role === 'super_admin' || role === 'admin_sistema') {
       return {
-        id: 'usr-superadmin',
-        name: 'Engenheiro de Telecom / Super Admin',
-        email: 'dev.telecom@enlace.ai',
+        id: 'usr-dev-superadmin',
+        name: 'Super Admin Técnico (Dev Demo)',
+        email: 'admin.telecom@condominio.local',
         role: 'super_admin',
         mfaEnabled: true,
       };
     }
 
     return {
-      id: `usr-morador-${unitNumber}`,
-      name: `Morador Unidade ${unitNumber}`,
-      email: `morador.${unitNumber}@solardaspalmeiras.com.br`,
+      id: `usr-dev-morador-${unitNumber}`,
+      name: `Morador Unidade ${unitNumber} (Dev Demo)`,
+      email: `morador.${unitNumber}@condominio.local`,
       role: 'morador',
       unitId: `u-${unitNumber}`,
       unitNumber,
