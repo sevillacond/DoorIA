@@ -731,7 +731,7 @@ webrtc:
               </div>
               <div>
                 <h2 className="text-xl font-extrabold text-[#0d1b35] dark:text-white font-['Red_Hat_Display']">
-                  Implantação em Produção (Deploy)
+                  Implantação em Produção (Deploy Fácil)
                 </h2>
                 <p className="text-xs text-slate-500 dark:text-slate-400">Instruções para Mini PC Local (Ubuntu/Debian) com Docker Compose e PostgreSQL Local</p>
               </div>
@@ -742,40 +742,54 @@ webrtc:
               <div className="p-4 rounded-2xl bg-slate-50 dark:bg-slate-950 border border-slate-200 dark:border-slate-800 space-y-2">
                 <div className="text-xs font-bold text-slate-800 dark:text-white flex items-center gap-2">
                   <span className="w-5 h-5 rounded-full bg-[#0a50ff] text-white flex items-center justify-center text-[11px]">1</span>
-                  <span>Compilação Unificada do Servidor & Cliente</span>
+                  <span>O jeito mais rápido: Script Automático (Recomendado)</span>
                 </div>
                 <p className="text-xs text-slate-600 dark:text-slate-400">
-                  O comando de build compila o frontend Vite e empacota o backend TypeScript em um bundle autônomo <code>dist/server.cjs</code> via esbuild.
+                  Criamos um script intuitivo que orquestra todo o ecossistema (PostgreSQL, Asterisk, go2rtc e Motor Node.js) em um comando só.
                 </p>
                 <div className="p-2.5 rounded-xl bg-[#070d18] text-slate-300 font-mono text-xs border border-slate-800">
-                  npm run build &amp;&amp; npm start
+                  chmod +x deploy.sh<br />
+                  ./deploy.sh
                 </div>
               </div>
 
               <div className="p-4 rounded-2xl bg-slate-50 dark:bg-slate-950 border border-slate-200 dark:border-slate-800 space-y-2">
                 <div className="text-xs font-bold text-slate-800 dark:text-white flex items-center gap-2">
                   <span className="w-5 h-5 rounded-full bg-[#0a50ff] text-white flex items-center justify-center text-[11px]">2</span>
-                  <span>Banco de Dados Puro Local PostgreSQL 16 LTS (Porta 5432)</span>
+                  <span>Banco de Dados Drizzle ORM + PostgreSQL 16 LTS</span>
                 </div>
                 <p className="text-xs text-slate-600 dark:text-slate-400">
-                  O banco relacional opera 100% no servidor físico da guarita (Mini PC), com 14 tabelas ACID inicializadas automaticamente via <code>src/db/init.sql</code>, garantindo total privacidade, zero dependência de Firestore ou nuvens externas.
+                  O banco relacional opera 100% no servidor físico da guarita (Mini PC), mantendo integridade com Drizzle ORM. Zero dependência de Firestore ou nuvens externas.
                 </p>
-                <div className="p-2.5 rounded-xl bg-[#070d18] text-slate-300 font-mono text-xs border border-slate-800">
-                  docker-compose up -d postgres # Inicialização automática do PostgreSQL 16 Alpine
+                <div className="p-2.5 rounded-xl bg-[#070d18] text-slate-300 font-mono text-xs border border-slate-800 flex flex-col">
+                  <span className="text-slate-500"># Para gerar migrações:</span>
+                  <span>npm run db:generate</span>
+                  <span className="text-slate-500 mt-2"># Para aplicar no PostgreSQL local:</span>
+                  <span>npm run db:push</span>
                 </div>
               </div>
 
               <div className="p-4 rounded-2xl bg-slate-50 dark:bg-slate-950 border border-slate-200 dark:border-slate-800 space-y-2">
                 <div className="text-xs font-bold text-slate-800 dark:text-white flex items-center gap-2">
                   <span className="w-5 h-5 rounded-full bg-[#0a50ff] text-white flex items-center justify-center text-[11px]">3</span>
-                  <span>Auto-Reinicialização com Systemd / Docker</span>
+                  <span>Orquestração Docker Compose Manual</span>
                 </div>
                 <p className="text-xs text-slate-600 dark:text-slate-400">
-                  No Mini PC da guarita, configure a reinicialização automática para recuperação instantânea em caso de reinício elétrico:
+                  Caso prefira iniciar a estrutura sem o shell script, suba todos os 4 containers (Banco, Telefonia, Câmeras e App) de uma só vez:
                 </p>
                 <div className="p-2.5 rounded-xl bg-[#070d18] text-slate-300 font-mono text-xs border border-slate-800">
-                  docker run -d --restart=always -p 3000:3000 -p 5060:5060/udp enlace-dooria:latest
+                  docker-compose up -d --build
                 </div>
+              </div>
+              
+              <div className="p-4 rounded-2xl bg-slate-50 dark:bg-slate-950 border border-slate-200 dark:border-slate-800 space-y-2">
+                <div className="text-xs font-bold text-slate-800 dark:text-white flex items-center gap-2">
+                  <span className="w-5 h-5 rounded-full bg-[#0a50ff] text-white flex items-center justify-center text-[11px]">4</span>
+                  <span>Integração Inteligência Artificial & Gateway (9router)</span>
+                </div>
+                <p className="text-xs text-slate-600 dark:text-slate-400">
+                  A comunicação com a MaIA (IA) pode ser redirecionada dinamicamente informando seu proxy reverso local (Ex: 9router.enlace.slz.br) na aba de configurações do Condomínio. O backend ajusta automaticamente.
+                </p>
               </div>
             </div>
           </div>

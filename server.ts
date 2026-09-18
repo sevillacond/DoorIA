@@ -4,6 +4,8 @@ import path from 'path';
 import crypto from 'crypto';
 import { GoogleGenAI, Type } from '@google/genai';
 import { createServer as createViteServer } from 'vite';
+import { db } from './src/db/index.ts';
+import { units as dbUnits, users as dbUsers, gates as dbGates } from './src/db/schema.ts';
 import type {
   UserRole,
   UserSession,
@@ -1615,8 +1617,40 @@ async function startServer() {
     res.json({ success: true });
   });
 
-  app.get('/api/v1/units', (req, res) => {
-    res.json(units);
+  app.get('/api/v1/units', async (req, res) => {
+    try {
+      // Integração Híbrida: Traz dados reais do PostgreSQL via Drizzle ORM
+      const dbRecords = await db.select().from(dbUnits);
+      
+      // Mapeia os dados do banco para o formato esperado pelo frontend
+      const mappedDbUnits = dbRecords.map(dbU => ({
+        id: `u-db-${dbU.id}`,
+        number: dbU.number,
+        block: dbU.block || '',
+        floor: 1, // mock
+        sipExtension: dbU.sipExtension || '',
+        intercomCode: dbU.number,
+        ownerName: dbU.ownerName,
+        ownerPhone: '(00) 00000-0000', // placeholder
+        financialStatus: dbU.financialStatus || 'em_dia',
+        residents: [] // placeholder to avoid breaking UI
+      }));
+
+      // Combina com os mocks em memória caso o banco esteja vazio (Fallback visual)
+      if (mappedDbUnits.length > 0) {
+        return res.json([...mappedDbUnits, ...units.filter(u => !mappedDbUnits.find(mu => mu.number === u.number))]);
+      }
+
+      res.json(units);
+    } catch (error: any) {
+      // Silenciar erro ECONNREFUSED no ambiente de desenvolvimento/preview
+      // para não poluir os logs quando não há PostgreSQL rodando localmente
+      const errString = String(error?.cause || error?.message || error);
+      if (!errString.includes('ECONNREFUSED')) {
+        console.error('Erro ao buscar unidades do PostgreSQL:', error);
+      }
+      res.json(units); // Fallback para memória em caso de erro no DB
+    }
   });
 
   // 3. Chamadas Asterisk / XPE / QR Intercom
