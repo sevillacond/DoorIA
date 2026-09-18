@@ -279,6 +279,7 @@ export type EventBusEventType =
   | 'PACKAGE_RECEIVED'
   | 'SOS_TRIGGERED'
   | 'PAYMENT_OVERDUE'
+  | 'BILL_PAID'
   | 'GATE_OPENED'
   | 'CAMERA_ADDED'
   | 'CAMERA_REMOVED'

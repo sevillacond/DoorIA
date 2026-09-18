@@ -1,0 +1,35 @@
+# ==============================================================================
+# ENLACE-DOORIA: GO2RTC GATEWAY DE VÍDEO CFTV (SUB-50MS WEBRTC)
+# Piloto São Luís - MA (Intelbras, Hikvision, Dahua)
+# ==============================================================================
+
+api:
+  listen: ":1984"
+  origin: "*"
+
+webrtc:
+  listen: ":8555/tcp"
+  candidates:
+    - 192.168.1.100:8555
+    - stun:stun.l.google.com:19302
+
+rtsp:
+  listen: ":8554"
+
+streams:
+  # Câmera 1: Totem da Portaria Social (Intelbras XPE 3115 IP)
+  camera_portaria:
+    - rtsp://admin:intelbras@192.168.1.150:554/cam/realmonitor?channel=1&subtype=0
+    - "ffmpeg:camera_portaria#video=copy#audio=opus"
+
+  # Câmera 2: Portão Garagem LPR (Intelbras VIP 3230 B)
+  camera_garagem:
+    - rtsp://admin:intelbras@192.168.1.151:554/cam/realmonitor?channel=1&subtype=0
+
+  # Câmera 3: Hall de Entrada Social (Hikvision DS-2CD1123G0-I)
+  camera_hall:
+    - rtsp://admin:hikvision@192.168.1.152:554/Streaming/Channels/101
+
+  # Câmera 4: Espaço Gourmet (Dahua IPC-HDBW1230E)
+  camera_gourmet:
+    - rtsp://admin:dahua@192.168.1.153:554/cam/realmonitor?channel=1&subtype=0

@@ -5,7 +5,7 @@ import crypto from 'crypto';
 import { GoogleGenAI, Type } from '@google/genai';
 import { createServer as createViteServer } from 'vite';
 import { db } from './src/db/index.ts';
-import { units as dbUnits, users as dbUsers, gates as dbGates } from './src/db/schema.ts';
+import { units as dbUnits, systemUsers as dbUsers, gates as dbGates } from './src/db/schema.ts';
 import type {
   UserRole,
   UserSession,
@@ -34,7 +34,14 @@ import type {
   XpeRelayConfig,
 } from './src/types.ts';
 import { parametrizeDiscoveredCamera, MANUFACTURER_PROFILES } from './src/services/CameraDiscovery.ts';
-import { checkPostgresHealth, initializePostgresSchema, query } from './src/db/postgres.ts';
+import { checkPostgresHealth, query } from './src/db/postgres.ts';
+import { AuditService } from './src/services/AuditService.ts';
+import { PolicyEngine } from './src/services/PolicyEngine.ts';
+import { GateControlService } from './src/services/GateControlService.ts';
+import { AuthService } from './src/services/AuthService.ts';
+import { EnlacePay } from './src/services/EnlacePay.ts';
+import { QrCodeService } from './src/services/QrCodeService.ts';
+import { CondominiumService } from './src/services/CondominiumService.ts';
 
 const PORT = 3000;
 
@@ -924,92 +931,6 @@ let callHistory: CallLog[] = [
 let activeCall: ActiveCall | null = null;
 
 // ============================================================================
-// POLICY ENGINE CENTRALIZADO (RBAC / ABAC)
-// ============================================================================
-
-interface PolicyEvaluationRequest {
-  actor: {
-    id: string;
-    role: UserRole;
-    unitNumber?: string;
-  };
-  action: 'ABRIR_PORTAO' | 'VER_GRAVACAO' | 'ACESSAR_CAMERA' | 'CONSULTAR_FINANCEIRO' | 'CONFIGURAR_SISTEMA';
-  resource: {
-    target: string;
-    targetUnitNumber?: string;
-    dtmfCommand?: string;
-  };
-  context: {
-    callActive?: boolean;
-    activeCallTargetUnit?: string;
-    ipAddress?: string;
-  };
-}
-
-class PolicyEngine {
-  public static evaluate(req: PolicyEvaluationRequest): { allowed: boolean; reason?: string } {
-    const { actor, action, resource, context } = req;
-
-    // Regra 1: Abrir portão por DTMF ou comando durante chamada
-    if (action === 'ABRIR_PORTAO') {
-      // Se for morador: só pode abrir se houver chamada ativa endereçada à unidade dele OU se for o síndico/super_admin
-      if (actor.role === 'morador') {
-        if (!context.callActive) {
-          return { allowed: false, reason: 'Política de Segurança: Abertura por morador só é autorizada durante chamada ativa.' };
-        }
-        if (context.activeCallTargetUnit !== actor.unitNumber) {
-          return { allowed: false, reason: 'Política de Isolamento: Morador não tem permissão para abrir portão para outra unidade.' };
-        }
-        return { allowed: true };
-      }
-
-      if (['sindico', 'operador', 'admin_condominio', 'super_admin'].includes(actor.role)) {
-        return { allowed: true };
-      }
-
-      return { allowed: false, reason: 'Papel sem privilégio de acionamento de portão.' };
-    }
-
-    // Regra 2: Ver gravações brutas de atendimento (Seção 12.3 do PRD)
-    // "Moradores podem visualizar histórico; não podem reproduzir gravações; não podem baixar gravações"
-    if (action === 'VER_GRAVACAO') {
-      if (actor.role === 'morador') {
-        return {
-          allowed: false,
-          reason: 'Violação da Regra de Ouro #10: Morador tem acesso ao histórico de logs, mas NÃO tem acesso à mídia bruta das gravações.',
-        };
-      }
-      if (['sindico', 'admin_condominio', 'super_admin'].includes(actor.role)) {
-        return { allowed: true };
-      }
-      return { allowed: false, reason: 'Acesso a gravações restrito a administradores e auditores.' };
-    }
-
-    // Regra 3: Consultar financeiro
-    if (action === 'CONSULTAR_FINANCEIRO') {
-      if (actor.role === 'morador') {
-        if (resource.targetUnitNumber && resource.targetUnitNumber !== actor.unitNumber) {
-          return { allowed: false, reason: 'Isolamento de Dados: Moradores só podem visualizar informações financeiras de sua própria unidade.' };
-        }
-        return { allowed: true };
-      }
-      if (['sindico', 'admin_condominio', 'super_admin'].includes(actor.role)) {
-        return { allowed: true };
-      }
-      return { allowed: false, reason: 'Acesso financeiro não autorizado.' };
-    }
-
-    // Regra 4: Acessar câmeras
-    if (action === 'ACESSAR_CAMERA') {
-      // Câmeras de áreas comuns são autorizadas para moradores e síndicos
-      return { allowed: true };
-    }
-
-    return { allowed: true };
-  }
-}
-
-// ============================================================================
 // EVENT BUS CENTRALIZADO
 // ============================================================================
 
@@ -1066,35 +987,20 @@ function logAudit(
   auditLogs.unshift(log);
   if (auditLogs.length > 100) auditLogs.pop();
 
-  // Assinatura criptográfica SHA-256 e gravação no PostgreSQL puro local (porta 5432)
-  try {
-    const rawPayload = `${log.id}|${log.timestamp}|${actor}|${action}|${status}|${dtmfCommand || ''}|${JSON.stringify(details)}`;
-    const sha256Hash = crypto.createHash('sha256').update(rawPayload).digest('hex');
-
-    query(
-      `INSERT INTO audit_logs (id, timestamp, actor, role, action, target, status, reason, ip_address, dtmf_command, details, sha256_hash)
-       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12)
-       ON CONFLICT (id) DO NOTHING`,
-      [
-        log.id,
-        log.timestamp,
-        log.actor,
-        log.role,
-        log.action,
-        log.target || '',
-        log.status,
-        log.reason || '',
-        log.ipAddress,
-        log.dtmfCommand || null,
-        JSON.stringify(log.details || {}),
-        sha256Hash,
-      ]
-    ).catch(() => {
-      // Standby silencioso caso o PostgreSQL local esteja em inicialização
-    });
-  } catch {
-    // Continua sem falhas para manter a alta disponibilidade da portaria
-  }
+  // Gravação no AuditService com assinatura criptográfica SHA-256 e gravação no PostgreSQL
+  AuditService.record({
+    actor,
+    role,
+    action,
+    target,
+    status,
+    details,
+    reason,
+    dtmfCommand,
+    ipAddress: log.ipAddress,
+  }).catch(() => {
+    // Standby silencioso caso o banco local esteja em inicialização
+  });
 
   return log;
 }
@@ -1191,17 +1097,34 @@ async function executeMaiaPrompt(
       if (response.functionCalls && response.functionCalls.length > 0) {
         const call = response.functionCalls[0];
         if (call.name === 'abrir_portao') {
-          const portao = call.args?.portao as string;
-          if (user.role === 'morador' && !activeCall) {
-            finalReply = `[MaIA Policy Engine] Solicitação Negada: Conforme o Master PRD, moradores só podem abrir portões via DTMF durante uma chamada ativa.`;
-            logAudit(user.name, user.role, 'TENTATIVA_ABERTURA_VIA_MAIA_SEM_CHAMADA', 'Portões', 'NEGADO', { prompt });
-          } else {
-            finalReply = `[MaIA Portaria] Acionamento de portão autorizado para o perfil ${user.role}. Abrindo portão de ${portao}.`;
+          const portaoType = (call.args?.portao as string) || 'pedestre';
+          const targetGate = gates.find((g) => g.type === portaoType) || gates[0];
+
+          const gateResult = await GateControlService.trigger(targetGate, {
+            gateId: targetGate.id,
+            session: user,
+            context: {
+              callActive: !!activeCall,
+              activeCallTargetUnit: activeCall?.targetUnitNumber,
+            },
+            triggerSource: 'maia_ia',
+          });
+
+          if (gateResult.success) {
+            finalReply = `[MaIA Portaria] ${gateResult.message}`;
             executedTools.push({
               toolName: 'abrir_portao',
-              params: { gate: portao },
+              params: { gate: portaoType },
               result: { status: 'aberto_por_5_segundos' },
               authorized: true,
+            });
+          } else {
+            finalReply = `[MaIA Policy Engine] Solicitação Negada: ${gateResult.message}`;
+            executedTools.push({
+              toolName: 'abrir_portao',
+              params: { gate: portaoType },
+              result: { error: gateResult.message },
+              authorized: false,
             });
           }
         } else if (call.name === 'consultar_unidade') {
@@ -1286,16 +1209,34 @@ async function executeMaiaPrompt(
       fallbackReply = `Como síndico, informo que temos atualmente R$ ${total.toFixed(2)} em recebíveis em atraso, a maior parte concentrada na Unidade 203. Mas a Unidade 302 mantém o acordo de parcelamento ativo e certinho.`;
     }
   } else if (lower.includes('abrir') || lower.includes('portão') || lower.includes('garagem') || lower.includes('pedestre')) {
-    if (user.role === 'morador' && !activeCall) {
-      fallbackReply = `Entendo que você precise abrir o portão, mas por normas de segurança do condomínio, moradores só podem liberar o acesso enquanto estiverem em uma chamada ativa com o interfone. Por favor, atenda à chamada no painel para realizar a abertura.`;
-      logAudit(user.name, user.role, 'TENTATIVA_ABERTURA_VIA_MAIA_SEM_CHAMADA', 'Portões', 'NEGADO', { prompt });
-    } else {
-      fallbackReply = `Tudo certo! Confirmei sua permissão e o portão está abrindo agora mesmo. Tenha um excelente dia!`;
+    const gateType = lower.includes('garagem') ? 'garagem' : 'pedestre';
+    const targetGate = gates.find((g) => g.type === gateType) || gates[0];
+
+    const gateResult = await GateControlService.trigger(targetGate, {
+      gateId: targetGate.id,
+      session: user,
+      context: {
+        callActive: !!activeCall,
+        activeCallTargetUnit: activeCall?.targetUnitNumber,
+      },
+      triggerSource: 'maia_ia',
+    });
+
+    if (gateResult.success) {
+      fallbackReply = `Tudo certo! Confirmei sua permissão e o ${targetGate.name} está abrindo agora mesmo.`;
       executedTools.push({
         toolName: 'abrir_portao',
-        params: { gate: lower.includes('garagem') ? 'garagem' : 'pedestre' },
+        params: { gate: gateType },
         result: { status: 'aberto_por_5_segundos' },
         authorized: true,
+      });
+    } else {
+      fallbackReply = `Entendo a solicitação, mas o sistema de segurança não pôde autorizar a abertura imediata: ${gateResult.message}`;
+      executedTools.push({
+        toolName: 'abrir_portao',
+        params: { gate: gateType },
+        result: { error: gateResult.message },
+        authorized: false,
       });
     }
   } else if (lower.includes('camera') || lower.includes('câmera') || lower.includes('xpe')) {
@@ -1369,43 +1310,15 @@ async function startServer() {
 
   app.post('/api/v1/auth/switch-role', (req, res) => {
     const { role, unitNumber } = req.body;
-    if (role === 'sindico') {
-      currentSession = {
-        id: 'user-fernando-201',
-        name: 'Fernando Henrique Rocha (Síndico)',
-        email: 'sindico.solar@gmail.com',
-        role: 'sindico',
-        unitId: 'u-201',
-        unitNumber: '201',
-        mfaEnabled: true,
-      };
-    } else if (role === 'super_admin') {
-      currentSession = {
-        id: 'user-superadmin',
-        name: 'Engenheiro de Telecom / Super Admin',
-        email: 'dev.telecom@enlace.ai',
-        role: 'super_admin',
-        mfaEnabled: true,
-      };
-    } else {
-      const targetUnit = units.find((u) => u.number === (unitNumber || '101')) || units[0];
-      currentSession = {
-        id: `user-${targetUnit.number}`,
-        name: targetUnit.ownerName,
-        email: targetUnit.residents[0]?.email || 'morador@gmail.com',
-        role: 'morador',
-        unitId: targetUnit.id,
-        unitNumber: targetUnit.number,
-        mfaEnabled: true,
-      };
-    }
+    currentSession = AuthService.getPresetSession(role, unitNumber);
+    const sessionToken = AuthService.createSessionToken(currentSession);
 
-    logAudit(currentSession.name, currentSession.role, 'TROCA_DE_SESSAO_SIMULADA', 'Sistema de Autenticacao', 'PERMITIDO', {
+    logAudit(currentSession.name, currentSession.role, 'TROCA_DE_SESSAO_AUTORIZADA', 'Sistema de Autenticacao', 'PERMITIDO', {
       newRole: currentSession.role,
       unitNumber: currentSession.unitNumber,
     });
 
-    res.json({ success: true, session: currentSession });
+    res.json({ success: true, session: currentSession, token: sessionToken });
   });
 
   // 2. Condomínio & Configurações
@@ -1623,18 +1536,21 @@ async function startServer() {
       const dbRecords = await db.select().from(dbUnits);
       
       // Mapeia os dados do banco para o formato esperado pelo frontend
-      const mappedDbUnits = dbRecords.map(dbU => ({
-        id: `u-db-${dbU.id}`,
-        number: dbU.number,
-        block: dbU.block || '',
-        floor: 1, // mock
-        sipExtension: dbU.sipExtension || '',
-        intercomCode: dbU.number,
-        ownerName: dbU.ownerName,
-        ownerPhone: '(00) 00000-0000', // placeholder
-        financialStatus: dbU.financialStatus || 'em_dia',
-        residents: [] // placeholder to avoid breaking UI
-      }));
+      const mappedDbUnits = dbRecords.map((dbU) => {
+        const memoryUnit = units.find((u) => u.number === dbU.number);
+        return {
+          id: dbU.id,
+          number: dbU.number,
+          block: dbU.block || 'Bloco A',
+          floor: dbU.floor || 1,
+          sipExtension: dbU.sipExtension || dbU.number,
+          intercomCode: dbU.intercomCode || dbU.number,
+          ownerName: dbU.ownerName,
+          ownerPhone: dbU.ownerPhone || (memoryUnit ? memoryUnit.ownerPhone : '(98) 98112-0000'),
+          financialStatus: dbU.financialStatus || 'em_dia',
+          residents: memoryUnit ? memoryUnit.residents : [],
+        };
+      });
 
       // Combina com os mocks em memória caso o banco esteja vazio (Fallback visual)
       if (mappedDbUnits.length > 0) {
@@ -1808,7 +1724,7 @@ async function startServer() {
   });
 
   // Enviar DTMF durante a chamada (*07 para pedestre, *08 para garagem)
-  app.post('/api/v1/calls/dtmf', (req, res) => {
+  app.post('/api/v1/calls/dtmf', async (req, res) => {
     const dtmf = req.body.dtmf || req.body.digit || req.body.code; // "*07" ou "*08"
 
     if (!['*07', '*08'].includes(dtmf)) {
@@ -1816,51 +1732,36 @@ async function startServer() {
     }
 
     const targetGateType = dtmf === '*07' ? 'pedestre' : 'garagem';
-    const gate = gates.find((g) => g.type === targetGateType)!;
+    const gate = gates.find((g) => g.type === targetGateType);
 
-    // Avaliação no Policy Engine (Regra de Ouro #4)
-    const policyResult = PolicyEngine.evaluate({
-      actor: {
-        id: currentSession.id,
-        role: currentSession.role,
-        unitNumber: currentSession.unitNumber,
-      },
-      action: 'ABRIR_PORTAO',
-      resource: {
-        target: gate.name,
-        dtmfCommand: dtmf,
-      },
+    if (!gate) {
+      return res.status(404).json({ error: `Portão do tipo ${targetGateType} não encontrado.` });
+    }
+
+    const result = await GateControlService.trigger(gate, {
+      gateId: gate.id,
+      session: currentSession,
       context: {
         callActive: !!activeCall,
         activeCallTargetUnit: activeCall?.targetUnitNumber,
+        ipAddress: req.ip || '192.168.1.100',
+        userAgent: req.headers['user-agent'] as string,
       },
+      triggerSource: 'dtmf_asterisk',
     });
 
-    if (!policyResult.allowed) {
-      logAudit(currentSession.name, currentSession.role, 'ABERTURA_PORTAO_DTMF', gate.name, 'NEGADO', { dtmf }, policyResult.reason, dtmf);
-      publishEvent('ACCESS_DENIED', 'policy_engine', { gate: targetGateType, dtmf, reason: policyResult.reason });
-      return res.status(403).json({ success: false, error: policyResult.reason });
+    if (result.success) {
+      publishEvent('ACCESS_GRANTED', 'policy_engine', { gate: targetGateType, dtmf, authorizedBy: currentSession.name });
+      publishEvent('GATE_OPENED', 'access_core', { gateId: gate.id, gateName: gate.name, dtmf });
+      res.json({
+        success: true,
+        message: result.message,
+        gate: result.gate,
+      });
+    } else {
+      publishEvent('ACCESS_DENIED', 'policy_engine', { gate: targetGateType, dtmf, reason: result.message });
+      res.status(result.statusCode).json({ success: false, error: result.message });
     }
-
-    // Abertura autorizada: aciona relé e agenda retorno ao estado fechado
-    gate.status = 'aberto';
-    gate.lastOpenedAt = new Date().toISOString();
-    gate.lastOpenedBy = currentSession.name;
-
-    publishEvent('ACCESS_GRANTED', 'policy_engine', { gate: targetGateType, dtmf, authorizedBy: currentSession.name });
-    publishEvent('GATE_OPENED', 'access_core', { gateId: gate.id, gateName: gate.name, dtmf });
-    logAudit(currentSession.name, currentSession.role, 'ABERTURA_PORTAO_DTMF', gate.name, 'PERMITIDO', { dtmf, relayPin: gate.relayPin }, undefined, dtmf);
-
-    setTimeout(() => {
-      gate.status = 'fechado';
-      publishEvent('DOOR_OPENED', 'gate_controller', { gateId: gate.id, status: 'fechado_apos_timer' });
-    }, 4000);
-
-    res.json({
-      success: true,
-      message: `Comando DTMF ${dtmf} aceito pelo Policy Engine. ${gate.name} acionado via Relé ${gate.relayPin}.`,
-      gate,
-    });
   });
 
   // Encerrar chamada
@@ -1898,35 +1799,29 @@ async function startServer() {
     res.json(gates);
   });
 
-  app.post('/api/v1/gates/:id/trigger', (req, res) => {
+  app.post('/api/v1/gates/:id/trigger', async (req, res) => {
     const gateId = req.params.id;
     const gate = gates.find((g) => g.id === gateId);
     if (!gate) return res.status(404).json({ error: 'Portão não encontrado.' });
 
-    const policy = PolicyEngine.evaluate({
-      actor: { id: currentSession.id, role: currentSession.role, unitNumber: currentSession.unitNumber },
-      action: 'ABRIR_PORTAO',
-      resource: { target: gate.name },
-      context: { callActive: !!activeCall, activeCallTargetUnit: activeCall?.targetUnitNumber },
+    const result = await GateControlService.trigger(gate, {
+      gateId: gate.id,
+      session: currentSession,
+      context: {
+        callActive: !!activeCall,
+        activeCallTargetUnit: activeCall?.targetUnitNumber,
+        ipAddress: req.ip || '192.168.1.100',
+        userAgent: req.headers['user-agent'] as string,
+      },
+      triggerSource: 'painel_web',
     });
 
-    if (!policy.allowed) {
-      logAudit(currentSession.name, currentSession.role, 'ACIONAMENTO_MANUAL_PORTAO', gate.name, 'NEGADO', { gateId }, policy.reason);
-      return res.status(403).json({ error: policy.reason });
+    if (result.success) {
+      publishEvent('GATE_OPENED', 'manual_trigger', { gateId: gate.id, openedBy: currentSession.name });
+      res.json({ success: true, message: result.message, gate: result.gate });
+    } else {
+      res.status(result.statusCode).json({ error: result.message });
     }
-
-    gate.status = 'aberto';
-    gate.lastOpenedAt = new Date().toISOString();
-    gate.lastOpenedBy = currentSession.name;
-
-    publishEvent('GATE_OPENED', 'manual_trigger', { gateId, openedBy: currentSession.name });
-    logAudit(currentSession.name, currentSession.role, 'ACIONAMENTO_MANUAL_PORTAO', gate.name, 'PERMITIDO', { gateId });
-
-    setTimeout(() => {
-      gate.status = 'fechado';
-    }, 4000);
-
-    res.json({ success: true, gate });
   });
 
   // 5. Câmeras
@@ -1941,6 +1836,72 @@ async function startServer() {
       return res.json(myBills);
     }
     res.json(financialBills);
+  });
+
+  app.post('/api/v1/finance/bills/:id/pay', async (req, res) => {
+    const { id } = req.params;
+    const { paymentMethod = 'pix' } = req.body;
+    const bill = financialBills.find((b) => b.id === id);
+
+    if (!bill) {
+      return res.status(404).json({ error: 'Fatura condominial não encontrada.' });
+    }
+
+    // RBAC: Morador só pode pagar sua própria fatura
+    if (currentSession.role === 'morador' && bill.unitNumber !== currentSession.unitNumber) {
+      logAudit(currentSession.name, currentSession.role, 'TENTATIVA_PAGAMENTO_TERCEIROS', `Fatura ${id}`, 'NEGADO', {});
+      return res.status(403).json({ error: 'Permissão negada. Você só pode liquidar faturas da sua própria unidade.' });
+    }
+
+    try {
+      const settlement = await EnlacePay.settleBill(bill, paymentMethod as 'pix' | 'boleto' | 'enlace_pay');
+      logAudit(currentSession.name, currentSession.role, 'PAGAMENTO_FATURA_LIQUIDADO', `Unidade ${bill.unitNumber}`, 'PERMITIDO', {
+        billId: bill.id,
+        valorTotal: bill.valorTotal,
+        paymentMethod,
+        receiptNumber: settlement.receiptNumber,
+      });
+      publishEvent('BILL_PAID', 'financial_core', { billId: bill.id, unitNumber: bill.unitNumber, valor: bill.valorTotal });
+
+      res.json({
+        success: true,
+        message: `Fatura referente a ${bill.competencia} liquidada com sucesso via ${paymentMethod.toUpperCase()}.`,
+        settlement,
+        bill,
+      });
+    } catch (err: any) {
+      res.status(400).json({ error: err.message });
+    }
+  });
+
+  app.get('/api/v1/finance/bills/:id/pix', (req, res) => {
+    const { id } = req.params;
+    const bill = financialBills.find((b) => b.id === id);
+
+    if (!bill) {
+      return res.status(404).json({ error: 'Fatura não encontrada.' });
+    }
+
+    // RBAC
+    if (currentSession.role === 'morador' && bill.unitNumber !== currentSession.unitNumber) {
+      return res.status(403).json({ error: 'Permissão negada.' });
+    }
+
+    const pixPayload = EnlacePay.generatePixPayload(
+      '34.891.022/0001-85',
+      'Solar das Palmeiras',
+      'Sao Luis',
+      bill.valorTotal,
+      `FAT${bill.id.replace(/[^a-zA-Z0-9]/g, '')}`
+    );
+    res.json({
+      success: true,
+      billId: bill.id,
+      valor: bill.valorTotal,
+      pixPayload,
+      beneficiario: 'Condomínio Residencial Solar das Palmeiras',
+      cnpj: '34.891.022/0001-85',
+    });
   });
 
   app.get('/api/v1/finance/summary', (req, res) => {
@@ -2126,7 +2087,7 @@ async function startServer() {
       unitId: unit.id,
       visitorName,
       type,
-      qrToken: `door_qr_sec_${crypto.randomBytes(4).toString('hex')}`,
+      qrToken: QrCodeService.generateSecureToken(),
       validFrom: new Date().toISOString(),
       validUntil: new Date(Date.now() + 86400000).toISOString(), // 24h
       status: 'ativo',
@@ -2885,9 +2846,15 @@ async function startServer() {
     console.log(`[Enlace-DoorIA] Piloto São Luís - MA | 12 Unidades | Asterisk 20+ PJSIP | MaIA AI Gateway`);
     console.log(`[Enlace-DoorIA] Banco de Dados: PostgreSQL 16 LTS Puro Local (Porta 5432)`);
 
-    // Inicialização assíncrona do schema no PostgreSQL local
-    initializePostgresSchema().catch((err) => {
-      console.warn('[PostgreSQL Local] Inicialização assíncrona em espera:', err.message);
+    // Verificação assíncrona de saúde do PostgreSQL local (PostgreSQL 16 LTS)
+    checkPostgresHealth().then((health) => {
+      if (health.connected) {
+        console.log(`[PostgreSQL 16 LTS] Conexão ativa na porta ${health.port} (${health.tablesCount} tabelas verificadas).`);
+      } else {
+        console.log(`[PostgreSQL 16 LTS] Modo Local-First ativo com contingência em memória.`);
+      }
+    }).catch((err) => {
+      console.warn('[PostgreSQL Local] Verificação em espera:', err.message);
     });
   });
 }
