@@ -17,8 +17,8 @@ FROM node:20-alpine AS runner
 WORKDIR /app
 ENV NODE_ENV=production
 
-# Utilitários de rede para healthcheck Docker
-RUN apk add --no-cache curl wget
+# Utilitários de rede para healthcheck Docker e cliente PostgreSQL
+RUN apk add --no-cache curl wget postgresql-client
 
 COPY package*.json ./
 RUN npm ci --only=production
@@ -27,7 +27,10 @@ RUN npm ci --only=production
 COPY --from=builder /app/dist ./dist
 COPY --from=builder /app/src/db/init.sql ./src/db/init.sql
 COPY --from=builder /app/src/db/migrations ./src/db/migrations
+COPY docker-entrypoint.sh ./docker-entrypoint.sh
+RUN chmod +x ./docker-entrypoint.sh
 
 EXPOSE 3000
 
-CMD ["npm", "start"]
+ENTRYPOINT ["./docker-entrypoint.sh"]
+CMD ["node", "dist/server.cjs"]

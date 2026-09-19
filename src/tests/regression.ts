@@ -172,6 +172,8 @@ export async function runRegressionTests() {
   const realAdapter = new RealHardwareAdapter();
   (realAdapter as any).ami = {
     executeSafeAction: async () => ({ success: true, message: 'PlayDTMF queued' }),
+    findActiveChannelForXpe: async () => 'PJSIP/xpe_3115-00000001',
+    getActiveChannels: async () => [{ channel: 'PJSIP/xpe_3115-00000001', channelStateDesc: 'Up' }],
   };
 
   // 3.4 Sem sensor físico real conectado (readPhysicalSensorFeedback retorna null)
@@ -184,6 +186,7 @@ export async function runRegressionTests() {
 
   // 3.5 Falha de comunicação com socket AMI do Asterisk
   (realAdapter as any).ami = {
+    findActiveChannelForXpe: async () => 'PJSIP/xpe_3115-00000001',
     executeSafeAction: async () => ({ success: false, message: 'Connection refused to Asterisk AMI socket on port 5038' }),
   };
   const resultAmiFailure = await realAdapter.triggerRelay(testGate, 1);
@@ -192,6 +195,7 @@ export async function runRegressionTests() {
 
   // Restaura AMI funcional
   (realAdapter as any).ami = {
+    findActiveChannelForXpe: async () => 'PJSIP/xpe_3115-00000001',
     executeSafeAction: async () => ({ success: true, message: 'PlayDTMF queued' }),
   };
 
@@ -388,15 +392,27 @@ export async function runRegressionTests() {
   // ==========================================================================
   console.log('\n--- [8/8] Testes de Roteamento Dinâmico PJSIP, Ping AMI e Clean Install ---');
 
-  // 8.1 Resolução de canal PJSIP prioritário
+  // 8.1 Validação rigorosa de canal preferencial (Requisito 5)
   const testAmi = new AsteriskAMI('127.0.0.1', 5038, 'test', 'test');
   (testAmi as any).getActiveChannels = async () => [
-    { channel: 'PJSIP/xpe_3115-0000001a', state: 'Up', channelStateDesc: 'Up', callerIdNum: '8000', connectedLineNum: '101' },
-    { channel: 'PJSIP/ramal_202-0000001b', state: 'Ring', channelStateDesc: 'Ring', callerIdNum: '202', connectedLineNum: '8000' },
+    { channel: 'PJSIP/xpe_3115-0000001a', state: 'Up', channelStateDesc: 'Up', callerIdNum: '8000', connectedLineNum: '101', linkedid: 'link-101' },
+    { channel: 'PJSIP/ramal_101-0000001b', state: 'Up', channelStateDesc: 'Up', callerIdNum: '101', connectedLineNum: '8000', linkedid: 'link-101' },
   ];
 
-  const resolvedPreferred = await testAmi.findActiveChannelForXpe({ preferredChannel: 'PJSIP/custom_trunk-01' });
-  assert(resolvedPreferred === 'PJSIP/custom_trunk-01', 'Canal preferencial explícito tem precedência imediata');
+  // Canal preferencial legítimo que realmente existe no Asterisk e pertence à chamada
+  const resolvedValidPreferred = await testAmi.findActiveChannelForXpe({ preferredChannel: 'PJSIP/xpe_3115-0000001a' });
+  assert(resolvedValidPreferred === 'PJSIP/xpe_3115-0000001a', 'Canal preferencial existente e ativo é validado com sucesso');
+
+  // Canal preferencial forjado/inexistente NÃO é aceito cegamente
+  (testAmi as any).getActiveChannels = async () => [];
+  const resolvedFakePreferred = await testAmi.findActiveChannelForXpe({ preferredChannel: 'PJSIP/custom_trunk_fantasma' });
+  assert(resolvedFakePreferred === null, 'Canal preferencial inexistente no Asterisk é rejeitado (Anti-Bypass)');
+
+  // Restaura canais do XPE para os próximos testes
+  (testAmi as any).getActiveChannels = async () => [
+    { channel: 'PJSIP/xpe_3115-0000001a', state: 'Up', channelStateDesc: 'Up', callerIdNum: '8000', connectedLineNum: '101', linkedid: 'link-101' },
+    { channel: 'PJSIP/ramal_202-0000001b', state: 'Ring', channelStateDesc: 'Ring', callerIdNum: '202', connectedLineNum: '8000', linkedid: 'link-202' },
+  ];
 
   // 8.2 Resolução por identificador do XPE
   const resolvedByXpe = await testAmi.findActiveChannelForXpe({ xpeIdentifier: '8000' });
@@ -455,6 +471,149 @@ export async function runRegressionTests() {
   } finally {
     process.env = backupEnv;
   }
+
+  // ==========================================================================
+  // [9/9] TESTES DO FLUXO COMPLETO DE PORTÃO (CASOS 1 A 5 - HOMOLOGAÇÃO FÍSICA)
+  // ==========================================================================
+  console.log('\n--- [9/9] Testes do Fluxo de Portão: Casos 1 a 5 (Homologação Física) ---');
+
+  // CASO 1: Canal PJSIP válido e ativo -> PlayDTMF executado -> Retorno COMMAND_SENT
+  const case1Ami = new AsteriskAMI('127.0.0.1', 5038, 'admin', 'secret');
+  (case1Ami as any).getActiveChannels = async () => [
+    { channel: 'PJSIP/xpe_3115-0000004f', state: 'Up', channelStateDesc: 'Up', callerIdNum: '8000', connectedLineNum: '101', linkedid: 'link-4f' },
+  ];
+  let case1CapturedAction: any = null;
+  (case1Ami as any).executeSafeAction = async (action: string, params: any) => {
+    case1CapturedAction = { action, params };
+    return { success: true, message: 'DTMF successfully queued' };
+  };
+
+  const case1Adapter = new RealHardwareAdapter();
+  (case1Adapter as any).ami = case1Ami;
+  case1Adapter.readPhysicalSensorFeedback = async () => null; // Sem sensor de fim de curso
+
+  const gateCase1: Gate = { ...testGate, status: 'fechado' };
+  const case1Result = await GateControlService.trigger(gateCase1, {
+    gateId: testGate.id,
+    session: adminSession,
+    context: { callActive: true, sipChannel: 'PJSIP/xpe_3115-0000004f', activeCallTargetUnit: '101' },
+    triggerSource: 'painel_web',
+    adapterOverride: case1Adapter,
+  });
+
+  assert(case1Result.success === true, 'Caso 1: Acionamento autorizado e transmitido com sucesso');
+  assert(case1Result.commandStatus === 'COMMAND_SENT', 'Caso 1: Status retornado é rigorosamente COMMAND_SENT');
+  assert(case1CapturedAction?.action === 'PlayDTMF', 'Caso 1: Ação AMI executada foi PlayDTMF');
+  assert(case1CapturedAction?.params?.Channel === 'PJSIP/xpe_3115-0000004f', 'Caso 1: PlayDTMF direcionado ao canal PJSIP real ativo');
+  assert(case1CapturedAction?.params?.Digit === '07', 'Caso 1: Dígito transmitido foi 07 (*07 sem asterisco para PlayDTMF)');
+  assert(gateCase1.status === 'comando_enviado', 'Caso 1: Estado do portão transiciona para comando_enviado (NUNCA aberto)');
+
+  // CASO 2: Canal preferencial inexistente -> NÃO enviar PlayDTMF -> HARDWARE_FAILURE
+  const case2Ami = new AsteriskAMI('127.0.0.1', 5038, 'admin', 'secret');
+  (case2Ami as any).getActiveChannels = async () => []; // Nenhum canal ativo no Asterisk
+  let case2PlayDtmfCalled = false;
+  (case2Ami as any).executeSafeAction = async (action: string) => {
+    if (action === 'PlayDTMF') case2PlayDtmfCalled = true;
+    return { success: true };
+  };
+
+  const case2Adapter = new RealHardwareAdapter();
+  (case2Adapter as any).ami = case2Ami;
+  const gateCase2: Gate = { ...testGate, status: 'fechado' };
+
+  const case2Result = await GateControlService.trigger(gateCase2, {
+    gateId: testGate.id,
+    session: adminSession,
+    context: { callActive: true, sipChannel: 'PJSIP/canal_fantasma_inexistente' },
+    triggerSource: 'painel_web',
+    adapterOverride: case2Adapter,
+  });
+
+  assert(case2Result.success === false, 'Caso 2: Operação retorna success: false');
+  assert(case2Result.commandStatus === 'HARDWARE_FAILURE', 'Caso 2: Status é HARDWARE_FAILURE para canal inexistente');
+  assert(!case2PlayDtmfCalled, 'Caso 2: PlayDTMF NÃO foi enviado ao Asterisk para canal inexistente');
+  assert(gateCase2.status === 'fechado', 'Caso 2: Portão permanece com status fechado');
+
+  // CASO 3: Nenhuma chamada XPE ativa (somente ramais terceiros) -> NÃO escolher aleatório -> HARDWARE_FAILURE
+  const case3Ami = new AsteriskAMI('127.0.0.1', 5038, 'admin', 'secret');
+  // Canais ativos entre moradores (ramal 201 falando com 202, NENHUM XPE)
+  (case3Ami as any).getActiveChannels = async () => [
+    { channel: 'PJSIP/ramal_201-000000aa', state: 'Up', channelStateDesc: 'Up', callerIdNum: '201', connectedLineNum: '202' },
+    { channel: 'PJSIP/ramal_202-000000bb', state: 'Up', channelStateDesc: 'Up', callerIdNum: '202', connectedLineNum: '201' },
+  ];
+  let case3PlayDtmfCalled = false;
+  (case3Ami as any).executeSafeAction = async (action: string) => {
+    if (action === 'PlayDTMF') case3PlayDtmfCalled = true;
+    return { success: true };
+  };
+
+  const case3Adapter = new RealHardwareAdapter();
+  (case3Adapter as any).ami = case3Ami;
+  const gateCase3: Gate = { ...testGate, status: 'fechado' };
+
+  const case3Result = await GateControlService.trigger(gateCase3, {
+    gateId: testGate.id,
+    session: adminSession,
+    context: { callActive: true },
+    triggerSource: 'painel_web',
+    adapterOverride: case3Adapter,
+  });
+
+  assert(case3Result.success === false, 'Caso 3: Recusa acionamento quando não há chamada do XPE');
+  assert(case3Result.commandStatus === 'HARDWARE_FAILURE', 'Caso 3: Status é HARDWARE_FAILURE');
+  assert(!case3PlayDtmfCalled, 'Caso 3: Anti-Slop: DoorIA NÃO escolheu canal de ramal aleatório (ramal 201/202)');
+
+  // CASO 4: Sensor físico inexistente -> COMMAND_SENT e nunca HARDWARE_CONFIRMED
+  const case4Ami = new AsteriskAMI('127.0.0.1', 5038, 'admin', 'secret');
+  (case4Ami as any).getActiveChannels = async () => [
+    { channel: 'PJSIP/xpe_3115-00000055', state: 'Up', channelStateDesc: 'Up', callerIdNum: '8000', connectedLineNum: '102' },
+  ];
+  (case4Ami as any).executeSafeAction = async () => ({ success: true, message: 'OK' });
+
+  const case4Adapter = new RealHardwareAdapter();
+  (case4Adapter as any).ami = case4Ami;
+  case4Adapter.readPhysicalSensorFeedback = async () => null; // Sem sensor
+
+  const gateCase4: Gate = { ...testGate, status: 'fechado', sensorState: 'ok' };
+  const case4Result = await GateControlService.trigger(gateCase4, {
+    gateId: testGate.id,
+    session: adminSession,
+    context: { callActive: true, activeCallTargetUnit: '102' },
+    triggerSource: 'painel_web',
+    adapterOverride: case4Adapter,
+  });
+
+  assert(case4Result.success === true, 'Caso 4: Pulso elétrico disparado com sucesso');
+  assert(case4Result.commandStatus === 'COMMAND_SENT', 'Caso 4: Status é COMMAND_SENT');
+  assert(case4Result.commandStatus !== 'HARDWARE_CONFIRMED', 'Caso 4: NUNCA gera HARDWARE_CONFIRMED sem sensor físico');
+  assert(case4Result.hasPhysicalFeedbackSensor === false, 'Caso 4: hasPhysicalFeedbackSensor é false');
+  assert(gateCase4.status === 'comando_enviado', 'Caso 4: Status do portão é comando_enviado');
+
+  // CASO 5: Sensor físico realmente confirma abertura -> HARDWARE_CONFIRMED
+  const case5Ami = new AsteriskAMI('127.0.0.1', 5038, 'admin', 'secret');
+  (case5Ami as any).getActiveChannels = async () => [
+    { channel: 'PJSIP/xpe_3115-00000055', state: 'Up', channelStateDesc: 'Up', callerIdNum: '8000', connectedLineNum: '102' },
+  ];
+  (case5Ami as any).executeSafeAction = async () => ({ success: true, message: 'OK' });
+
+  const case5Adapter = new RealHardwareAdapter();
+  (case5Adapter as any).ami = case5Ami;
+  case5Adapter.readPhysicalSensorFeedback = async () => 'aberto'; // Sensor físico reed switch atesta abertura real
+
+  const gateCase5: Gate = { ...testGate, status: 'fechado' };
+  const case5Result = await GateControlService.trigger(gateCase5, {
+    gateId: testGate.id,
+    session: adminSession,
+    context: { callActive: true, activeCallTargetUnit: '102' },
+    triggerSource: 'painel_web',
+    adapterOverride: case5Adapter,
+  });
+
+  assert(case5Result.success === true, 'Caso 5: Acionamento bem-sucedido');
+  assert(case5Result.commandStatus === 'HARDWARE_CONFIRMED', 'Caso 5: Status é HARDWARE_CONFIRMED após leitura real do sensor');
+  assert(case5Result.hasPhysicalFeedbackSensor === true, 'Caso 5: hasPhysicalFeedbackSensor é true');
+  assert(case5Result.physicalSensorState === 'aberto', 'Caso 5: physicalSensorState reporta aberto');
+  assert(gateCase5.status === 'aberto', 'Caso 5: Portão transiciona legitimamente para aberto após confirmação física');
 
   console.log('\n===============================================================');
   console.log(`🎉 TODOS OS ${passedTests}/${totalTests} TESTES DE SEGURANÇA E HARDWARE PASSARAM COM SUCESSO!`);

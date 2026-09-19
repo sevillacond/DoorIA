@@ -1,7 +1,7 @@
 import { PolicyEngine } from './PolicyEngine.ts';
 import { AuditService } from './AuditService.ts';
 import type { Gate, UserSession } from '../types.ts';
-import { getHardwareAdapter, type HardwareAdapter, type HardwareRelayResult, type HardwareCommandStatus } from './hardware/index.ts';
+import { getHardwareAdapter, type HardwareAdapter, type HardwareRelayResult, type HardwareCommandStatus, type PhysicalSensorState } from './hardware/index.ts';
 
 export interface TriggerGateParams {
   gateId: string;
@@ -27,6 +27,7 @@ export interface TriggerGateResult {
   hardwareMode: 'simulated' | 'real_hardware';
   commandStatus: HardwareCommandStatus;
   hasPhysicalFeedbackSensor: boolean;
+  physicalSensorState?: PhysicalSensorState;
   relayResult?: HardwareRelayResult;
 }
 
@@ -187,6 +188,7 @@ export class GateControlService {
       hardwareMode: adapter.mode,
       commandStatus: relayResult.commandStatus,
       hasPhysicalFeedbackSensor: relayResult.hasPhysicalFeedbackSensor,
+      physicalSensorState: relayResult.physicalSensorState,
       relayResult,
     };
   }

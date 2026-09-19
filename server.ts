@@ -43,6 +43,8 @@ import { validateProductionConfig } from './src/config/productionValidator.ts';
 import { sanitizeRtspUrl, sanitizeCameraForClient } from './src/utils/rtspSanitizer.ts';
 import { getHardwareAdapter } from './src/services/hardware/index.ts';
 import { asteriskAmi } from './src/services/AsteriskAMI.ts';
+import { runMigrations } from './src/db/migrate.ts';
+import { runProductionBootstrap } from './src/db/seeds/prodBootstrap.ts';
 
 const PORT = 3000;
 
@@ -191,9 +193,9 @@ if (process.env.GEMINI_API_KEY) {
 }
 
 async function startServer() {
-  // Em produção, se o banco estiver indisponível: exit 1 imediatamente
+  // Em produção, orquestra o ciclo estrito: PostgreSQL -> Migrations -> Bootstrap -> Server (Fail-Fast)
   if (process.env.NODE_ENV === 'production') {
-    console.log('[Enlace-DoorIA] Verificando integridade e conectividade com PostgreSQL 16 LTS...');
+    console.log('[Enlace-DoorIA] [1/4] Verificando integridade e conectividade com PostgreSQL 16 LTS...');
     const dbHealth = await checkPostgresHealth();
     if (!dbHealth.connected) {
       console.error('=========================================================================');
@@ -203,7 +205,39 @@ async function startServer() {
       console.error('=========================================================================');
       process.exit(1);
     }
-    console.log(`[Enlace-DoorIA] ✅ PostgreSQL 16 LTS operacional (${dbHealth.tablesCount} tabelas ativas).`);
+
+    console.log('[Enlace-DoorIA] [2/4] Executando migrações Drizzle ORM oficiais obrigatórias...');
+    try {
+      await runMigrations();
+    } catch (migErr: any) {
+      console.error('=========================================================================');
+      console.error(' ❌ FATAL ERROR: FALHA AO APLICAR MIGRAÇÕES NO BANCO DE DADOS EM PRODUÇÃO');
+      console.error(` Detalhes do erro: ${migErr.message || migErr}`);
+      console.error('=========================================================================');
+      process.exit(1);
+    }
+
+    console.log('[Enlace-DoorIA] [3/4] Executando bootstrap seguro e idempotente de produção...');
+    try {
+      await runProductionBootstrap();
+    } catch (bootErr: any) {
+      console.error('=========================================================================');
+      console.error(' ❌ FATAL ERROR: FALHA NO BOOTSTRAP DE PRODUÇÃO');
+      console.error(` Detalhes do erro: ${bootErr.message || bootErr}`);
+      console.error('=========================================================================');
+      process.exit(1);
+    }
+
+    console.log('[Enlace-DoorIA] [4/4] Validando integridade final do schema PostgreSQL...');
+    const postCheck = await checkPostgresHealth();
+    if (!postCheck.connected || (postCheck.tablesCount !== undefined && postCheck.tablesCount === 0)) {
+      console.error('=========================================================================');
+      console.error(' ❌ FATAL ERROR: INCONSISTÊNCIA DETECTADA NO SCHEMA DO BANCO APÓS MIGRAÇÃO');
+      console.error(' O banco de dados não contém as tabelas públicas esperadas.');
+      console.error('=========================================================================');
+      process.exit(1);
+    }
+    console.log(`[Enlace-DoorIA] ✅ PostgreSQL 16 LTS operacional (${postCheck.tablesCount} tabelas ativas).`);
   }
 
   const app = express();

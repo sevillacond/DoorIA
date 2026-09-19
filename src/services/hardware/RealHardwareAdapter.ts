@@ -92,7 +92,10 @@ export class RealHardwareAdapter implements HardwareAdapter {
       let commandMethod = '';
       const failureReasons: string[] = [];
 
-      // 1. Disparo primário via HTTP CGI do XPE / relé IP (se disponível na rede)
+      // 1. Acionamento via HTTP CGI (específico para placas de relé IP dedicadas compatíveis, ex: WebRelay)
+      // NOTA ARQUITETURAL: O Intelbras XPE 3115-IP opera nativamente via sinalização DTMF (*07/*08) sobre PJSIP.
+      // Uma resposta HTTP 200 de controladora externa representa apenas recebimento do pulso (COMMAND_SENT),
+      // e NUNCA confirmação física de abertura sem sensor de fim de curso (reed switch).
       if (relayIp && relayIp !== '127.0.0.1' && process.env.TRIGGER_METHOD_PREFERENCE !== 'ami_only') {
         try {
           const timeoutSignal = typeof AbortSignal !== 'undefined' && (AbortSignal as any).timeout
@@ -103,7 +106,7 @@ export class RealHardwareAdapter implements HardwareAdapter {
           if (res.ok) {
             commandExecuted = true;
             commandMethod = 'HTTP_CGI';
-            console.log(`[REAL_HARDWARE] [${correlationId || 'N/A'}] Acionamento bem-sucedido via HTTP CGI no relé IP ${relayIp}`);
+            console.log(`[REAL_HARDWARE] [${correlationId || 'N/A'}] Pulso aceito via HTTP CGI na controladora ${relayIp}`);
           } else {
             failureReasons.push(`HTTP CGI retornou código ${res.status}`);
           }
@@ -112,39 +115,68 @@ export class RealHardwareAdapter implements HardwareAdapter {
         }
       }
 
-      // 2. Fallback obrigatório via Asterisk AMI PlayDTMF
+      // 2. Via canônica e principal do XPE 3115-IP: Asterisk AMI PlayDTMF (*07 / *08)
       if (!commandExecuted) {
-        // Resolução dinâmica do canal PJSIP ativo para envio de PlayDTMF
-        let targetChannel: string | null = null;
-        if (typeof (this.ami as any).findActiveChannelForXpe === 'function') {
-          targetChannel = await (this.ami as any).findActiveChannelForXpe({
-            preferredChannel: options?.sipChannel,
-            targetUnit: options?.activeCallTargetUnit,
-          });
-        } else if (options?.sipChannel && options.sipChannel.startsWith('PJSIP/')) {
-          targetChannel = options.sipChannel;
+        // Resolução dinâmica e validação estrita do canal PJSIP real ativo da chamada do XPE
+        const targetChannel = await this.ami.findActiveChannelForXpe({
+          preferredChannel: options?.sipChannel,
+          targetUnit: options?.activeCallTargetUnit,
+        });
+
+        // Se nenhum canal PJSIP válido e ativo correlacionado à chamada do XPE foi localizado:
+        // RECUSA envio de PlayDTMF, não inventa canais e retorna HARDWARE_FAILURE imediatamente.
+        if (!targetChannel) {
+          const detailMsg = options?.sipChannel
+            ? `Canal preferencial '${options.sipChannel}' inexistente, inativo ou não correlacionado à chamada do XPE no Asterisk.`
+            : `Nenhum canal PJSIP ativo correlacionado à chamada do XPE 3115-IP foi localizado no Asterisk.`;
+          console.warn(`[REAL_HARDWARE] [${correlationId || 'N/A'}] ❌ ${detailMsg} PlayDTMF abortado.`);
+          return {
+            success: false,
+            executed: false,
+            isSimulated: false,
+            hardwareMode: 'real_hardware',
+            commandStatus: 'HARDWARE_FAILURE',
+            message: `Falha de hardware: ${detailMsg} O comando PlayDTMF foi cancelado por segurança.`,
+            statusCode: 502,
+            relayPin: gate.relayPin,
+            relayIp: relayIp || '',
+            pulseDurationMs: 0,
+            timestamp,
+            hasPhysicalFeedbackSensor: false,
+            physicalSensorState: 'desconhecido',
+            correlationId,
+            failureDetails: detailMsg,
+          };
         }
 
-        // Parâmetros para a ação PlayDTMF
+        // Parâmetros estritos para a ação PlayDTMF no Asterisk
         const dtmfParams: Record<string, string> = {
+          Channel: targetChannel,
           Digit: gate.dtmfCode.replace('*', ''),
           Duration: String(pulseDurationSeconds * 1000),
         };
-
-        if (targetChannel) {
-          dtmfParams.Channel = targetChannel;
-        } else if (isProd && !options?.sipChannel) {
-          // Em produção física, Asterisk PlayDTMF requer canal ativo se o HTTP CGI falhou
-          throw new Error(
-            `Falha no acionamento físico: HTTP CGI inacessível (${failureReasons.join(', ') || 'não configurado'}) e nenhum canal PJSIP ativo na chamada para PlayDTMF.`
-          );
-        }
 
         // Acionamento real via protocolo Asterisk AMI (PJSIP / DTMF)
         const amiAction = await this.ami.executeSafeAction('PlayDTMF', dtmfParams);
 
         if (!amiAction.success) {
-          throw new Error(amiAction.message || 'Falha de resposta no socket do Asterisk AMI');
+          return {
+            success: false,
+            executed: false,
+            isSimulated: false,
+            hardwareMode: 'real_hardware',
+            commandStatus: 'HARDWARE_FAILURE',
+            message: `Falha no Asterisk AMI ao injetar PlayDTMF no canal ${targetChannel}: ${amiAction.message}`,
+            statusCode: 502,
+            relayPin: gate.relayPin,
+            relayIp: relayIp || '',
+            pulseDurationMs: 0,
+            timestamp,
+            hasPhysicalFeedbackSensor: false,
+            physicalSensorState: 'desconhecido',
+            correlationId,
+            failureDetails: amiAction.message,
+          };
         }
 
         commandExecuted = true;

@@ -26,6 +26,7 @@ export interface ActiveChannelInfo {
   exten?: string;
   accountCode?: string;
   uniqueid?: string;
+  linkedid?: string;
 }
 
 interface PendingAction {
@@ -291,7 +292,8 @@ export class AsteriskManager extends EventEmitter {
             context: parsed['Context'],
             exten: parsed['Exten'],
             accountCode: parsed['AccountCode'],
-            uniqueid: parsed['Uniqueid'],
+            uniqueid: parsed['Uniqueid'] || parsed['UniqueID'],
+            linkedid: parsed['Linkedid'] || parsed['LinkedId'],
           };
           pendingList.items.push(info);
           this.activeChannels.set(ch, info);
@@ -346,7 +348,8 @@ export class AsteriskManager extends EventEmitter {
           context: parsed['Context'],
           exten: parsed['Exten'],
           accountCode: parsed['AccountCode'],
-          uniqueid: parsed['Uniqueid'],
+          uniqueid: parsed['Uniqueid'] || parsed['UniqueID'],
+          linkedid: parsed['Linkedid'] || parsed['LinkedId'],
         });
       } else if ((eventName === 'Newstate' || eventName === 'ChannelStateChange') && ch) {
         const existing = this.activeChannels.get(ch);
@@ -354,6 +357,7 @@ export class AsteriskManager extends EventEmitter {
           existing.channelState = parsed['ChannelState'] || existing.channelState;
           existing.channelStateDesc = parsed['ChannelStateDesc'] || existing.channelStateDesc;
           if (parsed['ConnectedLineNum']) existing.connectedLineNum = parsed['ConnectedLineNum'];
+          if (parsed['Linkedid'] || parsed['LinkedId']) existing.linkedid = parsed['Linkedid'] || parsed['LinkedId'];
         }
       } else if (eventName === 'Hangup' && ch) {
         this.activeChannels.delete(ch);
@@ -406,23 +410,17 @@ export class AsteriskManager extends EventEmitter {
   }
 
   /**
-   * Identifica dinamicamente o canal PJSIP correto para envio de DTMF para o XPE ou chamada ativa.
-   * Não inventa canais e não utiliza extensões fixas.
+   * Identifica dinamicamente e valida com rigor absoluto o canal PJSIP real para envio de PlayDTMF.
+   * Não inventa canais, não utiliza extensões fixas e NÃO recorre a canais PJSIP arbitrários.
+   * O canal DEVE pertencer ou estar comprovadamente correlacionado à chamada ativa do XPE 3115-IP.
    */
   public async findActiveChannelForXpe(options?: {
     preferredChannel?: string;
     targetUnit?: string;
     xpeIdentifier?: string;
+    linkedId?: string;
   }): Promise<string | null> {
-    // 1. Se um canal foi explicitamente informado e é PJSIP válido, valida seu formato
-    if (options?.preferredChannel) {
-      const pref = options.preferredChannel.trim();
-      if (pref.startsWith('PJSIP/')) {
-        return pref;
-      }
-    }
-
-    // 2. Consulta canais ativos no Asterisk
+    // 1. Consulta os canais ativos em tempo real no Asterisk
     const channels = await this.getActiveChannels();
     const pjsipChannels = channels.filter((c) => c.channel && c.channel.startsWith('PJSIP/'));
 
@@ -430,39 +428,138 @@ export class AsteriskManager extends EventEmitter {
       return null;
     }
 
-    const xpeId = (options?.xpeIdentifier || process.env.XPE_SIP_USERNAME || process.env.XPE_SIP_USER || '8000').toLowerCase();
+    const xpeId = (options?.xpeIdentifier || process.env.XPE_SIP_USERNAME || process.env.XPE_SIP_USER || '8000').toLowerCase().trim();
     const targetUnit = options?.targetUnit?.trim();
+    const targetLinkedId = options?.linkedId?.trim();
 
-    // Prioridade 1: Canal que contenha o identificador do XPE (ex: PJSIP/xpe_3115-... ou PJSIP/8000-...)
-    const byXpeName = pjsipChannels.find((c) =>
-      c.channel.toLowerCase().includes(xpeId) ||
-      c.callerIdNum === xpeId ||
-      c.channel.toLowerCase().includes('xpe') ||
-      c.channel.toLowerCase().includes('totem')
-    );
-    if (byXpeName) {
-      return byXpeName.channel;
+    // Helper: Verifica se o canal está em estado ativo de toque ou conversação
+    const isChannelActive = (c: ActiveChannelInfo): boolean => {
+      const desc = (c.channelStateDesc || '').toLowerCase();
+      const state = c.channelState || '';
+      return desc === 'up' || desc === 'ring' || desc === 'ringing' || state === '6' || state === '4' || state === '5';
+    };
+
+    // Helper: Verifica se o canal pertence diretamente ao XPE (identificador, callerid, extensão, contexto)
+    const isDirectXpeChannel = (c: ActiveChannelInfo): boolean => {
+      const chName = c.channel.toLowerCase();
+      const callerNum = (c.callerIdNum || '').toLowerCase();
+      const callerName = (c.callerIdName || '').toLowerCase();
+      const ext = (c.exten || '').toLowerCase();
+      const acc = (c.accountCode || '').toLowerCase();
+
+      return (
+        chName.includes(`pjsip/${xpeId}-`) ||
+        chName.includes(`pjsip/${xpeId}_`) ||
+        chName.includes('pjsip/xpe') ||
+        chName.includes('pjsip/totem') ||
+        chName.includes('pjsip/portaria') ||
+        callerNum === xpeId ||
+        callerNum.includes('xpe') ||
+        callerName.includes('xpe') ||
+        callerName.includes('totem') ||
+        ext === xpeId ||
+        acc === xpeId
+      );
+    };
+
+    // Identifica os canais diretos do XPE ativos
+    const activeXpeChannels = pjsipChannels.filter((c) => isDirectXpeChannel(c) && isChannelActive(c));
+
+    // Mapeia todos os LinkedIDs e UniqueIDs relacionados ao XPE
+    const xpeLinkedIds = new Set<string>();
+    for (const xc of activeXpeChannels) {
+      if (xc.linkedid) xpeLinkedIds.add(xc.linkedid);
+      if (xc.uniqueid) xpeLinkedIds.add(xc.uniqueid);
     }
 
-    // Prioridade 2: Se foi informada a unidade de destino, canal conectado a essa unidade
+    // 2. VALIDAÇÃO DO preferredChannel (Requisito 5):
+    // Se o DoorIA receber sipChannel = PJSIP/... deve:
+    // 1. consultar os canais ativos do Asterisk;
+    // 2. verificar se o canal realmente existe;
+    // 3. verificar se está ativo;
+    // 4. verificar se pertence à chamada correta;
+    // Somente então permitir PlayDTMF. Se não houver correspondência: não aceita.
+    if (options?.preferredChannel) {
+      const pref = options.preferredChannel.trim();
+      const foundPref = pjsipChannels.find((c) => c.channel === pref);
+
+      if (foundPref && isChannelActive(foundPref)) {
+        // Verifica se é o próprio canal do XPE
+        if (isDirectXpeChannel(foundPref)) {
+          return foundPref.channel;
+        }
+
+        // Verifica se compartilha LinkedID com chamada do XPE (bridge morador <-> XPE)
+        const matchesLinkedId =
+          (foundPref.linkedid && xpeLinkedIds.has(foundPref.linkedid)) ||
+          (foundPref.uniqueid && xpeLinkedIds.has(foundPref.uniqueid)) ||
+          (targetLinkedId && foundPref.linkedid === targetLinkedId);
+
+        if (matchesLinkedId) {
+          return foundPref.channel;
+        }
+
+        // Verifica se a linha conectada corresponde ao XPE
+        const connectedToXpe =
+          (foundPref.connectedLineNum || '').toLowerCase() === xpeId ||
+          (foundPref.connectedLineName || '').toLowerCase().includes('xpe') ||
+          (foundPref.connectedLineName || '').toLowerCase().includes('totem');
+
+        if (connectedToXpe) {
+          return foundPref.channel;
+        }
+
+        // Se targetUnit foi informada e o canal corresponde a essa targetUnit com chamada do XPE ativa
+        if (targetUnit && (foundPref.connectedLineNum === targetUnit || foundPref.exten === targetUnit || foundPref.callerIdNum === targetUnit)) {
+          const matchingXpe = activeXpeChannels.find((xc) => xc.connectedLineNum === targetUnit || (xc.linkedid && xc.linkedid === foundPref.linkedid));
+          if (matchingXpe) {
+            return matchingXpe.channel;
+          }
+        }
+      }
+      // Se não passou nos 4 critérios de validação rigorosa, não aceita o preferredChannel
+    }
+
+    // 3. Resolução dinâmica estritamente correlacionada ao XPE:
+    // Prioridade A: Canal ativo do XPE conectado à targetUnit informada
     if (targetUnit) {
-      const byTarget = pjsipChannels.find((c) =>
-        c.connectedLineNum === targetUnit || c.exten === targetUnit
+      const xpeWithTarget = activeXpeChannels.find(
+        (c) => c.connectedLineNum === targetUnit || c.exten === targetUnit
       );
-      if (byTarget) {
-        return byTarget.channel;
+      if (xpeWithTarget) {
+        return xpeWithTarget.channel;
       }
     }
 
-    // Prioridade 3: Canal PJSIP em estado ativo de conversação (Up) ou chamando (Ring/Ringing)
-    const activeCallChannel = pjsipChannels.find((c) =>
-      c.channelStateDesc === 'Up' || c.channelState === '6' || c.channelStateDesc === 'Ring' || c.channelStateDesc === 'Ringing'
-    );
-    if (activeCallChannel) {
-      return activeCallChannel.channel;
+    // Prioridade B: Canal do XPE pareado com o targetLinkedId informado
+    if (targetLinkedId) {
+      const xpeWithLinked = activeXpeChannels.find(
+        (c) => c.linkedid === targetLinkedId || c.uniqueid === targetLinkedId
+      );
+      if (xpeWithLinked) {
+        return xpeWithLinked.channel;
+      }
     }
 
-    // Caso não haja canal PJSIP correlacionado com a chamada, retorna null (sem forjar nomes)
+    // Prioridade C: Qualquer canal ativo do XPE em estado Up ou Ring
+    if (activeXpeChannels.length > 0) {
+      // Prioriza canal em estado 'Up' (conversação ativa) sobre 'Ring'
+      const upChannel = activeXpeChannels.find((c) => (c.channelStateDesc || '').toLowerCase() === 'up' || c.channelState === '6');
+      return upChannel ? upChannel.channel : activeXpeChannels[0].channel;
+    }
+
+    // Prioridade D: Se a targetUnit foi informada e há canal de morador ligado por linkedid comprovado à chamada do XPE
+    if (targetUnit && xpeLinkedIds.size > 0) {
+      const unitChannelLinked = pjsipChannels.find(
+        (c) => isChannelActive(c) && (c.connectedLineNum === targetUnit || c.callerIdNum === targetUnit) && c.linkedid && xpeLinkedIds.has(c.linkedid)
+      );
+      if (unitChannelLinked) {
+        return unitChannelLinked.channel;
+      }
+    }
+
+    // 4. REGRA DE OURO: SEM FALLBACK PARA CANAIS ARBITRÁRIOS
+    // Se não há canal ativo correlacionado à chamada do XPE, retorna null.
     return null;
   }
 
@@ -561,7 +658,7 @@ export class AsteriskManager extends EventEmitter {
   }
 
   /**
-   * Injeta tom DTMF em canal ativo (*07 para pedestre, *08 para garagem)
+   * Injeta tom DTMF em canal PJSIP real ativo (*07 para pedestre, *08 para garagem)
    * Atende estritamente à Regra de Ouro #4 (Acionamento seguro sem contato seco na calçada)
    */
   public async injectDtmf(
@@ -569,18 +666,21 @@ export class AsteriskManager extends EventEmitter {
     digit: string,
     actorName = 'Sistema'
   ): Promise<{ status: string; message: string; success?: boolean }> {
-    if (!sipChannel || typeof sipChannel !== 'string' || !sipChannel.trim().startsWith('PJSIP/')) {
-      throw new Error(`[Asterisk AMI Security] Canal inválido para PlayDTMF: deve ser um canal PJSIP real ativo (recebido: '${sipChannel || 'indefinido'}')`);
+    const trimmedChannel = sipChannel?.trim();
+    if (!trimmedChannel || !trimmedChannel.startsWith('PJSIP/') || trimmedChannel === 'PJSIP/' || trimmedChannel.includes('fixo')) {
+      throw new Error(`[Asterisk AMI Security] Canal inválido para PlayDTMF: deve ser um canal PJSIP real ativo identificado dinamicamente (recebido: '${sipChannel || 'indefinido'}')`);
     }
 
-    const validDtmf = ['*07', '*08', '*09', '0', '1', '2', '3', '4', '5', '6', '7', '8', '9', '*', '#'];
-    if (!validDtmf.includes(digit)) {
-      throw new Error(`[Asterisk AMI Security] Dígito DTMF inválido ou não autorizado: ${digit}`);
+    // Códigos permitidos para acionamento de portão e relé no DoorIA
+    const allowedGateDtmf = ['*07', '*08', '07', '08', '*09', '09'];
+    if (!allowedGateDtmf.includes(digit)) {
+      throw new Error(`[Asterisk AMI Security] Dígito DTMF não autorizado para acionamento de portão: ${digit}. Permitidos: *07 (pedestre) ou *08 (garagem).`);
     }
 
+    // No Asterisk AMI PlayDTMF, o parâmetro Digit recebe '07' ou '08'
     const cleanDigit = digit.replace('*', '');
     const result = await this.executeSafeAction('PlayDTMF', {
-      Channel: sipChannel.trim(),
+      Channel: trimmedChannel,
       Digit: cleanDigit,
       Duration: '500',
     });
@@ -589,7 +689,7 @@ export class AsteriskManager extends EventEmitter {
       return {
         status: 'Error',
         success: false,
-        message: result.message || 'Falha ao injetar DTMF no Asterisk',
+        message: result.message || `Falha ao injetar DTMF ${digit} no Asterisk via PlayDTMF`,
       };
     }
 
@@ -597,16 +697,16 @@ export class AsteriskManager extends EventEmitter {
       actor: actorName,
       role: 'sistema',
       action: 'PLAY_DTMF',
-      target: sipChannel,
+      target: trimmedChannel,
       status: 'PERMITIDO',
       dtmfCommand: digit,
-      details: { digit, channel: sipChannel },
+      details: { digit, cleanDigit, channel: trimmedChannel },
     }).catch(() => {});
 
     return {
       status: 'Success',
       success: true,
-      message: `DTMF ${digit} injetado no canal SIP ${sipChannel} com sucesso via PlayDTMF.`,
+      message: `DTMF ${digit} (${cleanDigit}) injetado no canal PJSIP ${trimmedChannel} com sucesso via PlayDTMF.`,
     };
   }
 
