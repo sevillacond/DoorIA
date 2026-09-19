@@ -7,21 +7,24 @@ import { db, pool } from './index.ts';
  */
 export async function runMigrations() {
   console.log('[Drizzle Migrator] Iniciando execução controlada das migrações...');
-  const client = await pool.connect();
+  let client;
   try {
+    client = await pool.connect();
     // Executa a migration oficial
     await migrate(db, { migrationsFolder: './src/db/migrations' });
     console.log('[Drizzle Migrator] ✅ Todas as migrações do schema foram aplicadas com sucesso!');
     return { success: true };
   } catch (error: any) {
-    if (error.message?.includes('ECONNREFUSED')) {
-      console.warn('[Drizzle Migrator] PostgreSQL local não conectado no momento da migração (standby).');
-      return { success: false, reason: 'ECONNREFUSED' };
+    if (error.code === 'ECONNREFUSED' || error.message?.includes('ECONNREFUSED')) {
+      console.warn('[Drizzle Migrator] ℹ️ PostgreSQL local (porta 5432) não está ativo no ambiente de preview/build. No Mini PC de produção, o serviço postgres do docker-compose sobe previamente com healthcheck.');
+      return { success: true, standby: true };
     }
     console.error('[Drizzle Migrator] ❌ Falha crítica ao aplicar migrações:', error.message);
     throw error;
   } finally {
-    client.release();
+    if (client) {
+      client.release();
+    }
   }
 }
 

@@ -6,6 +6,7 @@ import { EnlacePay } from '../services/EnlacePay.ts';
 import { getPaymentProvider } from '../services/finance/index.ts';
 import { getHardwareAdapter } from '../services/hardware/index.ts';
 import { RealHardwareAdapter } from '../services/hardware/RealHardwareAdapter.ts';
+import { SimulationAdapter } from '../services/hardware/SimulationAdapter.ts';
 import { CondominiumService } from '../services/CondominiumService.ts';
 import { sanitizeRtspUrl, sanitizeCameraForClient } from '../utils/rtspSanitizer.ts';
 import { validateProductionConfig } from '../config/productionValidator.ts';
@@ -39,15 +40,22 @@ function simulateAuthMiddleware(authHeader?: string): { status: number; error?: 
   return { status: 200, user: session };
 }
 
+function simulateRoleMiddleware(user: UserSession | undefined, allowedRoles: string[]): { status: number; error?: string } {
+  if (!user || !allowedRoles.includes(user.role)) {
+    return { status: 403, error: 'Acesso negado. Nível de privilégio insuficiente.' };
+  }
+  return { status: 200 };
+}
+
 export async function runRegressionTests() {
   console.log('===============================================================');
   console.log('🧪 INICIANDO SUÍTE DE TESTES DE REGRESSÃO E SEGURANÇA (DOORIA)');
   console.log('===============================================================\n');
 
   // ==========================================================================
-  // [1/7] REQUISIÇÃO SEM TOKEN → 401 & COM TOKEN INVÁLIDO → 401
+  // [1/7] REQUISIÇÃO SEM TOKEN → 401 & COM TOKEN INVÁLIDO/EXPIRADO → 401 & ROLE → 403
   // ==========================================================================
-  console.log('--- [1/7] Testes de Autenticação Estrita (401 sem token / inválido) ---');
+  console.log('--- [1/7] Testes de Autenticação Estrita (401 sem token / inválido / expirado / 403 role) ---');
   
   // 1.1 Requisição sem token (Authorization ausente)
   const noTokenReq = simulateAuthMiddleware(undefined);
@@ -78,6 +86,15 @@ export async function runRegressionTests() {
   const tamperedToken = validToken.slice(0, -4) + 'abcd';
   const tamperedReq = simulateAuthMiddleware(`Bearer ${tamperedToken}`);
   assert(tamperedReq.status === 401, 'Rejeição criptográfica de token adulterado (Anti-Tampering)');
+
+  // 1.6 Token expirado
+  const expiredToken = AuthService.createSessionToken(testSession, -1);
+  const expiredReq = simulateAuthMiddleware(`Bearer ${expiredToken}`);
+  assert(expiredReq.status === 401, 'Requisição com token expirado retorna HTTP 401');
+
+  // 1.7 Usuário sem privilégio necessário na rota protegida
+  const forbiddenReq = simulateRoleMiddleware(testSession, ['super_admin', 'sindico']);
+  assert(forbiddenReq.status === 403, 'Usuário com papel "morador" recebe HTTP 403 ao acessar rota administrativa');
 
   // ==========================================================================
   // [2/7] MORADOR TENTANDO ACIONAR PORTÃO SEM PERMISSÃO → 403
@@ -121,16 +138,10 @@ export async function runRegressionTests() {
   assert(evalSindico.allowed, 'Síndico possui permissão direta para acionamento de portão');
 
   // ==========================================================================
-  // [3/7] REALHARDWAREADAPTER: SENSOR FÍSICO AUSENTE → COMMAND_SENT
+  // [3/7] TESTES DE HARDWARE: SIMULATIONADAPTER & REALHARDWAREADAPTER
   // ==========================================================================
-  console.log('\n--- [3/7] Testes RealHardwareAdapter: Sensor Ausente → COMMAND_SENT ---');
+  console.log('\n--- [3/7] Testes de Hardware (SimulationAdapter & RealHardwareAdapter) ---');
   
-  const realAdapter = new RealHardwareAdapter();
-  // Mockamos o AMI interno para simular envio com sucesso ao Asterisk
-  (realAdapter as any).ami = {
-    executeSafeAction: async () => ({ success: true, message: 'PlayDTMF queued' }),
-  };
-
   const testGate: Gate = {
     id: 'gate-pedestre',
     name: 'Portão Pedestre Teste',
@@ -139,35 +150,89 @@ export async function runRegressionTests() {
     status: 'fechado',
     sensorState: 'ok',
     relayPin: 1,
+    relayIp: '192.168.1.160',
   };
 
-  // Sem sensor físico real conectado (readPhysicalSensorFeedback retorna null)
-  realAdapter.readPhysicalSensorFeedback = async () => null;
+  // 3.1 SimulationAdapter: Acionamento lógico seguro sem hardware físico
+  const simAdapter = new SimulationAdapter();
+  const simResult = await simAdapter.triggerRelay(testGate, 1);
+  assert(simResult.success && simResult.isSimulated, 'SimulationAdapter executa com isSimulated: true');
+  assert(simResult.commandStatus === 'COMMAND_SENT', 'SimulationAdapter reporta estritamente COMMAND_SENT');
+  assert(!simResult.hasPhysicalFeedbackSensor, 'SimulationAdapter não atesta sensor de confirmação física');
 
+  // 3.2 GateControlService com SimulationAdapter: transiciona visualmente em demonstração
+  const gateForSim: Gate = { ...testGate };
+  const adminSession: UserSession = { id: 'usr-admin', name: 'Administrador', email: 'admin@local', role: 'super_admin', mfaEnabled: true };
+  const gateControlSim = await GateControlService.triggerGate(gateForSim, adminSession, { callActive: false }, simAdapter);
+  assert(gateControlSim.success && gateControlSim.isSimulated, 'GateControlService opera em modo simulado');
+  assert(gateForSim.status === 'aberto', 'Modo simulado atualiza status para aberto para projeção em painel');
+
+  // 3.3 RealHardwareAdapter: Inicialização com AMI mockado
+  const realAdapter = new RealHardwareAdapter();
+  (realAdapter as any).ami = {
+    executeSafeAction: async () => ({ success: true, message: 'PlayDTMF queued' }),
+  };
+
+  // 3.4 Sem sensor físico real conectado (readPhysicalSensorFeedback retorna null)
+  realAdapter.readPhysicalSensorFeedback = async () => null;
   const resultNoSensor = await realAdapter.triggerRelay(testGate, 1);
   assert(resultNoSensor.success, 'Disparo elétrico executado com sucesso no relé');
   assert(resultNoSensor.commandStatus === 'COMMAND_SENT', 'Status retornado é estritamente COMMAND_SENT na ausência de sensor');
   assert(resultNoSensor.commandStatus !== 'HARDWARE_CONFIRMED', 'NUNCA retornar HARDWARE_CONFIRMED sem leitura de sensor físico');
   assert(!resultNoSensor.hasPhysicalFeedbackSensor, 'hasPhysicalFeedbackSensor marcado como false');
 
+  // 3.5 Falha de comunicação com socket AMI do Asterisk
+  (realAdapter as any).ami = {
+    executeSafeAction: async () => ({ success: false, message: 'Connection refused to Asterisk AMI socket on port 5038' }),
+  };
+  const resultAmiFailure = await realAdapter.triggerRelay(testGate, 1);
+  assert(!resultAmiFailure.success, 'Falha de comunicação no AMI reporta success: false');
+  assert(resultAmiFailure.commandStatus === 'HARDWARE_FAILURE', 'Falha no AMI retorna status HARDWARE_FAILURE');
+
+  // Restaura AMI funcional
+  (realAdapter as any).ami = {
+    executeSafeAction: async () => ({ success: true, message: 'PlayDTMF queued' }),
+  };
+
+  // 3.6 Anti-Bypass: gate.status = "aberto" ou sensorState = "ok" NUNCA gera HARDWARE_CONFIRMED
+  const trickyGate: Gate = {
+    ...testGate,
+    status: 'aberto',
+    sensorState: 'ok',
+  };
+  realAdapter.readPhysicalSensorFeedback = async () => null;
+  const resultAntiBypass = await realAdapter.triggerRelay(trickyGate, 1);
+  assert(resultAntiBypass.commandStatus === 'COMMAND_SENT', 'RealHardwareAdapter ignora gate.status="aberto" e não forja HARDWARE_CONFIRMED');
+
+  // 3.7 GateControlService com RealHardwareAdapter (Sem sensor -> status vira comando_enviado, NUNCA aberto)
+  const gateRealNoSensor: Gate = { ...testGate, status: 'fechado' };
+  const gateControlRealNoSensor = await GateControlService.triggerGate(gateRealNoSensor, adminSession, { callActive: false }, realAdapter);
+  assert(gateControlRealNoSensor.success, 'Acionamento do portão com RealHardwareAdapter é bem-sucedido');
+  assert(gateRealNoSensor.status === 'comando_enviado', 'Portão real sem sensor transiciona para comando_enviado (NUNCA aberto)');
+
   // ==========================================================================
   // [4/7] REALHARDWAREADAPTER: SENSOR FÍSICO REAL ABERTO → HARDWARE_CONFIRMED
   // ==========================================================================
   console.log('\n--- [4/7] Testes RealHardwareAdapter: Sensor Real Aberto → HARDWARE_CONFIRMED ---');
 
-  // Com sensor de fim de curso (reed switch) físico real aberto
+  // 4.1 Com sensor de fim de curso (reed switch) físico real aberto
   realAdapter.readPhysicalSensorFeedback = async () => 'aberto';
-
   const resultSensorOpen = await realAdapter.triggerRelay(testGate, 1);
   assert(resultSensorOpen.success, 'Disparo elétrico executado com sucesso no relé');
   assert(resultSensorOpen.commandStatus === 'HARDWARE_CONFIRMED', 'Status é HARDWARE_CONFIRMED quando sensor físico confirma abertura');
   assert(resultSensorOpen.hasPhysicalFeedbackSensor === true, 'hasPhysicalFeedbackSensor marcado como true');
   assert(resultSensorOpen.physicalSensorState === 'aberto', 'physicalSensorState reflete o estado lido do sensor');
 
+  // 4.2 GateControlService com RealHardwareAdapter e sensor confirmado
+  const gateRealWithSensor: Gate = { ...testGate, status: 'fechado' };
+  const gateControlConfirmed = await GateControlService.triggerGate(gateRealWithSensor, adminSession, { callActive: false }, realAdapter);
+  assert(gateControlConfirmed.success, 'Acionamento com sensor real confirmado');
+  assert(gateRealWithSensor.status === 'aberto', 'Portão real com confirmação física de fim de curso transiciona para aberto');
+
   // ==========================================================================
-  // [5/7] RTSP SANITIZATION: CREDENCIAIS NUNCA ENTREGUES AO FRONTEND
+  // [5/7] RTSP SANITIZATION & VAZAMENTO ZERO DE SEGREDOS NO FRONTEND
   // ==========================================================================
-  console.log('\n--- [5/7] Testes de Sanitização RTSP (Zero Credenciais no Frontend) ---');
+  console.log('\n--- [5/7] Testes de Sanitização RTSP e Proteção de Segredos ---');
 
   const rawRtsp1 = 'rtsp://admin:segredoForte123@192.168.1.150:554/cam/realmonitor?channel=1&subtype=0';
   const cleanRtsp1 = sanitizeRtspUrl(rawRtsp1);
@@ -186,11 +251,35 @@ export async function runRegressionTests() {
     password: 'intelbras2026',
     credentials: { user: 'admin', pass: 'intelbras2026' },
     defaultCredentialsHint: 'admin/admin',
+    suggestedRtspMain: 'rtsp://admin:intelbras2026@192.168.1.100:554/stream',
+    suggestedRtspSub: 'rtsp://admin:intelbras2026@192.168.1.100:554/stream_sub',
   };
   const sanitizedCam = sanitizeCameraForClient(dirtyCameraObj);
-  assert(!sanitizedCam.rtspUrl?.includes('admin:intelbras2026'), 'Câmera sanitizada não possui credenciais na URL');
+
+  // Frontend NUNCA recebe URLs RTSP nem credenciais
+  assert((sanitizedCam as any).rtspUrl === undefined, 'Campo rtspUrl completamente eliminado para o frontend');
+  assert((sanitizedCam as any).suggestedRtspMain === undefined, 'Campo suggestedRtspMain eliminado');
+  assert((sanitizedCam as any).suggestedRtspSub === undefined, 'Campo suggestedRtspSub eliminado');
   assert((sanitizedCam as any).password === undefined, 'Campo password eliminado do payload');
   assert((sanitizedCam as any).credentials === undefined, 'Objeto credentials eliminado do payload');
+  assert((sanitizedCam as any).username === undefined, 'Campo username de hardware eliminado');
+  assert((sanitizedCam as any).streamProtocol === 'webrtc', 'Mídia configurada para protocolo WebRTC seguro');
+  assert((sanitizedCam as any).streamEndpoint === '/api/v1/stream/cam-test', 'Endpoint de streaming proxy local injetado');
+
+  // Nenhuma resposta ou payload pode vazar segredos críticos da infraestrutura
+  const serializedPayload = JSON.stringify(sanitizedCam);
+  const bannedSecrets = [
+    'intelbras2026',
+    process.env.XPE_RTSP_PASSWORD || 'XPE_RTSP_PASSWORD',
+    process.env.ASTERISK_AMI_SECRET || 'ASTERISK_AMI_SECRET',
+    process.env.POSTGRES_PASSWORD || 'POSTGRES_PASSWORD',
+  ];
+  for (const secret of bannedSecrets) {
+    if (secret && secret.length > 3) {
+      assert(!serializedPayload.includes(secret), `Resposta de câmera não contém o segredo '${secret}'`);
+    }
+  }
+  assert(!/rtsp:\/\/[^@\s]+@/.test(serializedPayload), 'Nenhum padrão rtsp://user:pass@ no payload para o cliente');
 
   // ==========================================================================
   // [6/7] PRODUCTIONVALIDATOR: FALHA AO DETECTAR VARIÁVEIS AUSENTES OU INSEGURAS
@@ -200,22 +289,35 @@ export async function runRegressionTests() {
   const originalEnv = { ...process.env };
   try {
     // 6.1 Teste com variáveis ausentes em produção (deve abortar e lançar exceção fatal)
-    delete process.env.SESSION_SECRET;
-    delete process.env.XPE_IP;
-    delete process.env.RELAY_CONTROLLER_IP;
+    const criticalVars = [
+      'SESSION_SECRET',
+      'POSTGRES_PASSWORD',
+      'XPE_IP',
+      'RELAY_CONTROLLER_IP',
+      'ASTERISK_AMI_SECRET',
+      'XPE_RTSP_PASSWORD',
+      'ASTERISK_HOST',
+      'INITIAL_ADMIN_PASSWORD',
+      'CONDO_CNPJ',
+    ];
 
-    let didThrowMissing = false;
-    let thrownMissingMessage = '';
-    try {
-      validateProductionConfig(true);
-    } catch (err: any) {
-      didThrowMissing = true;
-      thrownMissingMessage = err.message;
+    for (const v of criticalVars) {
+      const tempEnv = { ...process.env };
+      delete process.env[v];
+
+      let didThrow = false;
+      let thrownMsg = '';
+      try {
+        validateProductionConfig(true);
+      } catch (err: any) {
+        didThrow = true;
+        thrownMsg = err.message;
+      }
+      assert(didThrow, `ProductionValidator rejeita ausência da variável crítica: ${v}`);
+      assert(thrownMsg.includes(v), `Mensagem de erro explícita identifica a variável: ${v}`);
+
+      process.env = tempEnv;
     }
-
-    assert(didThrowMissing, 'ProductionValidator lança STARTUP FAILURE e aborta quando variáveis críticas estão ausentes');
-    assert(thrownMissingMessage.includes('SESSION_SECRET'), 'Erro explícito para SESSION_SECRET ausente');
-    assert(thrownMissingMessage.includes('XPE_IP'), 'Erro explícito para XPE_IP ausente');
 
     // 6.2 Teste com defaults inseguros conhecidos em produção (ex: 192.168.1.150 para XPE_IP)
     process.env.SESSION_SECRET = 'dooria_session_secret_local_2026';

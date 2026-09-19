@@ -1,7 +1,7 @@
 import { PolicyEngine } from './PolicyEngine.ts';
 import { AuditService } from './AuditService.ts';
 import type { Gate, UserSession } from '../types.ts';
-import { getHardwareAdapter, type HardwareRelayResult, type HardwareCommandStatus } from './hardware/index.ts';
+import { getHardwareAdapter, type HardwareAdapter, type HardwareRelayResult, type HardwareCommandStatus } from './hardware/index.ts';
 
 export interface TriggerGateParams {
   gateId: string;
@@ -14,6 +14,7 @@ export interface TriggerGateParams {
     correlationId?: string;
   };
   triggerSource: 'painel_web' | 'dtmf_asterisk' | 'maia_ia' | 'totem_rfid' | 'qr_code';
+  adapterOverride?: HardwareAdapter;
 }
 
 export interface TriggerGateResult {
@@ -42,8 +43,8 @@ export class GateControlService {
     gate: Gate,
     params: TriggerGateParams
   ): Promise<TriggerGateResult> {
-    const { session, context, triggerSource } = params;
-    const adapter = getHardwareAdapter();
+    const { session, context, triggerSource, adapterOverride } = params;
+    const adapter = adapterOverride || getHardwareAdapter();
     const correlationId = context.correlationId || `gate-trig-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`;
 
     // 1. AVALIAÇÃO RIGOROSA PELO POLICY ENGINE
@@ -184,5 +185,30 @@ export class GateControlService {
       hasPhysicalFeedbackSensor: relayResult.hasPhysicalFeedbackSensor,
       relayResult,
     };
+  }
+
+  /**
+   * Método de conveniência para acionamento direto de portão com suporte a injeção de adaptador
+   */
+  public static async triggerGate(
+    gate: Gate,
+    session: UserSession,
+    context: {
+      callActive?: boolean;
+      activeCallTargetUnit?: string;
+      ipAddress?: string;
+      userAgent?: string;
+      correlationId?: string;
+    } = {},
+    adapterOverride?: HardwareAdapter,
+    triggerSource: 'painel_web' | 'dtmf_asterisk' | 'maia_ia' | 'totem_rfid' | 'qr_code' = 'painel_web'
+  ): Promise<TriggerGateResult> {
+    return this.trigger(gate, {
+      gateId: gate.id,
+      session,
+      context,
+      triggerSource,
+      adapterOverride,
+    });
   }
 }
