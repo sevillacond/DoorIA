@@ -95,7 +95,7 @@ services:
     volumes:
       - ./config/asterisk:/etc/asterisk
     healthcheck:
-      test: ["CMD-SHELL", "asterisk -rx 'core ping' && (nc -z 127.0.0.1 5038 || asterisk -rx 'manager show settings') || exit 1"]
+      test: ["CMD-SHELL", "/etc/asterisk/healthcheck.sh || exit 1"]
       interval: 10s
       timeout: 5s
       retries: 3

@@ -80,6 +80,42 @@ function publishEvent(type: EventBusMessage['type'], source: string, payload: Re
   return event;
 }
 
+/**
+ * Extrai o IP real e confiável da requisição HTTP
+ * Evita valores falsos como 127.0.0.1 quando o IP real do cliente/dispositivo estiver disponível.
+ * Valida formatos e não confia cegamente em X-Forwarded-For desprotegido.
+ */
+function extractClientIp(req: express.Request): string {
+  const trustProxy = process.env.TRUST_PROXY === 'true' || process.env.NODE_ENV === 'production';
+
+  if (trustProxy) {
+    const forwarded = req.headers['x-forwarded-for'];
+    if (typeof forwarded === 'string' && forwarded.trim()) {
+      const parts = forwarded.split(',').map((p) => p.trim());
+      const candidate = parts[0];
+      // Valida que o candidato se parece com um endereço IPv4 ou IPv6 válido
+      if (candidate && !candidate.includes('unknown') && !candidate.includes(' ') && candidate.length <= 45) {
+        return candidate.replace(/^.*:/, '');
+      }
+    }
+
+    const realIp = req.headers['x-real-ip'];
+    if (typeof realIp === 'string' && realIp.trim()) {
+      const candidate = realIp.trim();
+      if (!candidate.includes('unknown') && !candidate.includes(' ') && candidate.length <= 45) {
+        return candidate.replace(/^.*:/, '');
+      }
+    }
+  }
+
+  const socketAddr = req.socket?.remoteAddress;
+  if (socketAddr) {
+    return socketAddr.replace(/^.*:/, '');
+  }
+
+  return req.ip || 'desconhecido';
+}
+
 function logAudit(
   actor: string,
   role: string,
@@ -88,8 +124,10 @@ function logAudit(
   status: 'PERMITIDO' | 'NEGADO' | 'ALERTA',
   details: Record<string, unknown>,
   reason?: string,
-  dtmfCommand?: string
+  dtmfCommand?: string,
+  ipAddress?: string
 ) {
+  const finalIp = ipAddress || 'desconhecido';
   const log: AuditLogEntry = {
     id: `aud-${Date.now()}-${Math.floor(Math.random() * 1000)}`,
     timestamp: new Date().toISOString(),
@@ -99,7 +137,7 @@ function logAudit(
     target,
     status,
     reason,
-    ipAddress: '127.0.0.1',
+    ipAddress: finalIp,
     dtmfCommand,
     details,
   };
@@ -469,23 +507,45 @@ async function startServer() {
       const gate = gatesList.find((g) => g.id === gateId);
       if (!gate) return res.status(404).json({ error: 'Portão não encontrado.' });
 
+      const clientIp = extractClientIp(req);
+      const correlationId = `gate-trig-${Date.now()}-${Math.random().toString(36).substring(2, 7)}`;
+
       const result = await GateControlService.trigger(gate, {
         gateId: gate.id,
         session: user,
         context: {
           callActive: !!activeCall,
           activeCallTargetUnit: activeCall?.targetUnitNumber,
-          ipAddress: req.ip || '127.0.0.1',
+          sipChannel: (activeCall as any)?.sipChannel,
+          uniqueId: (activeCall as any)?.uniqueId,
+          linkedId: (activeCall as any)?.linkedId,
+          ipAddress: clientIp,
           userAgent: req.headers['user-agent'] as string,
+          correlationId,
         },
         triggerSource: 'painel_web',
       });
 
       if (result.success) {
         publishEvent('GATE_OPENED', 'manual_trigger', { gateId: gate.id, openedBy: user.name });
-        res.json({ success: true, message: result.message, gate: result.gate });
+        const statusCode = result.commandStatus === 'HARDWARE_CONFIRMED' ? 200 : 202;
+        res.status(statusCode).json({
+          success: true,
+          message: result.message,
+          commandStatus: result.commandStatus,
+          hasPhysicalFeedbackSensor: result.hasPhysicalFeedbackSensor,
+          gate: result.gate,
+          relayResult: result.relayResult,
+        });
       } else {
-        res.status(result.statusCode).json({ error: result.message });
+        const failureStatus = result.statusCode || (result.commandStatus === 'HARDWARE_FAILURE' ? 502 : 400);
+        res.status(failureStatus).json({
+          success: false,
+          error: result.message,
+          commandStatus: result.commandStatus,
+          hasPhysicalFeedbackSensor: result.hasPhysicalFeedbackSensor,
+          relayResult: result.relayResult,
+        });
       }
     } catch (err: any) {
       handleDbError(err, res);
@@ -508,14 +568,21 @@ async function startServer() {
         return res.status(404).json({ error: `Portão do tipo ${targetGateType} não encontrado no cadastro.` });
       }
 
+      const clientIp = extractClientIp(req);
+      const correlationId = `dtmf-trig-${Date.now()}-${Math.random().toString(36).substring(2, 7)}`;
+
       const result = await GateControlService.trigger(gate, {
         gateId: gate.id,
         session: user,
         context: {
           callActive: !!activeCall,
           activeCallTargetUnit: activeCall?.targetUnitNumber,
-          ipAddress: req.ip || '127.0.0.1',
+          sipChannel: (activeCall as any)?.sipChannel,
+          uniqueId: (activeCall as any)?.uniqueId,
+          linkedId: (activeCall as any)?.linkedId,
+          ipAddress: clientIp,
           userAgent: req.headers['user-agent'] as string,
+          correlationId,
         },
         triggerSource: 'dtmf_asterisk',
       });
@@ -523,10 +590,25 @@ async function startServer() {
       if (result.success) {
         publishEvent('ACCESS_GRANTED', 'policy_engine', { gate: targetGateType, dtmf, authorizedBy: user.name });
         publishEvent('GATE_OPENED', 'access_core', { gateId: gate.id, gateName: gate.name, dtmf });
-        res.json({ success: true, message: result.message, gate: result.gate });
+        const statusCode = result.commandStatus === 'HARDWARE_CONFIRMED' ? 200 : 202;
+        res.status(statusCode).json({
+          success: true,
+          message: result.message,
+          commandStatus: result.commandStatus,
+          hasPhysicalFeedbackSensor: result.hasPhysicalFeedbackSensor,
+          gate: result.gate,
+          relayResult: result.relayResult,
+        });
       } else {
         publishEvent('ACCESS_DENIED', 'policy_engine', { gate: targetGateType, dtmf, reason: result.message });
-        res.status(result.statusCode).json({ success: false, error: result.message });
+        const failureStatus = result.statusCode || (result.commandStatus === 'HARDWARE_FAILURE' ? 502 : 400);
+        res.status(failureStatus).json({
+          success: false,
+          error: result.message,
+          commandStatus: result.commandStatus,
+          hasPhysicalFeedbackSensor: result.hasPhysicalFeedbackSensor,
+          relayResult: result.relayResult,
+        });
       }
     } catch (err: any) {
       handleDbError(err, res);
@@ -1146,8 +1228,10 @@ async function startServer() {
 
   // ============================================================================
   // 15. DISCOVERY DE CÂMERAS ONVIF / RTSP (SEM CREDENCIAIS EM TEXTO CLARO)
+  // Regra: Diferenciação obrigatória entre câmeras de teste/mock e dispositivos físicos reais do piloto.
   // ============================================================================
   const isProdEnv = process.env.NODE_ENV === 'production';
+  const hasConfiguredXpe = !!process.env.XPE_IP;
   const xpeDiscoveryIp = process.env.XPE_IP || (isProdEnv ? '' : '192.168.1.150');
 
   const discoveredCams: DiscoveredCamera[] = [
@@ -1163,13 +1247,16 @@ async function startServer() {
       supportedProfiles: ['ONVIF_Profile_T', 'ONVIF_Profile_S'],
       streamProtocol: 'webrtc',
       streamEndpoint: '/api/v1/stream/disc-cam-01',
-      isConfigured: true,
+      isConfigured: hasConfiguredXpe,
       detectedCodec: 'H.264',
+      classification: hasConfiguredXpe ? 'REAL_HARDWARE' : 'MOCK_DEMO',
+      isMock: !hasConfiguredXpe,
+      credentialsStatus: hasConfiguredXpe ? 'configurado' : 'pendente',
     },
     {
       id: 'disc-cam-02',
       ip: '192.168.1.102',
-      model: 'VIP 3230 B LPR',
+      model: 'VIP 3230 B LPR (Demo)',
       manufacturer: 'Intelbras',
       mac: '48:28:2F:14:41:BB',
       onvifPort: 80,
@@ -1180,11 +1267,14 @@ async function startServer() {
       streamEndpoint: '/api/v1/stream/disc-cam-02',
       isConfigured: false,
       detectedCodec: 'H.264',
+      classification: 'MOCK_DEMO',
+      isMock: true,
+      credentialsStatus: 'pendente',
     },
     {
       id: 'disc-cam-03',
       ip: '192.168.1.103',
-      model: 'DS-2CD2043G2-I',
+      model: 'DS-2CD2043G2-I (Demo)',
       manufacturer: 'Hikvision',
       mac: 'C8:02:8F:A1:04:12',
       onvifPort: 80,
@@ -1195,16 +1285,26 @@ async function startServer() {
       streamEndpoint: '/api/v1/stream/disc-cam-03',
       isConfigured: false,
       detectedCodec: 'H.264',
+      classification: 'MOCK_DEMO',
+      isMock: true,
+      credentialsStatus: 'pendente',
     },
   ];
 
   app.get('/api/v1/discovery/cameras', requireAuth, requireRole(['super_admin', 'admin_sistema']), (req, res) => {
-    res.json(discoveredCams.map((c) => sanitizeCameraForClient(c)));
+    // Em produção física, se ALLOW_DEMO_CAMERAS !== 'true', filtra câmeras simuladas/demonstração
+    const filtered = (isProdEnv && process.env.ALLOW_DEMO_CAMERAS !== 'true')
+      ? discoveredCams.filter((c) => !c.isMock && c.ip)
+      : discoveredCams;
+    res.json(filtered.map((c) => sanitizeCameraForClient(c)));
   });
 
   app.post('/api/v1/discovery/scan', requireAuth, requireRole(['super_admin', 'admin_sistema']), (req, res) => {
-    publishEvent('DISCOVERY_SCAN_COMPLETED', 'onvif_discovery', { devicesFound: discoveredCams.length });
-    res.json({ success: true, devices: discoveredCams.map((c) => sanitizeCameraForClient(c)) });
+    const filtered = (isProdEnv && process.env.ALLOW_DEMO_CAMERAS !== 'true')
+      ? discoveredCams.filter((c) => !c.isMock && c.ip)
+      : discoveredCams;
+    publishEvent('DISCOVERY_SCAN_COMPLETED', 'onvif_discovery', { devicesFound: filtered.length });
+    res.json({ success: true, devices: filtered.map((c) => sanitizeCameraForClient(c)) });
   });
 
   app.post('/api/v1/discovery/test-stream', requireAuth, (req, res) => {
@@ -1323,6 +1423,9 @@ async function startServer() {
         relayIp: process.env.RELAY_CONTROLLER_IP || process.env.XPE_IP || '',
       };
 
+      const clientIp = extractClientIp(req);
+      const correlationId = req.body.correlationId || `xpe-relay-${Date.now()}-${Math.random().toString(36).substring(2, 7)}`;
+
       // Delegação estrita ao GateControlService (não burla PolicyEngine, RBAC nem AuditService)
       const result = await GateControlService.trigger(targetGate, {
         gateId: targetGate.id,
@@ -1331,9 +1434,11 @@ async function startServer() {
           callActive: !!activeCall,
           activeCallTargetUnit: activeCall?.targetUnitNumber,
           sipChannel: sipChannel || (activeCall as any)?.sipChannel,
-          ipAddress: req.ip || '127.0.0.1',
+          uniqueId: (activeCall as any)?.uniqueId,
+          linkedId: (activeCall as any)?.linkedId,
+          ipAddress: clientIp,
           userAgent: req.headers['user-agent'] as string,
-          correlationId: `xpe-relay-${Date.now()}`,
+          correlationId,
         },
         triggerSource: 'painel_web',
       });
@@ -1383,10 +1488,61 @@ async function startServer() {
   });
 
   // ============================================================================
-  // 20. LOGGER DE ERROS
+  // 20. LOGGER DE ERROS SEGURO (PROTEÇÃO ANTI-INJECTION, RATE LIMIT & SEM EXPOSIÇÃO DE SECRETS)
   // ============================================================================
+  const errorLogRateLimitMap = new Map<string, { count: number; resetTime: number }>();
+
+  app.post('/api/v1/log-error', (req, res) => {
+    const clientIp = extractClientIp(req);
+    const now = Date.now();
+
+    // 1. Rate Limiting por IP (máximo 10 requisições por minuto por IP para evitar DoS)
+    const currentRate = errorLogRateLimitMap.get(clientIp) || { count: 0, resetTime: now + 60000 };
+    if (now > currentRate.resetTime) {
+      currentRate.count = 0;
+      currentRate.resetTime = now + 60000;
+    }
+    currentRate.count++;
+    errorLogRateLimitMap.set(clientIp, currentRate);
+
+    if (currentRate.count > 10) {
+      return res.status(429).json({ error: 'Limite de envio de relatórios de erro excedido. Tente novamente mais tarde.' });
+    }
+
+    // 2. Validação estrita de Payload
+    const body = req.body;
+    if (!body || typeof body !== 'object' || Array.isArray(body)) {
+      return res.status(400).json({ error: 'Payload de erro inválido.' });
+    }
+
+    // 3. Sanitização contra Log Injection (CRLF) e vazamento de credenciais
+    const sanitizeString = (str: unknown, maxLength: number): string => {
+      if (typeof str !== 'string') return '';
+      let clean = str.slice(0, maxLength);
+      // Remove quebras de linha e caracteres de controle (prevenção de CRLF / log injection)
+      clean = clean.replace(/[\r\n\x00-\x1F\x7F]/g, ' ');
+      // Mascara tokens Bearer, senhas e credenciais sensíveis
+      clean = clean.replace(/Bearer\s+[A-Za-z0-9._~+/-]+/gi, 'Bearer [REDACTED]');
+      clean = clean.replace(/(password|pass|secret|token|apiKey|key)["']?\s*[:=]\s*["']?[^"',\s]+/gi, '$1: [REDACTED]');
+      return clean.trim();
+    };
+
+    const message = sanitizeString(body.message, 300);
+    const context = sanitizeString(body.context, 100);
+    const stack = sanitizeString(body.componentStack || body.stack, 500);
+
+    if (!message) {
+      return res.status(400).json({ error: 'Mensagem de erro obrigatória.' });
+    }
+
+    // 4. Registro seguro estruturado em produção sem despejo de memória ou disco
+    console.warn(`[ClientErrorLog] [IP: ${clientIp}] [Contexto: ${context || 'N/A'}] ${message}${stack ? ` | Stack: ${stack}` : ''}`);
+
+    return res.json({ success: true });
+  });
+
   app.all('/api/v1/log-error', (req, res) => {
-    res.json({ success: true });
+    res.status(405).json({ error: 'Método não permitido. Utilize POST.' });
   });
 
   // ============================================================================

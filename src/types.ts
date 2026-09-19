@@ -147,6 +147,9 @@ export interface DiscoveredCamera {
   isConfigured: boolean;
   defaultCredentialsHint?: string;
   detectedCodec: string;
+  classification?: 'MOCK_DEMO' | 'REAL_HARDWARE';
+  isMock?: boolean;
+  credentialsStatus?: 'configurado' | 'pendente' | 'nao_aplicavel';
 }
 
 export type CallOrigin = 'xpe_3115_ip' | 'qr_virtual_intercom' | 'app_webrtc';

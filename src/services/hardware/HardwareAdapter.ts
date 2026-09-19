@@ -54,7 +54,7 @@ export interface HardwareAdapter {
     gate: Gate,
     pulseDurationSeconds: number,
     correlationId?: string,
-    options?: { sipChannel?: string; activeCallTargetUnit?: string }
+    options?: { sipChannel?: string; activeCallTargetUnit?: string; uniqueId?: string; linkedId?: string }
   ): Promise<HardwareRelayResult>;
 
   /**

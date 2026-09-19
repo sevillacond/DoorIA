@@ -14,7 +14,7 @@ export class SimulationAdapter implements HardwareAdapter {
     gate: Gate,
     pulseDurationSeconds: number,
     correlationId?: string,
-    _options?: { sipChannel?: string; activeCallTargetUnit?: string }
+    _options?: { sipChannel?: string; activeCallTargetUnit?: string; uniqueId?: string; linkedId?: string }
   ): Promise<HardwareRelayResult> {
     const timestamp = new Date().toISOString();
     console.warn(

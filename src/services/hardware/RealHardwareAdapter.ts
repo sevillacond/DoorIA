@@ -7,6 +7,7 @@ import {
   type PhysicalSensorState,
   DefaultPhysicalSensorReader,
 } from './SensorReader.ts';
+import { HttpCgiRelayDriver } from './drivers/HttpCgiRelayDriver.ts';
 
 /**
  * Adaptador de Hardware Real para ambiente de produção (Mini PC / Guarita).
@@ -59,7 +60,7 @@ export class RealHardwareAdapter implements HardwareAdapter {
     gate: Gate,
     pulseDurationSeconds: number,
     correlationId?: string,
-    options?: { sipChannel?: string; activeCallTargetUnit?: string }
+    options?: { sipChannel?: string; activeCallTargetUnit?: string; uniqueId?: string; linkedId?: string }
   ): Promise<HardwareRelayResult> {
     const timestamp = new Date().toISOString();
     const isProd = process.env.NODE_ENV === 'production';
@@ -92,35 +93,29 @@ export class RealHardwareAdapter implements HardwareAdapter {
       let commandMethod = '';
       const failureReasons: string[] = [];
 
-      // 1. Acionamento via HTTP CGI (específico para placas de relé IP dedicadas compatíveis, ex: WebRelay)
-      // NOTA ARQUITETURAL: O Intelbras XPE 3115-IP opera nativamente via sinalização DTMF (*07/*08) sobre PJSIP.
-      // Uma resposta HTTP 200 de controladora externa representa apenas recebimento do pulso (COMMAND_SENT),
+      // 1. Acionamento via driver de relé HTTP CGI dedicado (quando configurado explicitamente)
+      // NOTA ARQUITETURAL: Para o piloto oficial DoorIA / XPE 3115-IP, o mecanismo padrão homologado é DTMF (*07/*08).
+      // Uma resposta HTTP 200 de controladora externa representa apenas recebimento do comando elétrico (COMMAND_SENT),
       // e NUNCA confirmação física de abertura sem sensor de fim de curso (reed switch).
-      if (relayIp && relayIp !== '127.0.0.1' && process.env.TRIGGER_METHOD_PREFERENCE !== 'ami_only') {
-        try {
-          const timeoutSignal = typeof AbortSignal !== 'undefined' && (AbortSignal as any).timeout
-            ? (AbortSignal as any).timeout(1200)
-            : undefined;
-          const httpCgiUrl = `http://${relayIp}/cgi-bin/relay.cgi?action=open&relay=${gate.relayPin}&duration=${pulseDurationSeconds}`;
-          const res = await fetch(httpCgiUrl, { method: 'GET', signal: timeoutSignal });
-          if (res.ok) {
-            commandExecuted = true;
-            commandMethod = 'HTTP_CGI';
-            console.log(`[REAL_HARDWARE] [${correlationId || 'N/A'}] Pulso aceito via HTTP CGI na controladora ${relayIp}`);
-          } else {
-            failureReasons.push(`HTTP CGI retornou código ${res.status}`);
-          }
-        } catch (httpErr: any) {
-          failureReasons.push(`HTTP CGI indisponível (${httpErr.message})`);
+      if (relayIp && relayIp !== '127.0.0.1' && process.env.TRIGGER_METHOD === 'http_cgi') {
+        const cgiDriver = new HttpCgiRelayDriver({ host: relayIp });
+        const cgiResult = await cgiDriver.pulseRelay(gate.relayPin, pulseDurationSeconds, correlationId);
+        if (cgiResult.success) {
+          commandExecuted = true;
+          commandMethod = 'HTTP_CGI';
+        } else if (cgiResult.failureReason) {
+          failureReasons.push(cgiResult.failureReason);
         }
       }
 
-      // 2. Via canônica e principal do XPE 3115-IP: Asterisk AMI PlayDTMF (*07 / *08)
+      // 2. Via canônica e oficial do piloto XPE 3115-IP: Asterisk AMI PlayDTMF (*07 / *08)
       if (!commandExecuted) {
         // Resolução dinâmica e validação estrita do canal PJSIP real ativo da chamada do XPE
         const targetChannel = await this.ami.findActiveChannelForXpe({
           preferredChannel: options?.sipChannel,
           targetUnit: options?.activeCallTargetUnit,
+          uniqueId: options?.uniqueId,
+          linkedId: options?.linkedId,
         });
 
         // Se nenhum canal PJSIP válido e ativo correlacionado à chamada do XPE foi localizado:

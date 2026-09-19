@@ -615,6 +615,93 @@ export async function runRegressionTests() {
   assert(case5Result.physicalSensorState === 'aberto', 'Caso 5: physicalSensorState reporta aberto');
   assert(gateCase5.status === 'aberto', 'Caso 5: Portão transiciona legitimamente para aberto após confirmação física');
 
+  // --- [10/10] Testes de Correlação Avançada (UniqueID/LinkedID), Driver HTTP CGI e Mocks ---
+  console.log('\n--- [10/10] Testes de Correlação Avançada (UniqueID/LinkedID), Driver HTTP CGI e Mocks ---');
+
+  // Teste 1: Driver HTTP CGI dedicado
+  const { HttpCgiRelayDriver } = await import('../services/hardware/drivers/HttpCgiRelayDriver.ts');
+  const cgiDriver = new HttpCgiRelayDriver({ host: '192.168.1.160', port: 80, timeoutMs: 500 });
+  
+  // Mock global fetch para simular resposta HTTP 200 da controladora
+  const originalFetch = global.fetch;
+  (global as any).fetch = async (url: string) => {
+    if (url.includes('192.168.1.160')) {
+      return { ok: true, status: 200, text: async () => 'RELAY 1 PULSED' } as any;
+    }
+    throw new Error('Host unreachable');
+  };
+
+  const cgiSuccessResult = await cgiDriver.pulseRelay(1, 3, 'test-corr-cgi-01');
+  assert(cgiSuccessResult.success === true, 'HttpCgiRelayDriver: pulso aceito com status HTTP 200');
+  assert(cgiSuccessResult.commandStatus === 'COMMAND_SENT', 'HttpCgiRelayDriver: status retornado é estritamente COMMAND_SENT');
+  assert((cgiSuccessResult.commandStatus as string) !== 'HARDWARE_CONFIRMED', 'HttpCgiRelayDriver: NUNCA gera HARDWARE_CONFIRMED sem sensor');
+  assert(cgiSuccessResult.hasPhysicalFeedbackSensor === false, 'HttpCgiRelayDriver: hasPhysicalFeedbackSensor é false');
+
+  // Mock fetch para simular falha de rede/timeout
+  (global as any).fetch = async () => {
+    throw new Error('Connection refused by hardware');
+  };
+  const cgiFailResult = await cgiDriver.pulseRelay(1, 3, 'test-corr-cgi-fail');
+  assert(cgiFailResult.success === false, 'HttpCgiRelayDriver: falha de rede retorna success: false');
+  assert(cgiFailResult.commandStatus === 'HARDWARE_FAILURE', 'HttpCgiRelayDriver: falha de comunicação reporta HARDWARE_FAILURE');
+
+  // Restaura fetch
+  global.fetch = originalFetch;
+
+  // Teste 2: Correlação Estrita de UniqueID e LinkedID no AsteriskAMI
+  const amiCorrelationTest = new AsteriskAMI('127.0.0.1', 5038, 'admin', 'secret');
+  (amiCorrelationTest as any).getActiveChannels = async () => [
+    {
+      channel: 'PJSIP/xpe_3115-00000088',
+      state: 'Up',
+      channelStateDesc: 'Up',
+      callerIdNum: '8000',
+      connectedLineNum: '101',
+      uniqueId: 'ast-unique-12345.678',
+      linkedId: 'ast-unique-12345.678',
+    },
+    {
+      channel: 'PJSIP/ramal_interno-00000099',
+      state: 'Up',
+      channelStateDesc: 'Up',
+      callerIdNum: '202',
+      connectedLineNum: '203',
+      uniqueId: 'ast-unique-88888.999',
+      linkedId: 'ast-unique-88888.999',
+    },
+  ];
+
+  const matchedByUniqueId = await amiCorrelationTest.findActiveChannelForXpe({
+    uniqueId: 'ast-unique-12345.678',
+  });
+  assert(matchedByUniqueId === 'PJSIP/xpe_3115-00000088', 'AsteriskAMI: Localiza com precisão canal pelo UniqueID da chamada do XPE');
+
+  const matchedByLinkedId = await amiCorrelationTest.findActiveChannelForXpe({
+    linkedId: 'ast-unique-12345.678',
+  });
+  assert(matchedByLinkedId === 'PJSIP/xpe_3115-00000088', 'AsteriskAMI: Localiza com precisão canal pelo LinkedID da chamada do XPE');
+
+  const nonExistentUniqueId = await amiCorrelationTest.findActiveChannelForXpe({
+    uniqueId: 'ast-unique-inexistente-999',
+  });
+  assert(nonExistentUniqueId === null, 'AsteriskAMI: UniqueId desconhecido retorna null e não sequestra canais de terceiros');
+
+  // Teste 3: Diferenciação de Mocks e Sanitização de Câmeras
+  const mockCamera = {
+    id: 'disc-cam-02',
+    ip: '192.168.1.102',
+    model: 'VIP 3230 B LPR (Demo)',
+    classification: 'MOCK_DEMO',
+    isMock: true,
+    rtspUrl: 'rtsp://admin:secret123@192.168.1.102:554/cam',
+    defaultCredentialsHint: 'admin/secret123',
+  };
+  const sanitizedMockCam = sanitizeCameraForClient(mockCamera as any);
+  assert((sanitizedMockCam as any).rtspUrl === undefined, 'Sanitizer: Deleta qualquer URL RTSP do objeto enviado ao frontend');
+  assert((sanitizedMockCam as any).defaultCredentialsHint === undefined, 'Sanitizer: Deleta credenciais ou dicas de senha');
+  assert(sanitizedMockCam.classification === 'MOCK_DEMO', 'Discovery: Preserva classificação clara MOCK_DEMO para identificação');
+  assert(sanitizedMockCam.isMock === true, 'Discovery: Preserva isMock: true para evitar confusão de hardware na guarita');
+
   console.log('\n===============================================================');
   console.log(`🎉 TODOS OS ${passedTests}/${totalTests} TESTES DE SEGURANÇA E HARDWARE PASSARAM COM SUCESSO!`);
   console.log('===============================================================');
