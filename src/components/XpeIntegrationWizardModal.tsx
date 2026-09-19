@@ -90,9 +90,8 @@ export const XpeIntegrationWizardModal: React.FC<XpeIntegrationWizardModalProps>
       channel: 1,
       subType: 0,
       rtspPort: 554,
-      username: 'admin',
-      password: 'admin_password',
-      url: 'rtsp://admin:admin_password@192.168.1.150:554/cam/realmonitor?channel=1&subtype=0',
+      streamProtocol: 'webrtc',
+      streamEndpoint: '/api/v1/cameras/cam-xpe/stream',
     },
     status: 'online',
   });
@@ -915,26 +914,26 @@ remove_existing=yes`;
 
                   <div>
                     <label className="block font-bold text-slate-600 dark:text-slate-400 mb-1">
-                      URL RTSP Formatada (Intelbras Padrão)
+                      Endpoint WebRTC de Baixa Latência (Go2RTC Seguro)
                     </label>
                     <div className="flex gap-2">
                       <input
                         type="text"
                         readOnly
-                        value={`rtsp://${config.rtspStream.username}:*****@${config.ip}:${config.rtspStream.rtspPort}/cam/realmonitor?channel=1&subtype=${config.rtspStream.subType}`}
+                        value={config.rtspStream?.streamEndpoint || `/api/v1/cameras/cam-xpe/stream`}
                         className="w-full px-3 py-2 rounded-xl border border-slate-300 dark:border-slate-700 bg-slate-100 dark:bg-slate-900 font-mono text-[11px] text-slate-600 dark:text-slate-300"
                       />
                       <button
                         onClick={() =>
                           handleCopy(
-                            `rtsp://${config.rtspStream.username}:${config.rtspStream.password}@${config.ip}:${config.rtspStream.rtspPort}/cam/realmonitor?channel=1&subtype=${config.rtspStream.subType}`,
-                            'rtsp'
+                            config.rtspStream?.streamEndpoint || `/api/v1/cameras/cam-xpe/stream`,
+                            'stream_endpoint'
                           )
                         }
                         className="px-3 py-2 rounded-xl bg-slate-200 dark:bg-slate-800 hover:bg-slate-300 text-slate-700 dark:text-white transition cursor-pointer"
-                        title="Copiar URL RTSP"
+                        title="Copiar Endpoint WebRTC"
                       >
-                        {copiedKey === 'rtsp' ? <Check className="w-4 h-4 text-emerald-500" /> : <Copy className="w-4 h-4" />}
+                        {copiedKey === 'stream_endpoint' ? <Check className="w-4 h-4 text-emerald-500" /> : <Copy className="w-4 h-4" />}
                       </button>
                     </div>
                   </div>

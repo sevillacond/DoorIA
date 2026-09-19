@@ -41,6 +41,7 @@ import { DatabaseRepository, DatabaseUnavailableError } from './src/services/Dat
 import { parametrizeDiscoveredCamera } from './src/services/CameraDiscovery.ts';
 import { validateProductionConfig } from './src/config/productionValidator.ts';
 import { sanitizeRtspUrl, sanitizeCameraForClient } from './src/utils/rtspSanitizer.ts';
+import { getHardwareAdapter } from './src/services/hardware/index.ts';
 
 const PORT = 3000;
 
@@ -157,14 +158,15 @@ function getXpeRuntimeConfig(condo?: CondominiumConfig | null): XpeConfig {
       httpTriggerUrl: `http://${ip}/cgi-bin/relay.cgi?action=open&relay=2`,
       targetGateId: 'gate-garagem',
     },
+    streamProtocol: 'webrtc',
+    streamEndpoint: '/api/v1/cameras/cam-xpe/stream',
     rtspStream: {
       enabled: true,
       channel: 1,
       subType: 0,
       rtspPort: 554,
-      username: process.env.XPE_RTSP_USERNAME || 'admin',
-      password: hasRtspPass ? '********' : 'NÃO CONFIGURADO',
-      url: sanitizeRtspUrl(`rtsp://${ip}:554/cam/realmonitor?channel=1&subtype=0`),
+      streamProtocol: 'webrtc',
+      streamEndpoint: '/api/v1/cameras/cam-xpe/stream',
     },
     lastSyncedAt: new Date().toISOString(),
     status: 'online',
@@ -253,6 +255,30 @@ async function startServer() {
     }
     return res.status(500).json({ error: err.message });
   }
+
+  // ============================================================================
+  // HEALTHCHECK OFICIAL (POSTGRES / ASTERISK / DOCKER / PROD MONITORING)
+  // ============================================================================
+  app.get(['/api/v1/health', '/api/health'], async (req, res) => {
+    try {
+      const dbHealthy = await checkPostgresHealth();
+      res.status(200).json({
+        status: 'ok',
+        service: 'dooria-core',
+        timestamp: new Date().toISOString(),
+        uptimeSeconds: Math.floor(process.uptime()),
+        database: dbHealthy ? 'connected' : 'standby',
+      });
+    } catch {
+      res.status(200).json({
+        status: 'ok',
+        service: 'dooria-core',
+        timestamp: new Date().toISOString(),
+        uptimeSeconds: Math.floor(process.uptime()),
+        database: 'standby',
+      });
+    }
+  });
 
   // ============================================================================
   // 1. AUTENTICAÇÃO E SESSÃO (RBAC LOCAL-FIRST SEGURO)
@@ -479,7 +505,7 @@ async function startServer() {
     }
   });
 
-  app.get('/api/v1/cameras/:id/stream', requireAuth, async (req, res) => {
+  app.get(['/api/v1/cameras/:id/stream', '/api/v1/stream/:id'], requireAuth, async (req, res) => {
     const user = (req as any).user as UserSession;
     const { id } = req.params;
     try {
@@ -1217,15 +1243,78 @@ async function startServer() {
   // ============================================================================
   // 19. ASSISTENTE XPE E ACIONAMENTO REMOTO
   // ============================================================================
-  app.post('/api/v1/xpe/trigger-relay', requireAuth, requireRole(['super_admin', 'sindico', 'admin_sistema']), (req, res) => {
+  app.post('/api/v1/xpe/trigger-relay', requireAuth, requireRole(['super_admin', 'sindico', 'admin_sistema']), async (req, res) => {
     const { relayNumber, durationSeconds } = req.body;
-    publishEvent('XPE_RELAY_TRIGGERED', 'xpe_diagnostic', { relayNumber, durationSeconds });
-    res.json({
-      success: true,
-      relayNumber: relayNumber || 1,
-      durationSeconds: durationSeconds || 3,
-      message: `Pulso de acionamento do Relé ${relayNumber} executado com sucesso.`,
-    });
+    const relayNum = Number(relayNumber) || 1;
+    const duration = Number(durationSeconds) || 3;
+    const user = (req as any).user as UserSession;
+
+    try {
+      const adapter = getHardwareAdapter();
+      const isPedestre = relayNum === 1;
+      const gateType = isPedestre ? 'pedestre' : 'garagem';
+
+      // Localiza o portão correspondente no repositório ou constrói descritor seguro
+      const allGates = await DatabaseRepository.getGates();
+      const targetGate = allGates.find((g) => (isPedestre ? g.type === 'pedestre' : g.type === 'garagem')) || {
+        id: `xpe-relay-${relayNum}`,
+        name: `Relé ${relayNum} (${isPedestre ? 'Pedestre Social' : 'Garagem Veicular'})`,
+        type: gateType,
+        dtmfCode: isPedestre ? '*07' : '*08',
+        status: 'fechado' as const,
+        sensorState: 'ok' as const,
+        relayPin: relayNum,
+        relayIp: process.env.RELAY_CONTROLLER_IP || process.env.XPE_IP || '',
+      };
+
+      const hardwareResult = await adapter.triggerRelay(targetGate, duration, `xpe-relay-${Date.now()}`);
+
+      logAudit(
+        user.name,
+        user.role,
+        'ACIONAMENTO_RELE_XPE',
+        targetGate.name,
+        hardwareResult.success ? 'PERMITIDO' : 'ALERTA',
+        {
+          relayNumber: relayNum,
+          durationSeconds: duration,
+          hardwareResult,
+        },
+        hardwareResult.message,
+        targetGate.dtmfCode
+      );
+
+      publishEvent('XPE_RELAY_TRIGGERED', 'xpe_diagnostic', {
+        relayNumber: relayNum,
+        durationSeconds: duration,
+        hardwareResult,
+      });
+
+      if (!hardwareResult.success || hardwareResult.commandStatus === 'HARDWARE_FAILURE') {
+        return res.status(502).json({
+          success: false,
+          error: hardwareResult.message || 'Falha de comunicação com hardware físico do relé.',
+          commandStatus: 'HARDWARE_FAILURE',
+          hardwareResult,
+        });
+      }
+
+      return res.status(200).json({
+        success: true,
+        relayNumber: relayNum,
+        durationSeconds: duration,
+        commandStatus: hardwareResult.commandStatus,
+        hasPhysicalFeedbackSensor: hardwareResult.hasPhysicalFeedbackSensor,
+        message: hardwareResult.message,
+        hardwareResult,
+      });
+    } catch (err: any) {
+      return res.status(502).json({
+        success: false,
+        error: `Exceção ao disparar relé: ${err.message}`,
+        commandStatus: 'HARDWARE_FAILURE',
+      });
+    }
   });
 
   app.post('/api/v1/xpe/save-config', requireAuth, requireRole(['super_admin', 'sindico', 'admin_sistema']), (req, res) => {

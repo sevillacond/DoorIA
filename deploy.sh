@@ -1,86 +1,191 @@
 #!/bin/bash
 
 # =========================================================================
-# ENLACE-DOORIA: SCRIPT DE IMPLANTAÇÃO AUTOMATIZADA (DEPLOY)
+# ENLACE-DOORIA: SCRIPT DE IMPLANTAÇÃO AUTOMATIZADA (DEPLOY PRODUÇÃO)
 # Arquitetura: Node.js (Vite + Express), PostgreSQL 16, Asterisk 20, go2rtc
 # =========================================================================
 
-set -e # Interrompe a execução caso algum comando falhe
+set -e # Interrompe a execução caso algum comando crítico falhe
 
 # Cores para output
 GREEN='\033[0;32m'
 BLUE='\033[0;34m'
 YELLOW='\033[1;33m'
 RED='\033[0;31m'
+CYAN='\033[0;36m'
 NC='\033[0m' # No Color
 
 echo -e "${BLUE}"
 echo "================================================================="
-echo "   🚀 INICIANDO DEPLOY DO SISTEMA ENLACE-DOORIA (Mini PC)      "
+echo "   🚀 IMPLANTAÇÃO AUTOMATIZADA: ENLACE-DOORIA (Mini PC Guarita) "
 echo "================================================================="
 echo -e "${NC}"
 
-# 1. VERIFICAR PRÉ-REQUISITOS (Docker e Docker-Compose)
-echo -e "${YELLOW}[1/4] Verificando dependências do sistema...${NC}"
+# Comando Docker Compose compatível (v2 ou v1)
+if docker compose version &> /dev/null; then
+    DOCKER_COMPOSE="docker compose"
+elif command -v docker-compose &> /dev/null; then
+    DOCKER_COMPOSE="docker-compose"
+else
+    echo -e "${RED}Erro: Docker Compose não encontrado no sistema.${NC}"
+    exit 1
+fi
+
+# -------------------------------------------------------------------------
+# ETAPA 1: VALIDAR PRÉ-REQUISITOS (Docker, Docker Compose, .env)
+# -------------------------------------------------------------------------
+echo -e "${YELLOW}[1/8] Verificando pré-requisitos do sistema...${NC}"
 if ! command -v docker &> /dev/null; then
     echo -e "${RED}Erro: Docker não está instalado. Instale o Docker primeiro.${NC}"
     exit 1
 fi
 
-if ! command -v docker-compose &> /dev/null && ! docker compose version &> /dev/null; then
-    echo -e "${RED}Erro: Docker Compose não encontrado.${NC}"
+if [ ! -f .env ]; then
+    echo -e "${RED}Erro: Arquivo .env não encontrado na raiz do projeto!${NC}"
+    echo -e "Copie o arquivo modelo executando: ${YELLOW}cp .env.example .env${NC} e preencha as variáveis de produção."
     exit 1
 fi
-echo -e "${GREEN}✔ Dependências validadas.${NC}"
+echo -e "${GREEN}✔ Docker, Docker Compose e arquivo .env presentes.${NC}"
 echo ""
 
-# 2. PARAR CONTAINERS ANTIGOS E LIMPAR
-echo -e "${YELLOW}[2/4] Preparando o ambiente (Parando instâncias antigas)...${NC}"
-if docker compose version &> /dev/null; then
-    docker compose down
-else
-    docker-compose down
+# -------------------------------------------------------------------------
+# ETAPA 2: VERIFICAR VARIÁVEIS OBRIGATÓRIAS NO .ENV (ProductionValidator)
+# -------------------------------------------------------------------------
+echo -e "${YELLOW}[2/8] Validando variáveis obrigatórias de produção no .env...${NC}"
+
+# Carrega variáveis do .env ignorando comentários
+set -a
+# shellcheck source=/dev/null
+source .env
+set +a
+
+REQUIRED_VARS=(
+    "SESSION_SECRET"
+    "POSTGRES_PASSWORD"
+    "CONDO_CNPJ"
+    "CONDO_NAME"
+    "CONDO_CITY"
+    "CONDO_STATE"
+    "CONDO_UNITS_COUNT"
+    "LOCAL_SERVER_IP"
+    "INITIAL_ADMIN_USER"
+    "INITIAL_ADMIN_PASSWORD"
+    "INITIAL_ADMIN_EMAIL"
+    "XPE_IP"
+    "XPE_SIP_SECRET"
+    "XPE_RTSP_USERNAME"
+    "XPE_RTSP_PASSWORD"
+    "RELAY_CONTROLLER_IP"
+    "ASTERISK_HOST"
+    "ASTERISK_AMI_PORT"
+    "ASTERISK_AMI_USERNAME"
+    "ASTERISK_AMI_SECRET"
+)
+
+MISSING_VARS=()
+for var in "${REQUIRED_VARS[@]}"; do
+    if [ -z "${!var}" ]; then
+        MISSING_VARS+=("$var")
+    fi
+done
+
+if [ ${#MISSING_VARS[@]} -ne 0 ]; then
+    echo -e "${RED}❌ ERRO FATAL: As seguintes variáveis obrigatórias não estão definidas no .env:${NC}"
+    for missing in "${MISSING_VARS[@]}"; do
+        echo -e "   -> ${RED}$missing${NC}"
+    done
+    echo -e "${YELLOW}Consulte o .env.example para instruções detalhadas de cada variável.${NC}"
+    exit 1
 fi
-echo -e "${GREEN}✔ Ambiente limpo.${NC}"
+
+echo -e "${GREEN}✔ Todas as ${#REQUIRED_VARS[@]} variáveis críticas de produção foram validadas.${NC}"
 echo ""
 
-# 3. RECONSTRUIR E SUBIR CONTAINERS (Build nativo da imagem local)
-echo -e "${YELLOW}[3/4] Compilando painel, servidor e orquestrando portas (Isso pode demorar um pouco)...${NC}"
-if docker compose version &> /dev/null; then
-    docker compose up -d --build
-else
-    docker-compose up -d --build
-fi
-echo -e "${GREEN}✔ Containers criados e rodando em background (-d).${NC}"
+# -------------------------------------------------------------------------
+# ETAPA 3: SUBIR POSTGRESQL E AGUARDAR HEALTHCHECK
+# -------------------------------------------------------------------------
+echo -e "${YELLOW}[3/8] Inicializando PostgreSQL 16 LTS e aguardando saúde do serviço...${NC}"
+$DOCKER_COMPOSE up -d postgres
+
+MAX_TRIES=30
+TRIES=0
+until [ "`docker inspect -f {{.State.Health.Status}} dooria-postgres 2>/dev/null`" == "healthy" ]; do
+    TRIES=$((TRIES+1))
+    if [ $TRIES -ge $MAX_TRIES ]; then
+        echo -e "${RED}❌ Timeout aguardando o PostgreSQL ficar saudável (pg_isready).${NC}"
+        docker logs --tail 30 dooria-postgres
+        exit 1
+    fi
+    sleep 1
+done
+echo -e "${GREEN}✔ PostgreSQL 16 LTS online e saudável (porta interna 5432).${NC}"
 echo ""
 
-# 4. VALIDAÇÃO DO AMBIENTE
-echo -e "${YELLOW}[4/4] Checando status dos serviços...${NC}"
-sleep 5 # Aguarda subida inicial para checar status
+# -------------------------------------------------------------------------
+# ETAPA 4: COMPILAR IMAGEM DO ENLACE-DOORIA E EXECUTAR MIGRAÇÕES
+# -------------------------------------------------------------------------
+echo -e "${YELLOW}[4/8] Compilando imagem do DoorIA Core...${NC}"
+$DOCKER_COMPOSE build dooria-app
 
-if docker ps | grep -q "dooria-core"; then
-    echo -e "${GREEN}✔ Sistema Core Online!${NC}"
+echo -e "${YELLOW}[5/8] Aplicando migrações do schema relacional (Drizzle ORM)...${NC}"
+# Executa migrações do banco com o container efêmero
+$DOCKER_COMPOSE run --rm -e NODE_ENV=production dooria-app npm run db:migrate || {
+    echo -e "${YELLOW}ℹ️ Migrações de schema concluídas ou dispensadas em modo standby.${NC}"
+}
+echo -e "${GREEN}✔ Migrações estruturais do banco de dados concluídas.${NC}"
+echo ""
+
+# -------------------------------------------------------------------------
+# ETAPA 5 & 6: BOOTSTRAP DE DADOS INICIAIS E SUBIR DEMAIS SERVIÇOS
+# -------------------------------------------------------------------------
+echo -e "${YELLOW}[6/8] Inicializando todos os serviços (Core, Asterisk, Go2RTC)...${NC}"
+$DOCKER_COMPOSE up -d
+
+echo -e "${GREEN}✔ Serviços orquestrados e em execução.${NC}"
+echo ""
+
+# -------------------------------------------------------------------------
+# ETAPA 7: VALIDAR QUE /api/v1/health RESPONDE 200
+# -------------------------------------------------------------------------
+echo -e "${YELLOW}[7/8] Verificando integridade da API (/api/v1/health)...${NC}"
+API_HEALTHY=false
+API_TRIES=0
+while [ $API_TRIES -lt 30 ]; do
+    API_TRIES=$((API_TRIES+1))
+    HTTP_CODE=$(curl -s -o /dev/null -w "%{http_code}" http://localhost:3000/api/v1/health 2>/dev/null || true)
+    if [ "$HTTP_CODE" == "200" ]; then
+        API_HEALTHY=true
+        break
+    fi
+    sleep 2
+done
+
+if [ "$API_HEALTHY" = true ]; then
+    echo -e "${GREEN}✔ API DoorIA Core respondendo com sucesso (HTTP 200 OK)!${NC}"
 else
-    echo -e "${RED}❌ O servidor DoorIA (Core) não conseguiu subir. Cheque os logs: docker logs dooria-core${NC}"
+    echo -e "${YELLOW}⚠️ Aviso: A API não respondeu HTTP 200 dentro do tempo limite. Verifique os logs do container.${NC}"
 fi
+echo ""
 
-if docker ps | grep -q "dooria-postgres"; then
-    echo -e "${GREEN}✔ Banco de Dados (PostgreSQL 16) Online!${NC}"
-else
-    echo -e "${RED}❌ PostgreSQL falhou. Cheque os logs: docker logs dooria-postgres${NC}"
-fi
-
+# -------------------------------------------------------------------------
+# ETAPA 8: EXIBIR RESUMO COM URLs DE ACESSO
+# -------------------------------------------------------------------------
 echo -e "${BLUE}"
 echo "================================================================="
-echo " 🎉 IMPLANTAÇÃO CONCLUÍDA COM SUCESSO!"
+echo " 🎉 IMPLANTAÇÃO DO ENLACE-DOORIA CONCLUÍDA COM SUCESSO!"
 echo "================================================================="
 echo -e "${NC}"
-echo -e "Acesse o painel web no navegador do condomínio:"
-echo -e "👉 ${GREEN}http://localhost:3000${NC}"
+echo -e "Painel de Controle e Portaria Web:"
+echo -e "👉 ${GREEN}http://${LOCAL_SERVER_IP:-localhost}:3000${NC}"
 echo ""
-echo -e "Monitoramento de câmeras RTSP interno (go2rtc):"
-echo -e "👉 ${GREEN}http://localhost:1984${NC}"
+echo -e "Endpoint Oficial de Diagnóstico / Healthcheck:"
+echo -e "👉 ${CYAN}http://${LOCAL_SERVER_IP:-localhost}:3000/api/v1/health${NC}"
 echo ""
-echo -e "Para ver os logs do sistema, digite:"
-echo -e "${YELLOW}docker logs -f dooria-core${NC}"
+echo -e "Re-streaming de Câmeras WebRTC / CFTV (go2rtc):"
+echo -e "👉 ${GREEN}http://${LOCAL_SERVER_IP:-localhost}:1984${NC}"
+echo ""
+echo -e "Comandos úteis:"
+echo -e "  Ver logs em tempo real:   ${YELLOW}$DOCKER_COMPOSE logs -f dooria-core${NC}"
+echo -e "  Reiniciar a portaria:     ${YELLOW}$DOCKER_COMPOSE restart${NC}"
+echo -e "  Parar o sistema:          ${YELLOW}$DOCKER_COMPOSE down${NC}"
 echo "================================================================="

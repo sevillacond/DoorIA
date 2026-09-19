@@ -361,7 +361,7 @@ export const CameraDiscoveryModule: React.FC<CameraDiscoveryModuleProps> = ({ on
                       <strong className="text-[#0d1b35] dark:text-slate-300 font-mono">{cam.onvifPort}</strong>
                     </div>
                     <div>
-                      <span className="text-[#5a6a85] dark:text-slate-500">Porta RTSP: </span>
+                      <span className="text-[#5a6a85] dark:text-slate-500">Porta Vídeo: </span>
                       <strong className="text-[#0d1b35] dark:text-slate-300 font-mono">{cam.rtspPort}</strong>
                     </div>
                   </div>

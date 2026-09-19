@@ -616,20 +616,20 @@ export const AdminTopologyView: React.FC<AdminTopologyViewProps> = ({
                 <span>3. Discovery de Rede e Fabricantes de Câmera</span>
               </div>
               <p className="text-[#5a6a85] dark:text-slate-300">
-                O módulo escaneia a LAN usando <strong className="text-[#0d1b35] dark:text-white">WS-Discovery (UDP 3702)</strong> e analisa os primeiros 24 bits do endereço MAC para configurar automaticamente a URL RTSP correta:
+                O módulo escaneia a LAN usando <strong className="text-[#0d1b35] dark:text-white">WS-Discovery (UDP 3702)</strong> e analisa os primeiros 24 bits do endereço MAC para mapear automaticamente o streaming WebRTC no Go2RTC, sem expor credenciais ao navegador:
               </p>
               <div className="space-y-2 text-[11px] font-mono">
                 <div className="p-2.5 rounded-lg bg-[#f8fafc] dark:bg-slate-950 border border-[#dde5f0] dark:border-slate-800 overflow-hidden">
                   <div className="text-[#18c7a8] dark:text-emerald-400 font-bold mb-0.5 font-sans">Intelbras (XPE / VIP / VHD):</div>
-                  <div className="text-[#5a6a85] dark:text-slate-400 truncate" title="rtsp://user:pass@ip:554/cam/realmonitor?channel=1&subtype=0">rtsp://user:pass@ip:554/cam/realmonitor?channel=1&subtype=0</div>
+                  <div className="text-[#5a6a85] dark:text-slate-400 truncate" title="webrtc://go2rtc/intelbras_live">webrtc://go2rtc/intelbras_live (Perfil ONVIF Profile T/S)</div>
                 </div>
                 <div className="p-2.5 rounded-lg bg-[#f8fafc] dark:bg-slate-950 border border-[#dde5f0] dark:border-slate-800 overflow-hidden">
                   <div className="text-rose-500 dark:text-red-400 font-bold mb-0.5 font-sans">Hikvision (AcuSense / LPR):</div>
-                  <div className="text-[#5a6a85] dark:text-slate-400 truncate" title="rtsp://user:pass@ip:554/Streaming/Channels/101">rtsp://user:pass@ip:554/Streaming/Channels/101</div>
+                  <div className="text-[#5a6a85] dark:text-slate-400 truncate" title="webrtc://go2rtc/hikvision_live">webrtc://go2rtc/hikvision_live (Perfil ONVIF Profile S)</div>
                 </div>
                 <div className="p-2.5 rounded-lg bg-[#f8fafc] dark:bg-slate-950 border border-[#dde5f0] dark:border-slate-800 overflow-hidden">
                   <div className="text-[#0a50ff] dark:text-blue-400 font-bold mb-0.5 font-sans">Dahua (Starlight / WizSense):</div>
-                  <div className="text-[#5a6a85] dark:text-slate-400 truncate" title="rtsp://user:pass@ip:554/cam/realmonitor?channel=1&subtype=0">rtsp://user:pass@ip:554/cam/realmonitor?channel=1&subtype=0</div>
+                  <div className="text-[#5a6a85] dark:text-slate-400 truncate" title="webrtc://go2rtc/dahua_live">webrtc://go2rtc/dahua_live (Perfil ONVIF Profile T)</div>
                 </div>
               </div>
             </div>

@@ -77,6 +77,12 @@ services:
       GEMINI_API_KEY: ${GEMINI_API_KEY:-}
     ports:
       - "3000:3000"
+    healthcheck:
+      test: ["CMD-SHELL", "wget -q -O - http://127.0.0.1:3000/api/v1/health || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 3
+      start_period: 15s
     networks:
       - dooria-network
 
@@ -88,6 +94,12 @@ services:
     network_mode: host
     volumes:
       - ./config/asterisk:/etc/asterisk
+    healthcheck:
+      test: ["CMD-SHELL", "asterisk -rx 'core ping' || nc -z 127.0.0.1 5038 || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 3
+      start_period: 15s
 
   # 4. GO2RTC (STREAMING WEBRTC RTSP SUB-50MS)
   go2rtc:
@@ -97,6 +109,12 @@ services:
     network_mode: host
     volumes:
       - ./config/go2rtc.yaml:/config/go2rtc.yaml
+    healthcheck:
+      test: ["CMD-SHELL", "wget -q -O - http://127.0.0.1:1984/api || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 3
+      start_period: 10s
 
 volumes:
   dooria_pg_data:

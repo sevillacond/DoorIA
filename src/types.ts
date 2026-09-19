@@ -103,7 +103,7 @@ export interface Gate {
   name: string;
   type: 'pedestre' | 'garagem';
   dtmfCode: string;
-  status: 'fechado' | 'abrindo' | 'aberto' | 'fechando' | 'comando_enviado' | 'falha';
+  status: 'fechado' | 'abrindo' | 'aberto' | 'fechando' | 'comando_enviado' | 'falha' | 'desconhecido';
   sensorState: 'ok' | 'alerta_aberto_tempo_excessivo' | 'sensor_obstruido';
   lastOpenedAt?: string;
   lastOpenedBy?: string;
@@ -552,15 +552,19 @@ export interface XpeConfig {
   dtmfMode: 'RFC2833' | 'SIP_INFO' | 'INBAND';
   relay1: XpeRelayConfig;
   relay2: XpeRelayConfig;
-  rtspStream: {
+  rtspStream?: {
     enabled: boolean;
-    channel: number;
-    subType: number;
-    rtspPort: number;
-    username: string;
-    password: string;
-    url: string;
+    channel?: number;
+    subType?: number;
+    rtspPort?: number;
+    username?: string;
+    password?: string;
+    url?: string;
+    streamProtocol?: 'webrtc';
+    streamEndpoint?: string;
   };
+  streamProtocol?: 'webrtc';
+  streamEndpoint?: string;
   lastSyncedAt?: string;
   status: 'online' | 'offline' | 'verificando';
 }

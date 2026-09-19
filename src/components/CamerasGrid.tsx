@@ -468,10 +468,10 @@ export const CamerasGrid: React.FC<CamerasGridProps> = ({ cameras, onOpenDiscove
               </div>
             </div>
 
-            {/* Rodapé Técnico com RTSP String e Diagnóstico */}
+            {/* Rodapé Técnico com Endpoint WebRTC Seguro e Diagnóstico */}
             <div className="px-4 py-2.5 bg-[#f8fafc] dark:bg-slate-950 border-t border-[#dde5f0] dark:border-slate-800 flex items-center justify-between text-[11px] text-[#5a6a85] dark:text-slate-400 font-mono">
-              <span className="truncate max-w-[220px]" title={cam.rtspUrl}>
-                {cam.rtspUrl}
+              <span className="truncate max-w-[220px]" title={`webrtc://go2rtc/${cam.id}`}>
+                webrtc://go2rtc/{cam.id}
               </span>
               <div className="flex items-center gap-2 shrink-0">
                 <span className="text-[#18c7a8] dark:text-emerald-400 font-bold">32ms</span>

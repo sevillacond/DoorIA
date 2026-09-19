@@ -2,6 +2,14 @@
  * Abstração formal de Leitura de Sensores Físicos de Portão (Reed Switch, Fim de Curso, Optoacopladores)
  * DoorIA - Arquitetura Anti-Arrombamento e Telemetria de Portaria
  */
+import type { Gate } from '../../types.ts';
+import {
+  type GateSensorAdapter,
+  type GateSensorReadingState,
+  UnconfiguredGateSensorAdapter,
+} from './GateSensorAdapter.ts';
+
+export * from './GateSensorAdapter.ts';
 
 export type PhysicalSensorState = 'aberto' | 'fechado' | 'desconhecido' | 'sem_sensor';
 
@@ -26,7 +34,17 @@ export interface PhysicalSensorReader {
  * Em ausência de leitura física comprovada da entrada digital,
  * explicita que NÃO há sensor físico ou leitura imediata, retornando hasPhysicalSensor: false.
  */
-export class DefaultPhysicalSensorReader implements PhysicalSensorReader {
+export class DefaultPhysicalSensorReader implements PhysicalSensorReader, GateSensorAdapter {
+  private fallbackAdapter: GateSensorAdapter = new UnconfiguredGateSensorAdapter();
+
+  public async readState(gate: Gate): Promise<GateSensorReadingState> {
+    const reading = await this.readSensor(gate.relayIp || '', gate.relayPin);
+    if (!reading.hasPhysicalSensor || reading.state === 'sem_sensor' || reading.state === 'desconhecido') {
+      return 'desconhecido';
+    }
+    return reading.state === 'aberto' ? 'aberto' : 'fechado';
+  }
+
   public async readSensor(relayIp: string, relayPin: number): Promise<PhysicalSensorReading> {
     const measuredAt = new Date().toISOString();
     try {
@@ -63,3 +81,4 @@ export class DefaultPhysicalSensorReader implements PhysicalSensorReader {
     }
   }
 }
+
