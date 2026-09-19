@@ -702,6 +702,163 @@ export async function runRegressionTests() {
   assert(sanitizedMockCam.classification === 'MOCK_DEMO', 'Discovery: Preserva classificação clara MOCK_DEMO para identificação');
   assert(sanitizedMockCam.isMock === true, 'Discovery: Preserva isMock: true para evitar confusão de hardware na guarita');
 
+  // ==========================================================================
+  // [11/11] BATERIA OBRIGATÓRIA DE TESTES DE CORRELAÇÃO XPE ↔ PJSIP (CASOS 1 A 6)
+  // ==========================================================================
+  console.log('\n--- [11/11] Bateria Estrita de Correlação XPE ↔ PJSIP (Casos 1 a 6) ---');
+
+  const suiteAmi = new AsteriskAMI('127.0.0.1', 5038, 'admin', 'secret');
+
+  // TESTE 1: Chamada XPE com UniqueID / LinkedID -> Canal PJSIP correto identificado -> PlayDTMF permitido
+  (suiteAmi as any).getActiveChannels = async () => [
+    {
+      channel: 'PJSIP/xpe_3115-00000101',
+      channelStateDesc: 'Up',
+      callerIdNum: '8000',
+      connectedLineNum: '101',
+      uniqueId: 'uid-xpe-101',
+      linkedId: 'lid-call-101',
+    },
+    {
+      channel: 'PJSIP/morador_101-00000102',
+      channelStateDesc: 'Up',
+      callerIdNum: '101',
+      connectedLineNum: '8000',
+      uniqueId: 'uid-morador-101',
+      linkedId: 'lid-call-101',
+    },
+  ];
+
+  const t1ByUnique = await suiteAmi.findActiveChannelForXpe({ uniqueId: 'uid-xpe-101' });
+  assert(t1ByUnique === 'PJSIP/xpe_3115-00000101', 'TESTE 1 (UniqueID): Canal PJSIP correto identificado via UniqueID inequívoco');
+
+  const t1ByLinked = await suiteAmi.findActiveChannelForXpe({ linkedId: 'lid-call-101' });
+  assert(t1ByLinked === 'PJSIP/xpe_3115-00000101', 'TESTE 1 (LinkedID): Canal PJSIP correto identificado via LinkedID compartilhado');
+
+  // TESTE 2: Dois canais PJSIP ativos, somente um pertence à chamada XPE -> Canal correto selecionado, o outro não afetado
+  (suiteAmi as any).getActiveChannels = async () => [
+    {
+      channel: 'PJSIP/ramal_201-00000201',
+      channelStateDesc: 'Up',
+      callerIdNum: '201',
+      connectedLineNum: '202',
+      uniqueId: 'uid-ramal-201',
+      linkedId: 'lid-ramal-201',
+    },
+    {
+      channel: 'PJSIP/xpe_3115-00000202',
+      channelStateDesc: 'Up',
+      callerIdNum: '8000',
+      connectedLineNum: '101',
+      uniqueId: 'uid-xpe-202',
+      linkedId: 'lid-xpe-202',
+    },
+  ];
+
+  const t2Result = await suiteAmi.findActiveChannelForXpe();
+  assert(t2Result === 'PJSIP/xpe_3115-00000202', 'TESTE 2: Apenas o canal do XPE é selecionado; ramal terceiro 201 é totalmente ignorado');
+
+  // TESTE 3: Dois canais que aparentam ser XPE sem correlação inequívoca -> HARDWARE_FAILURE (SEM activeXpeChannels[0] e SEM upChannel)
+  (suiteAmi as any).getActiveChannels = async () => [
+    {
+      channel: 'PJSIP/xpe_3115-00000301',
+      channelStateDesc: 'Up',
+      callerIdNum: '8000',
+      uniqueId: 'uid-xpe-ambig-1',
+      linkedId: 'lid-xpe-ambig-1',
+    },
+    {
+      channel: 'PJSIP/xpe_3115-00000302',
+      channelStateDesc: 'Up',
+      callerIdNum: '8000',
+      uniqueId: 'uid-xpe-ambig-2',
+      linkedId: 'lid-xpe-ambig-2',
+    },
+  ];
+
+  const t3Result = await suiteAmi.findActiveChannelForXpe();
+  assert(
+    t3Result === null,
+    'TESTE 3: Recusa seleção arbitrária quando múltiplos canais XPE coexistem sem UniqueID/LinkedID (Anti-Ambiguidade / Não escolhe canal 0)'
+  );
+
+  // Validação no RealHardwareAdapter para comprovar que resulta estritamente em HARDWARE_FAILURE
+  const t3Adapter = new RealHardwareAdapter();
+  (t3Adapter as any).ami = suiteAmi;
+  const t3GateResult = await t3Adapter.triggerRelay(testGate, 1);
+  assert(t3GateResult.commandStatus === 'HARDWARE_FAILURE', 'TESTE 3: RealHardwareAdapter retorna HARDWARE_FAILURE na ambiguidade de canais XPE');
+  assert(
+    t3GateResult.failureDetails?.includes('Não foi possível determinar inequivocamente') ||
+    t3GateResult.message?.includes('Não foi possível determinar inequivocamente'),
+    'TESTE 3: Mensagem de erro atesta impossibilidade de determinação inequívoca'
+  );
+
+  // TESTE 4: Existe canal PJSIP ativo, mas nenhum pertence à chamada XPE -> PlayDTMF não é enviado -> HARDWARE_FAILURE
+  (suiteAmi as any).getActiveChannels = async () => [
+    {
+      channel: 'PJSIP/ramal_301-00000401',
+      channelStateDesc: 'Up',
+      callerIdNum: '301',
+      connectedLineNum: '302',
+    },
+    {
+      channel: 'PJSIP/ramal_302-00000402',
+      channelStateDesc: 'Up',
+      callerIdNum: '302',
+      connectedLineNum: '301',
+    },
+  ];
+
+  const t4Result = await suiteAmi.findActiveChannelForXpe();
+  assert(t4Result === null, 'TESTE 4: Nenhum canal pertence ao XPE -> Retorna null (Zero invasão de chamadas alheias)');
+
+  const t4Adapter = new RealHardwareAdapter();
+  (t4Adapter as any).ami = suiteAmi;
+  const t4GateResult = await t4Adapter.triggerRelay(testGate, 1);
+  assert(t4GateResult.commandStatus === 'HARDWARE_FAILURE', 'TESTE 4: Retorno é estritamente HARDWARE_FAILURE e nenhum PlayDTMF enviado');
+
+  // TESTE 5: "preferredChannel" pertence a outra chamada -> PlayDTMF não enviado -> Não tenta fallback -> HARDWARE_FAILURE
+  (suiteAmi as any).getActiveChannels = async () => [
+    {
+      channel: 'PJSIP/ramal_401-00000501',
+      channelStateDesc: 'Up',
+      callerIdNum: '401',
+      connectedLineNum: '402',
+      uniqueId: 'uid-401',
+      linkedId: 'lid-401',
+    },
+    {
+      channel: 'PJSIP/xpe_3115-00000502',
+      channelStateDesc: 'Up',
+      callerIdNum: '8000',
+      connectedLineNum: '101',
+      uniqueId: 'uid-xpe-502',
+      linkedId: 'lid-xpe-502',
+    },
+  ];
+
+  // Fornecendo preferredChannel apontando para a chamada alheia (ramal 401)
+  const t5Result = await suiteAmi.findActiveChannelForXpe({
+    preferredChannel: 'PJSIP/ramal_401-00000501',
+  });
+  assert(t5Result === null, 'TESTE 5: preferredChannel pertencente a outra chamada é rejeitado sem buscar fallback');
+
+  const t5Adapter = new RealHardwareAdapter();
+  (t5Adapter as any).ami = suiteAmi;
+  const t5GateResult = await t5Adapter.triggerRelay(testGate, 1, 'corr-t5', { sipChannel: 'PJSIP/ramal_401-00000501' });
+  assert(t5GateResult.commandStatus === 'HARDWARE_FAILURE', 'TESTE 5: RealHardwareAdapter retorna HARDWARE_FAILURE e aborta PlayDTMF');
+
+  // TESTE 6: Chamada XPE encerrada (sem canais ativos) -> PlayDTMF não enviado -> Retorna HARDWARE_FAILURE
+  (suiteAmi as any).getActiveChannels = async () => [];
+
+  const t6Result = await suiteAmi.findActiveChannelForXpe({ preferredChannel: 'PJSIP/xpe_3115-00000101' });
+  assert(t6Result === null, 'TESTE 6: Chamada encerrada / nenhum canal ativo retorna null');
+
+  const t6Adapter = new RealHardwareAdapter();
+  (t6Adapter as any).ami = suiteAmi;
+  const t6GateResult = await t6Adapter.triggerRelay(testGate, 1, 'corr-t6', { sipChannel: 'PJSIP/xpe_3115-00000101' });
+  assert(t6GateResult.commandStatus === 'HARDWARE_FAILURE', 'TESTE 6: Chamada encerrada resulta em HARDWARE_FAILURE');
+
   console.log('\n===============================================================');
   console.log(`🎉 TODOS OS ${passedTests}/${totalTests} TESTES DE SEGURANÇA E HARDWARE PASSARAM COM SUCESSO!`);
   console.log('===============================================================');

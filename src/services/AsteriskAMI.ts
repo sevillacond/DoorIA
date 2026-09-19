@@ -455,8 +455,9 @@ export class AsteriskManager extends EventEmitter {
       return desc === 'up' || desc === 'ring' || desc === 'ringing' || state === '6' || state === '4' || state === '5';
     };
 
-    // Helper: Comprova determinística e estritamente que o canal pertence ao XPE
-    // Não confia apenas em substring 'xpe'/'totem'. Exige validação de endpoint, callerid, exten ou context.
+    // Helper: Comprova determinística e estritamente que o canal pertence ao endpoint XPE
+    // REGRA ANTI-HEURÍSTICA: Não confia em substrings soltas como 'contains(xpe)', 'totem' ou 'portaria'.
+    // Exige comprovação objetiva de endpoint PJSIP oficial, Caller ID oficial ou Extensão do XPE.
     const isDirectXpeChannel = (c: ActiveChannelInfo): boolean => {
       const chName = c.channel.toLowerCase();
       const callerNum = (c.callerIdNum || '').toLowerCase().trim();
@@ -471,12 +472,9 @@ export class AsteriskManager extends EventEmitter {
       // Critério 3: Extensão ou AccountCode oficial do XPE
       const isExtenOrAccXpe = ext === xpeId || acc === xpeId;
       // Critério 4: Contexto SIP de portaria configurado com endpoint coerente
-      const isPortariaContext = targetContext && ctx === targetContext.toLowerCase();
+      const isPortariaContext = targetContext && ctx === targetContext.toLowerCase() && (isCallerIdXpe || isConfiguredEndpoint);
 
-      // Heurística secundária com suporte a nomes canônicos conhecidos de totem
-      const isNamedTotem = chName.startsWith('pjsip/xpe_') || chName.startsWith('pjsip/totem_') || chName.startsWith('pjsip/xpe-');
-
-      return isConfiguredEndpoint || isCallerIdXpe || isExtenOrAccXpe || (isNamedTotem && (callerNum === xpeId || callerNum === '8000' || callerNum.includes('xpe') || isPortariaContext));
+      return isConfiguredEndpoint || isCallerIdXpe || isExtenOrAccXpe || isPortariaContext;
     };
 
     // Helper: Extrai UniqueID e LinkedID normalizados independente de casing (uniqueid vs uniqueId)
@@ -496,17 +494,16 @@ export class AsteriskManager extends EventEmitter {
       if (uid) xpeUniqueIds.add(uid);
     }
 
-    // 2. VALIDAÇÃO OBRIGATÓRIA DO preferredChannel (Requisito 2):
+    // 2. VALIDAÇÃO OBRIGATÓRIA DO preferredChannel:
     // Se o DoorIA receber preferredChannel (ou sipChannel), DEVE validar:
     // - canal existe;
     // - canal está ativo;
     // - canal é PJSIP;
     // - canal pertence à chamada XPE;
     // - "UniqueID"/"LinkedID" são compatíveis quando disponíveis;
-    // - endpoint/caller/connected line são compatíveis;
     // - canal não é de outra chamada.
     // SE QUALQUER VALIDAÇÃO FALHAR: Retorna null imediatamente (HARDWARE_FAILURE).
-    // NUNCA fazer fallback para outro canal PJSIP arbitrário.
+    // REGRA DE OURO: NUNCA fazer fallback para outro canal PJSIP se o preferredChannel falhar.
     if (options?.preferredChannel) {
       const pref = options.preferredChannel.trim();
       const foundPref = pjsipChannels.find((c) => c.channel === pref);
@@ -546,7 +543,7 @@ export class AsteriskManager extends EventEmitter {
         }
       }
 
-      // Validação e: comprovação de que o canal pertence à chamada XPE
+      // Validação e: comprovação inequívoca de que o canal pertence à chamada XPE
       const isDirect = isDirectXpeChannel(foundPref);
       const isLinkedToXpe =
         (getLid(foundPref) && xpeLinkedIds.has(getLid(foundPref))) ||
@@ -554,87 +551,146 @@ export class AsteriskManager extends EventEmitter {
         (getLid(foundPref) && xpeUniqueIds.has(getLid(foundPref)));
 
       const isConnectedToXpe =
-        (foundPref.connectedLineNum || '').toLowerCase() === xpeId ||
-        (foundPref.connectedLineName || '').toLowerCase().includes('xpe');
+        (foundPref.connectedLineNum || '').toLowerCase() === xpeId;
 
       const isTargetUnitMatched =
         targetUnit &&
         (foundPref.connectedLineNum === targetUnit || foundPref.exten === targetUnit || foundPref.callerIdNum === targetUnit) &&
-        (activeXpeChannels.some((xc) => xc.connectedLineNum === targetUnit || getLid(xc) === getLid(foundPref)));
+        (activeXpeChannels.some((xc) => xc.connectedLineNum === targetUnit || (getLid(xc) && getLid(xc) === getLid(foundPref))));
 
       const belongsToXpeCall = isDirect || isLinkedToXpe || isConnectedToXpe || isTargetUnitMatched;
 
       if (!belongsToXpeCall) {
-        console.warn(`[Asterisk AMI Correlation] ❌ preferredChannel '${pref}' pertence a outra chamada não originada pelo XPE.`);
+        console.warn(`[Asterisk AMI Correlation] ❌ preferredChannel '${pref}' pertence a outra chamada não originada pelo XPE. DTMF cancelado.`);
         return null;
       }
 
-      // Validação f: se for o próprio canal do XPE ou a bridge do morador ligada à chamada do XPE
-      // Se for a bridge do morador, prioriza o canal direto do XPE pareado na chamada se disponível, senão o canal validado
+      // Se for o próprio canal do XPE, retorna ele
       if (isDirect) {
         return foundPref.channel;
       }
 
-      const pairedXpe = activeXpeChannels.find(
-        (xc) => (getLid(xc) && getLid(xc) === getLid(foundPref)) || xc.connectedLineNum === foundPref.callerIdNum
+      // Se for a bridge do morador, localiza o canal direto do XPE pareado na mesma chamada
+      const pairedXpe = activeXpeChannels.filter(
+        (xc) => (getLid(xc) && getLid(xc) === getLid(foundPref)) || (xc.connectedLineNum === foundPref.callerIdNum && getLid(xc) === getLid(foundPref))
       );
 
-      return pairedXpe ? pairedXpe.channel : foundPref.channel;
+      if (pairedXpe.length === 1) {
+        return pairedXpe[0].channel;
+      }
+      if (pairedXpe.length > 1) {
+        console.warn(`[Asterisk AMI Correlation] ❌ Ambiguidade: Múltiplos canais XPE pareados com preferredChannel '${pref}'.`);
+        return null;
+      }
+
+      return foundPref.channel;
     }
 
     // 3. Resolução determinística quando preferredChannel NÃO for fornecido:
     // Prioridade 1: UniqueID informado explicitamente (DEVE casar com a chamada solicitada, sem fallback arbitrário)
     if (targetUniqueId) {
-      const xpeWithUnique = activeXpeChannels.find(
+      const matchingXpe = activeXpeChannels.filter(
         (c) => getUid(c) === targetUniqueId || getLid(c) === targetUniqueId
       );
-      if (xpeWithUnique) {
-        return xpeWithUnique.channel;
+      if (matchingXpe.length === 1) {
+        return matchingXpe[0].channel;
       }
-      console.warn(`[Asterisk AMI Correlation] ❌ UniqueID '${targetUniqueId}' não encontrado em nenhum canal ativo do XPE.`);
+      if (matchingXpe.length > 1) {
+        console.warn(`[Asterisk AMI Correlation] ❌ Ambiguidade: Múltiplos canais XPE associados ao UniqueID '${targetUniqueId}'.`);
+        return null;
+      }
+
+      // Verifica canais bridge de moradores vinculados à mesma chamada por UniqueID/LinkedID
+      const linkedMorador = pjsipChannels.filter(
+        (c) => isChannelActive(c) && (getUid(c) === targetUniqueId || getLid(c) === targetUniqueId)
+      );
+      if (linkedMorador.length === 1) {
+        const lid = getLid(linkedMorador[0]);
+        const paired = activeXpeChannels.filter((xc) => getLid(xc) && getLid(xc) === lid);
+        if (paired.length === 1) {
+          return paired[0].channel;
+        }
+      }
+
+      console.warn(`[Asterisk AMI Correlation] ❌ UniqueID '${targetUniqueId}' não encontrado em nenhum canal ativo comprovado do XPE.`);
       return null;
     }
 
     // Prioridade 2: LinkedID informado explicitamente (DEVE casar com a chamada solicitada, sem fallback arbitrário)
     if (targetLinkedId) {
-      const xpeWithLinked = activeXpeChannels.find(
+      const matchingXpe = activeXpeChannels.filter(
         (c) => getLid(c) === targetLinkedId || getUid(c) === targetLinkedId
       );
-      if (xpeWithLinked) {
-        return xpeWithLinked.channel;
+      if (matchingXpe.length === 1) {
+        return matchingXpe[0].channel;
       }
-      console.warn(`[Asterisk AMI Correlation] ❌ LinkedID '${targetLinkedId}' não encontrado em nenhum canal ativo do XPE.`);
+      if (matchingXpe.length > 1) {
+        console.warn(`[Asterisk AMI Correlation] ❌ Ambiguidade: Múltiplos canais XPE associados ao LinkedID '${targetLinkedId}'.`);
+        return null;
+      }
+
+      console.warn(`[Asterisk AMI Correlation] ❌ LinkedID '${targetLinkedId}' não encontrado em nenhum canal ativo comprovado do XPE.`);
       return null;
     }
 
     // Prioridade 3: ConnectedLine para a targetUnit informada
     if (targetUnit) {
-      const xpeWithTarget = activeXpeChannels.find(
+      const xpeForUnit = activeXpeChannels.filter(
         (c) => c.connectedLineNum === targetUnit || c.exten === targetUnit
       );
-      if (xpeWithTarget) {
-        return xpeWithTarget.channel;
+      if (xpeForUnit.length === 1) {
+        return xpeForUnit[0].channel;
       }
+      if (xpeForUnit.length > 1) {
+        console.warn(
+          `[Asterisk AMI Correlation] ❌ Ambiguidade: Múltiplos canais XPE chamando para a unidade '${targetUnit}'. Impossível determinar inequivocamente sem UniqueID/LinkedID.`
+        );
+        return null;
+      }
+
+      // Bridge vinculada à unidade por LinkedID
+      if (xpeLinkedIds.size > 0) {
+        const unitChannelLinked = pjsipChannels.filter(
+          (c) =>
+            isChannelActive(c) &&
+            (c.connectedLineNum === targetUnit || c.callerIdNum === targetUnit || c.exten === targetUnit) &&
+            getLid(c) &&
+            xpeLinkedIds.has(getLid(c))
+        );
+        if (unitChannelLinked.length === 1) {
+          const lid = getLid(unitChannelLinked[0]);
+          const paired = activeXpeChannels.filter((xc) => getLid(xc) === lid);
+          if (paired.length === 1) {
+            return paired[0].channel;
+          }
+        }
+      }
+
+      console.warn(`[Asterisk AMI Correlation] ❌ Nenhuma chamada ativa inequívoca do XPE para a unidade '${targetUnit}'.`);
+      return null;
     }
 
-    // Prioridade 4 & 5: CallerID e Endpoint direto do XPE em chamada ativa
-    if (activeXpeChannels.length > 0) {
-      // Prioriza canal em estado 'Up' (conversação ativa) sobre 'Ring'/'Ringing'
-      const upChannel = activeXpeChannels.find((c) => (c.channelStateDesc || '').toLowerCase() === 'up' || c.channelState === '6');
-      if (upChannel) {
-        return upChannel.channel;
-      }
-      return activeXpeChannels[0].channel;
+    // Prioridade 4: Canais diretos do XPE ativos gerais
+    if (activeXpeChannels.length === 0) {
+      console.warn('[Asterisk AMI Correlation] ❌ Nenhum canal PJSIP ativo comprovadamente pertencente à chamada do XPE foi localizado.');
+      return null;
     }
 
-    // Prioridade 6: Canal de morador pareado com linkedid comprovado de chamada XPE
-    if (targetUnit && xpeLinkedIds.size > 0) {
-      const unitChannelLinked = pjsipChannels.find(
-        (c) => isChannelActive(c) && (c.connectedLineNum === targetUnit || c.callerIdNum === targetUnit) && c.linkedid && xpeLinkedIds.has(c.linkedid)
+    if (activeXpeChannels.length > 1) {
+      // REGRA DE OURO DA AUDITORIA:
+      // PROIBIDO selecionar activeXpeChannels[0]
+      // PROIBIDO selecionar upChannel
+      // Múltiplos canais XPE sem correlação inequívoca = HARDWARE_FAILURE imediato.
+      console.warn(
+        `[Asterisk AMI Correlation] ❌ Ambiguidade crítica: Existem múltiplos (${activeXpeChannels.length}) canais XPE ativos no Asterisk. Não foi possível determinar inequivocamente o canal SIP da chamada XPE. PlayDTMF cancelado por segurança.`
       );
-      if (unitChannelLinked) {
-        return unitChannelLinked.channel;
-      }
+      return null;
+    }
+
+    // activeXpeChannels.length === 1: rigorosamente UMA ÚNICA chamada XPE ativa comprovada
+    const singleChannel = activeXpeChannels[0];
+    if (isChannelActive(singleChannel) && isDirectXpeChannel(singleChannel)) {
+      return singleChannel.channel;
     }
 
     // 4. REGRA ABSOLUTA: SEM FALLBACK PARA CANAIS ARBITRÁRIOS

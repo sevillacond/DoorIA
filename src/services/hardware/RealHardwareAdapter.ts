@@ -123,7 +123,7 @@ export class RealHardwareAdapter implements HardwareAdapter {
         if (!targetChannel) {
           const detailMsg = options?.sipChannel
             ? `Canal preferencial '${options.sipChannel}' inexistente, inativo ou não correlacionado à chamada do XPE no Asterisk.`
-            : `Nenhum canal PJSIP ativo correlacionado à chamada do XPE 3115-IP foi localizado no Asterisk.`;
+            : `Não foi possível determinar inequivocamente o canal SIP da chamada XPE no Asterisk.`;
           console.warn(`[REAL_HARDWARE] [${correlationId || 'N/A'}] ❌ ${detailMsg} PlayDTMF abortado.`);
           return {
             success: false,

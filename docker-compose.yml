@@ -94,6 +94,9 @@ services:
     network_mode: host
     volumes:
       - ./config/asterisk:/etc/asterisk
+    environment:
+      ASTERISK_AMI_USERNAME: ${ASTERISK_AMI_USERNAME:-dooria_admin}
+      ASTERISK_AMI_SECRET: ${ASTERISK_AMI_SECRET:-dooria_ami_secret_2026}
     healthcheck:
       test: ["CMD-SHELL", "/etc/asterisk/healthcheck.sh || exit 1"]
       interval: 10s
