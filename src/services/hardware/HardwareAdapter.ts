@@ -50,7 +50,12 @@ export interface HardwareAdapter {
   /**
    * Envia comando de pulso para relé físico ou simulado
    */
-  triggerRelay(gate: Gate, pulseDurationSeconds: number, correlationId?: string): Promise<HardwareRelayResult>;
+  triggerRelay(
+    gate: Gate,
+    pulseDurationSeconds: number,
+    correlationId?: string,
+    options?: { sipChannel?: string; activeCallTargetUnit?: string }
+  ): Promise<HardwareRelayResult>;
 
   /**
    * Injeta sinalização DTMF no Asterisk

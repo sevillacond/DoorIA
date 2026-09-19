@@ -44,6 +44,8 @@ export function sanitizeCameraForClient<T extends { id?: string; rtspUrl?: strin
 
   // Remove completamente qualquer URL RTSP ou dados brutos de streaming local de câmera
   delete (sanitized as any).rtspUrl;
+  delete (sanitized as any).rtspStream;
+  delete (sanitized as any).rtspPort;
   delete (sanitized as any).suggestedRtspMain;
   delete (sanitized as any).suggestedRtspSub;
   delete (sanitized as any).suggestedGo2rtcConfig;

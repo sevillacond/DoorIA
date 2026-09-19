@@ -10,7 +10,12 @@ export class SimulationAdapter implements HardwareAdapter {
   public readonly mode = 'simulated' as const;
   public readonly isSimulated = true;
 
-  public async triggerRelay(gate: Gate, pulseDurationSeconds: number, correlationId?: string): Promise<HardwareRelayResult> {
+  public async triggerRelay(
+    gate: Gate,
+    pulseDurationSeconds: number,
+    correlationId?: string,
+    _options?: { sipChannel?: string; activeCallTargetUnit?: string }
+  ): Promise<HardwareRelayResult> {
     const timestamp = new Date().toISOString();
     console.warn(
       `[SIMULATION_ADAPTER] ⚠️ Acionamento SIMULADO para portão '${gate.name}' (ID: ${gate.id}, Relé: ${gate.relayPin}, DTMF: ${gate.dtmfCode}). ` +

@@ -14,10 +14,33 @@ export const ALLOWED_ASTERISK_ACTIONS = [
 
 export type AllowedAsteriskAction = typeof ALLOWED_ASTERISK_ACTIONS[number];
 
+export interface ActiveChannelInfo {
+  channel: string;          // Ex: "PJSIP/xpe_3115-00000001"
+  channelState?: string;    // "Up", "Ring", "Ringing"
+  channelStateDesc?: string;
+  callerIdNum?: string;     // "1001", "8000"
+  callerIdName?: string;
+  connectedLineNum?: string; // "101"
+  connectedLineName?: string;
+  context?: string;
+  exten?: string;
+  accountCode?: string;
+  uniqueid?: string;
+}
+
 interface PendingAction {
   actionId: string;
   action: string;
   resolve: (value: { success: boolean; message: string; response?: Record<string, string> }) => void;
+  reject: (reason: Error) => void;
+  timer: NodeJS.Timeout;
+}
+
+interface PendingListAction {
+  actionId: string;
+  action: string;
+  items: any[];
+  resolve: (value: { success: boolean; message: string; response?: any }) => void;
   reject: (reason: Error) => void;
   timer: NodeJS.Timeout;
 }
@@ -33,6 +56,8 @@ export class AsteriskManager extends EventEmitter {
   private buffer: string = '';
   private actionCounter: number = 0;
   private pendingActions: Map<string, PendingAction> = new Map();
+  private pendingListActions: Map<string, PendingListAction> = new Map();
+  private activeChannels: Map<string, ActiveChannelInfo> = new Map();
   private reconnectTimer: NodeJS.Timeout | null = null;
   private isConnecting: boolean = false;
   private intentionalDisconnect: boolean = false;
@@ -246,6 +271,51 @@ export class AsteriskManager extends EventEmitter {
     }
 
     const actionId = parsed['ActionID'];
+
+    // 1. Tratamento de listas com múltiplos eventos (ex: CoreShowChannels)
+    if (actionId && this.pendingListActions.has(actionId)) {
+      const pendingList = this.pendingListActions.get(actionId)!;
+      const eventName = parsed['Event'] || '';
+
+      if (eventName === 'CoreShowChannel') {
+        const ch = parsed['Channel'];
+        if (ch) {
+          const info: ActiveChannelInfo = {
+            channel: ch,
+            channelState: parsed['ChannelState'],
+            channelStateDesc: parsed['ChannelStateDesc'],
+            callerIdNum: parsed['CallerIDNum'],
+            callerIdName: parsed['CallerIDName'],
+            connectedLineNum: parsed['ConnectedLineNum'],
+            connectedLineName: parsed['ConnectedLineName'],
+            context: parsed['Context'],
+            exten: parsed['Exten'],
+            accountCode: parsed['AccountCode'],
+            uniqueid: parsed['Uniqueid'],
+          };
+          pendingList.items.push(info);
+          this.activeChannels.set(ch, info);
+        }
+        return;
+      }
+
+      if (
+        eventName === 'CoreShowChannelsComplete' ||
+        parsed['EventList'] === 'Complete' ||
+        parsed['Response'] === 'Error'
+      ) {
+        this.pendingListActions.delete(actionId);
+        clearTimeout(pendingList.timer);
+        pendingList.resolve({
+          success: parsed['Response'] !== 'Error',
+          message: parsed['Message'] || 'Lista de canais obtida com sucesso',
+          response: { channels: pendingList.items },
+        });
+        return;
+      }
+    }
+
+    // 2. Resposta de comando individual com ActionID
     if (actionId && this.pendingActions.has(actionId)) {
       const pending = this.pendingActions.get(actionId)!;
       this.pendingActions.delete(actionId);
@@ -260,15 +330,140 @@ export class AsteriskManager extends EventEmitter {
       return;
     }
 
-    // Eventos assíncronos do Asterisk (ex: DTMF, Hangup, Newchannel)
-    if (parsed['Event']) {
+    // 3. Atualização contínua de canais em tempo real (Eventos Asterisk)
+    const eventName = parsed['Event'];
+    if (eventName) {
+      const ch = parsed['Channel'];
+      if (eventName === 'Newchannel' && ch) {
+        this.activeChannels.set(ch, {
+          channel: ch,
+          channelState: parsed['ChannelState'],
+          channelStateDesc: parsed['ChannelStateDesc'],
+          callerIdNum: parsed['CallerIDNum'],
+          callerIdName: parsed['CallerIDName'],
+          connectedLineNum: parsed['ConnectedLineNum'],
+          connectedLineName: parsed['ConnectedLineName'],
+          context: parsed['Context'],
+          exten: parsed['Exten'],
+          accountCode: parsed['AccountCode'],
+          uniqueid: parsed['Uniqueid'],
+        });
+      } else if ((eventName === 'Newstate' || eventName === 'ChannelStateChange') && ch) {
+        const existing = this.activeChannels.get(ch);
+        if (existing) {
+          existing.channelState = parsed['ChannelState'] || existing.channelState;
+          existing.channelStateDesc = parsed['ChannelStateDesc'] || existing.channelStateDesc;
+          if (parsed['ConnectedLineNum']) existing.connectedLineNum = parsed['ConnectedLineNum'];
+        }
+      } else if (eventName === 'Hangup' && ch) {
+        this.activeChannels.delete(ch);
+      }
+
       this.emit('event', parsed);
-      this.emit(parsed['Event'], parsed);
+      this.emit(eventName, parsed);
     }
   }
 
   public isConnected(): boolean {
     return this.connected && this.authenticated;
+  }
+
+  /**
+   * Executa Ping AMI com medição de latência sem expor credenciais
+   */
+  public async ping(): Promise<{ ok: boolean; latencyMs?: number; message?: string }> {
+    const start = Date.now();
+    try {
+      const res = await this.executeSafeAction('Ping');
+      const latencyMs = Date.now() - start;
+      if (res.success) {
+        return { ok: true, latencyMs, message: 'Asterisk AMI responsivo (Ping/Pong OK)' };
+      }
+      return { ok: false, latencyMs, message: res.message || 'Falha de ping no Asterisk AMI' };
+    } catch (err: any) {
+      return { ok: false, message: err.message || 'Erro inesperado no ping AMI' };
+    }
+  }
+
+  /**
+   * Retorna lista de canais ativos consultados em tempo real no Asterisk
+   */
+  public async getActiveChannels(): Promise<ActiveChannelInfo[]> {
+    if (!this.isConnected()) {
+      return Array.from(this.activeChannels.values());
+    }
+
+    try {
+      const res = await this.executeSafeAction('CoreShowChannels');
+      if (res.response && Array.isArray(res.response.channels)) {
+        return res.response.channels;
+      }
+    } catch {
+      // Retorna canais do cache local mantido por eventos
+    }
+
+    return Array.from(this.activeChannels.values());
+  }
+
+  /**
+   * Identifica dinamicamente o canal PJSIP correto para envio de DTMF para o XPE ou chamada ativa.
+   * Não inventa canais e não utiliza extensões fixas.
+   */
+  public async findActiveChannelForXpe(options?: {
+    preferredChannel?: string;
+    targetUnit?: string;
+    xpeIdentifier?: string;
+  }): Promise<string | null> {
+    // 1. Se um canal foi explicitamente informado e é PJSIP válido, valida seu formato
+    if (options?.preferredChannel) {
+      const pref = options.preferredChannel.trim();
+      if (pref.startsWith('PJSIP/')) {
+        return pref;
+      }
+    }
+
+    // 2. Consulta canais ativos no Asterisk
+    const channels = await this.getActiveChannels();
+    const pjsipChannels = channels.filter((c) => c.channel && c.channel.startsWith('PJSIP/'));
+
+    if (pjsipChannels.length === 0) {
+      return null;
+    }
+
+    const xpeId = (options?.xpeIdentifier || process.env.XPE_SIP_USERNAME || process.env.XPE_SIP_USER || '8000').toLowerCase();
+    const targetUnit = options?.targetUnit?.trim();
+
+    // Prioridade 1: Canal que contenha o identificador do XPE (ex: PJSIP/xpe_3115-... ou PJSIP/8000-...)
+    const byXpeName = pjsipChannels.find((c) =>
+      c.channel.toLowerCase().includes(xpeId) ||
+      c.callerIdNum === xpeId ||
+      c.channel.toLowerCase().includes('xpe') ||
+      c.channel.toLowerCase().includes('totem')
+    );
+    if (byXpeName) {
+      return byXpeName.channel;
+    }
+
+    // Prioridade 2: Se foi informada a unidade de destino, canal conectado a essa unidade
+    if (targetUnit) {
+      const byTarget = pjsipChannels.find((c) =>
+        c.connectedLineNum === targetUnit || c.exten === targetUnit
+      );
+      if (byTarget) {
+        return byTarget.channel;
+      }
+    }
+
+    // Prioridade 3: Canal PJSIP em estado ativo de conversação (Up) ou chamando (Ring/Ringing)
+    const activeCallChannel = pjsipChannels.find((c) =>
+      c.channelStateDesc === 'Up' || c.channelState === '6' || c.channelStateDesc === 'Ring' || c.channelStateDesc === 'Ringing'
+    );
+    if (activeCallChannel) {
+      return activeCallChannel.channel;
+    }
+
+    // Caso não haja canal PJSIP correlacionado com a chamada, retorna null (sem forjar nomes)
+    return null;
   }
 
   /**
@@ -312,31 +507,51 @@ export class AsteriskManager extends EventEmitter {
 
       const timer = setTimeout(() => {
         this.pendingActions.delete(actionId);
+        this.pendingListActions.delete(actionId);
         resolve({
           success: false,
           message: `Timeout de ${this.actionTimeoutMs}ms aguardando resposta da ação AMI: ${action}`,
         });
       }, this.actionTimeoutMs);
 
-      this.pendingActions.set(actionId, {
-        actionId,
-        action,
-        resolve: (val) => {
-          clearTimeout(timer);
-          resolve(val);
-        },
-        reject: (err) => {
-          clearTimeout(timer);
-          reject(err);
-        },
-        timer,
-      });
+      // Se for ação com múltiplos eventos (como CoreShowChannels), registra em pendingListActions
+      if (action === 'CoreShowChannels') {
+        this.pendingListActions.set(actionId, {
+          actionId,
+          action,
+          items: [],
+          resolve: (val) => {
+            clearTimeout(timer);
+            resolve(val);
+          },
+          reject: (err) => {
+            clearTimeout(timer);
+            reject(err);
+          },
+          timer,
+        });
+      } else {
+        this.pendingActions.set(actionId, {
+          actionId,
+          action,
+          resolve: (val) => {
+            clearTimeout(timer);
+            resolve(val);
+          },
+          reject: (err) => {
+            clearTimeout(timer);
+            reject(err);
+          },
+          timer,
+        });
+      }
 
       try {
         this.socket!.write(payload, 'utf8');
       } catch (err: any) {
         clearTimeout(timer);
         this.pendingActions.delete(actionId);
+        this.pendingListActions.delete(actionId);
         resolve({
           success: false,
           message: `Falha ao escrever no socket AMI: ${err.message}`,
@@ -354,6 +569,10 @@ export class AsteriskManager extends EventEmitter {
     digit: string,
     actorName = 'Sistema'
   ): Promise<{ status: string; message: string; success?: boolean }> {
+    if (!sipChannel || typeof sipChannel !== 'string' || !sipChannel.trim().startsWith('PJSIP/')) {
+      throw new Error(`[Asterisk AMI Security] Canal inválido para PlayDTMF: deve ser um canal PJSIP real ativo (recebido: '${sipChannel || 'indefinido'}')`);
+    }
+
     const validDtmf = ['*07', '*08', '*09', '0', '1', '2', '3', '4', '5', '6', '7', '8', '9', '*', '#'];
     if (!validDtmf.includes(digit)) {
       throw new Error(`[Asterisk AMI Security] Dígito DTMF inválido ou não autorizado: ${digit}`);
@@ -361,7 +580,7 @@ export class AsteriskManager extends EventEmitter {
 
     const cleanDigit = digit.replace('*', '');
     const result = await this.executeSafeAction('PlayDTMF', {
-      Channel: sipChannel,
+      Channel: sipChannel.trim(),
       Digit: cleanDigit,
       Duration: '500',
     });
@@ -411,4 +630,5 @@ export class AsteriskManager extends EventEmitter {
 }
 
 export const asteriskAmi = new AsteriskManager();
+export { AsteriskManager as AsteriskAMI };
 

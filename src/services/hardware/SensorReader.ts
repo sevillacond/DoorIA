@@ -59,8 +59,42 @@ export class DefaultPhysicalSensorReader implements PhysicalSensorReader, GateSe
         };
       }
 
-      // Em ambiente de produção, consulta o estado elétrico da entrada digital via protocolo IP do controlador.
-      // Caso não haja sensor de fim de curso cabeado na entrada digital, reporta ausência explícita.
+      // Consulta de sensor físico real via entrada digital do controlador (se disponível na rede)
+      const timeoutSignal = typeof AbortSignal !== 'undefined' && (AbortSignal as any).timeout 
+        ? (AbortSignal as any).timeout(1200) 
+        : undefined;
+
+      const sensorUrl = process.env.SENSOR_ENDPOINT_TEMPLATE
+        ? process.env.SENSOR_ENDPOINT_TEMPLATE.replace('{ip}', relayIp).replace('{pin}', String(relayPin))
+        : `http://${relayIp}/cgi-bin/sensor.cgi?input=${relayPin}`;
+
+      try {
+        const response = await fetch(sensorUrl, {
+          method: 'GET',
+          signal: timeoutSignal,
+        });
+
+        if (response.ok) {
+          const text = (await response.text()).toLowerCase();
+          const isAberto = text.includes('open') || text.includes('1') || text.includes('true') || text.includes('aberto');
+          const isFechado = text.includes('closed') || text.includes('0') || text.includes('false') || text.includes('fechado');
+
+          if (isAberto || isFechado) {
+            return {
+              hasPhysicalSensor: true,
+              state: isAberto ? 'aberto' : 'fechado',
+              source: 'reed_switch',
+              measuredAt,
+              pinNumber: relayPin,
+              details: `Leitura física confirmada via telemetria digital: ${isAberto ? 'aberto' : 'fechado'}.`,
+            };
+          }
+        }
+      } catch {
+        // Falha de rede ou timeout: sem sensor físico respondendo nesta entrada
+      }
+
+      // Caso não haja sensor de fim de curso cabeado ou acessível, reporta ausência explícita (sem simulação)
       return {
         hasPhysicalSensor: false,
         state: 'sem_sensor',

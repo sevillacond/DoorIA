@@ -10,6 +10,7 @@ import { SimulationAdapter } from '../services/hardware/SimulationAdapter.ts';
 import { CondominiumService } from '../services/CondominiumService.ts';
 import { sanitizeRtspUrl, sanitizeCameraForClient } from '../utils/rtspSanitizer.ts';
 import { validateProductionConfig } from '../config/productionValidator.ts';
+import { AsteriskAMI } from '../services/AsteriskAMI.ts';
 import type { FinancialBill, Gate, UserSession } from '../types.ts';
 
 let passedTests = 0;
@@ -381,6 +382,79 @@ export async function runRegressionTests() {
   };
   const settlement = await EnlacePay.settleBill(testBill, 'pix');
   assert(settlement.success && testBill.status === 'pago', 'Liquidação de fatura com recibo e transação');
+
+  // ==========================================================================
+  // [8/8] ROTEAMENTO DINÂMICO PJSIP, PING AMI E SIMULAÇÃO DE CLEAN INSTALL
+  // ==========================================================================
+  console.log('\n--- [8/8] Testes de Roteamento Dinâmico PJSIP, Ping AMI e Clean Install ---');
+
+  // 8.1 Resolução de canal PJSIP prioritário
+  const testAmi = new AsteriskAMI('127.0.0.1', 5038, 'test', 'test');
+  (testAmi as any).getActiveChannels = async () => [
+    { channel: 'PJSIP/xpe_3115-0000001a', state: 'Up', channelStateDesc: 'Up', callerIdNum: '8000', connectedLineNum: '101' },
+    { channel: 'PJSIP/ramal_202-0000001b', state: 'Ring', channelStateDesc: 'Ring', callerIdNum: '202', connectedLineNum: '8000' },
+  ];
+
+  const resolvedPreferred = await testAmi.findActiveChannelForXpe({ preferredChannel: 'PJSIP/custom_trunk-01' });
+  assert(resolvedPreferred === 'PJSIP/custom_trunk-01', 'Canal preferencial explícito tem precedência imediata');
+
+  // 8.2 Resolução por identificador do XPE
+  const resolvedByXpe = await testAmi.findActiveChannelForXpe({ xpeIdentifier: '8000' });
+  assert(resolvedByXpe === 'PJSIP/xpe_3115-0000001a', 'Identificação dinâmica de canal pelo callerId/nome do XPE');
+
+  // 8.3 Resolução por unidade de destino
+  const resolvedByTarget = await testAmi.findActiveChannelForXpe({ targetUnit: '101' });
+  assert(resolvedByTarget === 'PJSIP/xpe_3115-0000001a', 'Roteamento dinâmico pelo número do apartamento em chamada');
+
+  // 8.4 Ausência de canal ativo retorna null (sem inventar canais fictícios)
+  (testAmi as any).getActiveChannels = async () => [];
+  const resolvedNull = await testAmi.findActiveChannelForXpe();
+  assert(resolvedNull === null, 'Sem chamada ativa retorna null (Anti-Invenção de canais)');
+
+  // 8.5 Teste do Ping AMI seguro (mockando resposta Ping/Pong)
+  (testAmi as any).executeSafeAction = async () => ({ success: true, message: 'Pong' });
+  const pingResult = await testAmi.ping();
+  assert(pingResult.ok === true, 'Ping AMI reporta status booleano ok: true quando Asterisk responde Pong');
+  assert(typeof pingResult.latencyMs === 'number' && pingResult.latencyMs >= 0, 'Ping AMI calcula tempo de resposta (latência em ms)');
+  assert(pingResult.message?.includes('Ping/Pong OK') === true, 'Ping AMI atesta mensagem sanitizada sem vazar credenciais');
+
+  // 8.6 Simulação de Clean Install em Produção com Configuração 100% Válida
+  const prodCleanEnv = {
+    ...process.env,
+    NODE_ENV: 'production',
+    SESSION_SECRET: 'super_segredo_criptografico_hmac_sha256_com_alta_entropia_32_chars',
+    POSTGRES_PASSWORD: 'SenhaFortePostgres2026!#Segura',
+    CONDO_CNPJ: '12.345.678/0001-99',
+    CONDO_NAME: 'Condomínio Residencial Sevilha',
+    CONDO_CITY: 'São Luís',
+    CONDO_STATE: 'MA',
+    CONDO_UNITS_COUNT: '48',
+    LOCAL_SERVER_IP: '192.168.1.100',
+    INITIAL_ADMIN_USER: 'admin_sevilha',
+    INITIAL_ADMIN_PASSWORD: 'SenhaForte2026!#AdminSeguro',
+    INITIAL_ADMIN_EMAIL: 'admin@sevilha.com.br',
+    XPE_IP: '192.168.1.200',
+    XPE_SIP_SECRET: 'SegredoXpe2026#Forte',
+    XPE_RTSP_USERNAME: 'intelbras',
+    XPE_RTSP_PASSWORD: 'IntelbrasSegura2026!',
+    RELAY_CONTROLLER_IP: '192.168.1.210',
+    ASTERISK_HOST: '192.168.1.220',
+    ASTERISK_AMI_PORT: '5038',
+    ASTERISK_AMI_USERNAME: 'dooria_ami',
+    ASTERISK_AMI_SECRET: 'AmiSegredo2026!',
+    ASTERISK_SIP_SERVER: '192.168.1.220',
+    ASTERISK_SIP_PORT: '5060',
+  };
+
+  const backupEnv = { ...process.env };
+  try {
+    process.env = prodCleanEnv as any;
+    const cleanInstallValidation = validateProductionConfig(true);
+    assert(cleanInstallValidation.valid === true, 'Simulação de Clean Install: Validação de produção aprovada com 100% de conformidade');
+    assert(cleanInstallValidation.errors.length === 0, 'Simulação de Clean Install: Zero erros críticos de segurança');
+  } finally {
+    process.env = backupEnv;
+  }
 
   console.log('\n===============================================================');
   console.log(`🎉 TODOS OS ${passedTests}/${totalTests} TESTES DE SEGURANÇA E HARDWARE PASSARAM COM SUCESSO!`);

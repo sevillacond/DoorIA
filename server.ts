@@ -42,6 +42,7 @@ import { parametrizeDiscoveredCamera } from './src/services/CameraDiscovery.ts';
 import { validateProductionConfig } from './src/config/productionValidator.ts';
 import { sanitizeRtspUrl, sanitizeCameraForClient } from './src/utils/rtspSanitizer.ts';
 import { getHardwareAdapter } from './src/services/hardware/index.ts';
+import { asteriskAmi } from './src/services/AsteriskAMI.ts';
 
 const PORT = 3000;
 
@@ -160,11 +161,10 @@ function getXpeRuntimeConfig(condo?: CondominiumConfig | null): XpeConfig {
     },
     streamProtocol: 'webrtc',
     streamEndpoint: '/api/v1/cameras/cam-xpe/stream',
-    rtspStream: {
+    videoStream: {
       enabled: true,
       channel: 1,
       subType: 0,
-      rtspPort: 554,
       streamProtocol: 'webrtc',
       streamEndpoint: '/api/v1/cameras/cam-xpe/stream',
     },
@@ -191,6 +191,21 @@ if (process.env.GEMINI_API_KEY) {
 }
 
 async function startServer() {
+  // Em produção, se o banco estiver indisponível: exit 1 imediatamente
+  if (process.env.NODE_ENV === 'production') {
+    console.log('[Enlace-DoorIA] Verificando integridade e conectividade com PostgreSQL 16 LTS...');
+    const dbHealth = await checkPostgresHealth();
+    if (!dbHealth.connected) {
+      console.error('=========================================================================');
+      console.error(' ❌ FATAL ERROR: BANCO DE DADOS POSTGRESQL INDISPONÍVEL EM PRODUÇÃO');
+      console.error(` Falha na conexão com PostgreSQL em ${dbHealth.host}:${dbHealth.port}.`);
+      console.error(' Em produção física, o sistema recusa inicialização sem banco de dados.');
+      console.error('=========================================================================');
+      process.exit(1);
+    }
+    console.log(`[Enlace-DoorIA] ✅ PostgreSQL 16 LTS operacional (${dbHealth.tablesCount} tabelas ativas).`);
+  }
+
   const app = express();
   app.use(express.json());
 
@@ -262,12 +277,25 @@ async function startServer() {
   app.get(['/api/v1/health', '/api/health'], async (req, res) => {
     try {
       const dbHealthy = await checkPostgresHealth();
+      let amiStatus: { status: string; ping: string; latencyMs?: number } = { status: 'offline', ping: 'falha' };
+      try {
+        const amiPing = await asteriskAmi.ping();
+        amiStatus = {
+          status: amiPing.ok ? 'online' : 'offline',
+          ping: amiPing.ok ? 'pong' : 'falha',
+          ...(amiPing.latencyMs !== undefined ? { latencyMs: amiPing.latencyMs } : {}),
+        };
+      } catch {
+        // Silencioso - não vaza credenciais
+      }
+
       res.status(200).json({
         status: 'ok',
         service: 'dooria-core',
         timestamp: new Date().toISOString(),
         uptimeSeconds: Math.floor(process.uptime()),
         database: dbHealthy ? 'connected' : 'standby',
+        asteriskAmi: amiStatus,
       });
     } catch {
       res.status(200).json({
@@ -276,6 +304,7 @@ async function startServer() {
         timestamp: new Date().toISOString(),
         uptimeSeconds: Math.floor(process.uptime()),
         database: 'standby',
+        asteriskAmi: { status: 'offline', ping: 'falha' },
       });
     }
   });
@@ -1095,13 +1124,11 @@ async function startServer() {
       manufacturer: 'Intelbras',
       mac: '48:28:2F:10:22:9A',
       onvifPort: 80,
-      rtspPort: 554,
       httpPort: 80,
       discoveryMethod: 'WS-Discovery',
       supportedProfiles: ['ONVIF_Profile_T', 'ONVIF_Profile_S'],
-      suggestedRtspMain: sanitizeRtspUrl(`rtsp://${xpeDiscoveryIp}:554/cam/realmonitor?channel=1&subtype=0`),
-      suggestedRtspSub: sanitizeRtspUrl(`rtsp://${xpeDiscoveryIp}:554/cam/realmonitor?channel=1&subtype=1`),
-      suggestedGo2rtcConfig: `xpe_3115:\n  - ${sanitizeRtspUrl(`rtsp://${xpeDiscoveryIp}:554/cam/realmonitor?channel=1&subtype=0`)}`,
+      streamProtocol: 'webrtc',
+      streamEndpoint: '/api/v1/stream/disc-cam-01',
       isConfigured: true,
       detectedCodec: 'H.264',
     },
@@ -1112,13 +1139,11 @@ async function startServer() {
       manufacturer: 'Intelbras',
       mac: '48:28:2F:14:41:BB',
       onvifPort: 80,
-      rtspPort: 554,
       httpPort: 80,
       discoveryMethod: 'WS-Discovery',
       supportedProfiles: ['ONVIF_Profile_T'],
-      suggestedRtspMain: sanitizeRtspUrl('rtsp://192.168.1.102:554/cam/realmonitor?channel=1&subtype=0'),
-      suggestedRtspSub: sanitizeRtspUrl('rtsp://192.168.1.102:554/cam/realmonitor?channel=1&subtype=1'),
-      suggestedGo2rtcConfig: `cam_lpr:\n  - ${sanitizeRtspUrl('rtsp://192.168.1.102:554/cam/realmonitor?channel=1&subtype=0')}`,
+      streamProtocol: 'webrtc',
+      streamEndpoint: '/api/v1/stream/disc-cam-02',
       isConfigured: false,
       detectedCodec: 'H.264',
     },
@@ -1129,13 +1154,11 @@ async function startServer() {
       manufacturer: 'Hikvision',
       mac: 'C8:02:8F:A1:04:12',
       onvifPort: 80,
-      rtspPort: 554,
       httpPort: 80,
       discoveryMethod: 'SSDP',
       supportedProfiles: ['ONVIF_Profile_S'],
-      suggestedRtspMain: sanitizeRtspUrl('rtsp://192.168.1.103:554/Streaming/Channels/101'),
-      suggestedRtspSub: sanitizeRtspUrl('rtsp://192.168.1.103:554/Streaming/Channels/102'),
-      suggestedGo2rtcConfig: `cam_hik:\n  - ${sanitizeRtspUrl('rtsp://192.168.1.103:554/Streaming/Channels/101')}`,
+      streamProtocol: 'webrtc',
+      streamEndpoint: '/api/v1/stream/disc-cam-03',
       isConfigured: false,
       detectedCodec: 'H.264',
     },
@@ -1244,13 +1267,12 @@ async function startServer() {
   // 19. ASSISTENTE XPE E ACIONAMENTO REMOTO
   // ============================================================================
   app.post('/api/v1/xpe/trigger-relay', requireAuth, requireRole(['super_admin', 'sindico', 'admin_sistema']), async (req, res) => {
-    const { relayNumber, durationSeconds } = req.body;
+    const { relayNumber, durationSeconds, sipChannel } = req.body;
     const relayNum = Number(relayNumber) || 1;
     const duration = Number(durationSeconds) || 3;
     const user = (req as any).user as UserSession;
 
     try {
-      const adapter = getHardwareAdapter();
       const isPedestre = relayNum === 1;
       const gateType = isPedestre ? 'pedestre' : 'garagem';
 
@@ -1267,51 +1289,55 @@ async function startServer() {
         relayIp: process.env.RELAY_CONTROLLER_IP || process.env.XPE_IP || '',
       };
 
-      const hardwareResult = await adapter.triggerRelay(targetGate, duration, `xpe-relay-${Date.now()}`);
-
-      logAudit(
-        user.name,
-        user.role,
-        'ACIONAMENTO_RELE_XPE',
-        targetGate.name,
-        hardwareResult.success ? 'PERMITIDO' : 'ALERTA',
-        {
-          relayNumber: relayNum,
-          durationSeconds: duration,
-          hardwareResult,
+      // Delegação estrita ao GateControlService (não burla PolicyEngine, RBAC nem AuditService)
+      const result = await GateControlService.trigger(targetGate, {
+        gateId: targetGate.id,
+        session: user,
+        context: {
+          callActive: !!activeCall,
+          activeCallTargetUnit: activeCall?.targetUnitNumber,
+          sipChannel: sipChannel || (activeCall as any)?.sipChannel,
+          ipAddress: req.ip || '127.0.0.1',
+          userAgent: req.headers['user-agent'] as string,
+          correlationId: `xpe-relay-${Date.now()}`,
         },
-        hardwareResult.message,
-        targetGate.dtmfCode
-      );
+        triggerSource: 'painel_web',
+      });
 
       publishEvent('XPE_RELAY_TRIGGERED', 'xpe_diagnostic', {
         relayNumber: relayNum,
         durationSeconds: duration,
-        hardwareResult,
+        commandStatus: result.commandStatus,
+        success: result.success,
       });
 
-      if (!hardwareResult.success || hardwareResult.commandStatus === 'HARDWARE_FAILURE') {
-        return res.status(502).json({
+      if (!result.success) {
+        const failureStatus = result.statusCode === 403 ? 403 : 502;
+        return res.status(failureStatus).json({
           success: false,
-          error: hardwareResult.message || 'Falha de comunicação com hardware físico do relé.',
-          commandStatus: 'HARDWARE_FAILURE',
-          hardwareResult,
+          error: result.message || 'Falha na execução do comando de hardware do relé.',
+          commandStatus: result.commandStatus,
+          relayResult: result.relayResult,
         });
       }
 
-      return res.status(200).json({
+      // Se não há confirmação de sensor físico (COMMAND_SENT), status 202 (Aceito para processamento) ou 200 com comando enviado
+      const responseStatus = result.commandStatus === 'HARDWARE_CONFIRMED' ? 200 : 202;
+
+      return res.status(responseStatus).json({
         success: true,
         relayNumber: relayNum,
         durationSeconds: duration,
-        commandStatus: hardwareResult.commandStatus,
-        hasPhysicalFeedbackSensor: hardwareResult.hasPhysicalFeedbackSensor,
-        message: hardwareResult.message,
-        hardwareResult,
+        commandStatus: result.commandStatus,
+        hasPhysicalFeedbackSensor: result.hasPhysicalFeedbackSensor,
+        message: result.message,
+        gate: result.gate,
+        relayResult: result.relayResult,
       });
     } catch (err: any) {
       return res.status(502).json({
         success: false,
-        error: `Exceção ao disparar relé: ${err.message}`,
+        error: `Exceção ao acionar relé via GateControlService: ${err.message}`,
         commandStatus: 'HARDWARE_FAILURE',
       });
     }

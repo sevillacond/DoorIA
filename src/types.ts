@@ -135,13 +135,15 @@ export interface DiscoveredCamera {
   model: string;
   firmwareVersion?: string;
   onvifPort: number;
-  rtspPort: number;
+  rtspPort?: number;
   httpPort: number;
   discoveryMethod: 'WS-Discovery' | 'SSDP' | 'ARP/OUI Scan';
   supportedProfiles: ('ONVIF_Profile_S' | 'ONVIF_Profile_T')[];
-  suggestedRtspMain: string;
-  suggestedRtspSub: string;
-  suggestedGo2rtcConfig: string;
+  suggestedRtspMain?: string;
+  suggestedRtspSub?: string;
+  suggestedGo2rtcConfig?: string;
+  streamProtocol?: 'webrtc';
+  streamEndpoint?: string;
   isConfigured: boolean;
   defaultCredentialsHint?: string;
   detectedCodec: string;
@@ -552,6 +554,13 @@ export interface XpeConfig {
   dtmfMode: 'RFC2833' | 'SIP_INFO' | 'INBAND';
   relay1: XpeRelayConfig;
   relay2: XpeRelayConfig;
+  videoStream?: {
+    enabled: boolean;
+    channel?: number;
+    subType?: number;
+    streamProtocol: 'webrtc';
+    streamEndpoint: string;
+  };
   rtspStream?: {
     enabled: boolean;
     channel?: number;

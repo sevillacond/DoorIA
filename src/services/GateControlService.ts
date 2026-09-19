@@ -9,6 +9,7 @@ export interface TriggerGateParams {
   context: {
     callActive?: boolean;
     activeCallTargetUnit?: string;
+    sipChannel?: string;
     ipAddress?: string;
     userAgent?: string;
     correlationId?: string;
@@ -104,7 +105,10 @@ export class GateControlService {
 
     // 3. EXECUÇÃO VIA HARDWARE ADAPTER
     const pulseDuration = gate.type === 'garagem' ? 2 : 1;
-    const relayResult = await adapter.triggerRelay(gate, pulseDuration, correlationId);
+    const relayResult = await adapter.triggerRelay(gate, pulseDuration, correlationId, {
+      sipChannel: context.sipChannel,
+      activeCallTargetUnit: context.activeCallTargetUnit,
+    });
 
     // 4. REGISTRO IMUTÁVEL DE AUDITORIA COM IDENTIFICAÇÃO ESTRITA DE MODO E RESULTADO
     await AuditService.record({
@@ -196,6 +200,7 @@ export class GateControlService {
     context: {
       callActive?: boolean;
       activeCallTargetUnit?: string;
+      sipChannel?: string;
       ipAddress?: string;
       userAgent?: string;
       correlationId?: string;

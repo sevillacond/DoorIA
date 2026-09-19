@@ -55,7 +55,12 @@ export class RealHardwareAdapter implements HardwareAdapter {
     return reading.state === 'aberto' ? 'aberto' : 'fechado';
   }
 
-  public async triggerRelay(gate: Gate, pulseDurationSeconds: number, correlationId?: string): Promise<HardwareRelayResult> {
+  public async triggerRelay(
+    gate: Gate,
+    pulseDurationSeconds: number,
+    correlationId?: string,
+    options?: { sipChannel?: string; activeCallTargetUnit?: string }
+  ): Promise<HardwareRelayResult> {
     const timestamp = new Date().toISOString();
     const isProd = process.env.NODE_ENV === 'production';
     const relayIp = gate.relayIp || process.env.RELAY_CONTROLLER_IP || (isProd ? '' : '192.168.1.160');
@@ -81,16 +86,69 @@ export class RealHardwareAdapter implements HardwareAdapter {
     }
 
     try {
-      console.log(`[REAL_HARDWARE] [${correlationId || 'N/A'}] Enviando pulso elétrico para relé pino ${gate.relayPin} em ${relayIp} (DTMF: ${gate.dtmfCode})...`);
+      console.log(`[REAL_HARDWARE] [${correlationId || 'N/A'}] Disparando pulso elétrico para relé pino ${gate.relayPin} em ${relayIp} (DTMF: ${gate.dtmfCode})...`);
 
-      // Acionamento real via protocolo Asterisk AMI (PJSIP / DTMF)
-      const amiAction = await this.ami.executeSafeAction('PlayDTMF', {
-        Digit: gate.dtmfCode.replace('*', ''),
-        Duration: String(pulseDurationSeconds * 1000),
-      });
+      let commandExecuted = false;
+      let commandMethod = '';
+      const failureReasons: string[] = [];
 
-      if (!amiAction.success) {
-        throw new Error(amiAction.message || 'Falha de resposta no socket do Asterisk AMI');
+      // 1. Disparo primário via HTTP CGI do XPE / relé IP (se disponível na rede)
+      if (relayIp && relayIp !== '127.0.0.1' && process.env.TRIGGER_METHOD_PREFERENCE !== 'ami_only') {
+        try {
+          const timeoutSignal = typeof AbortSignal !== 'undefined' && (AbortSignal as any).timeout
+            ? (AbortSignal as any).timeout(1200)
+            : undefined;
+          const httpCgiUrl = `http://${relayIp}/cgi-bin/relay.cgi?action=open&relay=${gate.relayPin}&duration=${pulseDurationSeconds}`;
+          const res = await fetch(httpCgiUrl, { method: 'GET', signal: timeoutSignal });
+          if (res.ok) {
+            commandExecuted = true;
+            commandMethod = 'HTTP_CGI';
+            console.log(`[REAL_HARDWARE] [${correlationId || 'N/A'}] Acionamento bem-sucedido via HTTP CGI no relé IP ${relayIp}`);
+          } else {
+            failureReasons.push(`HTTP CGI retornou código ${res.status}`);
+          }
+        } catch (httpErr: any) {
+          failureReasons.push(`HTTP CGI indisponível (${httpErr.message})`);
+        }
+      }
+
+      // 2. Fallback obrigatório via Asterisk AMI PlayDTMF
+      if (!commandExecuted) {
+        // Resolução dinâmica do canal PJSIP ativo para envio de PlayDTMF
+        let targetChannel: string | null = null;
+        if (typeof (this.ami as any).findActiveChannelForXpe === 'function') {
+          targetChannel = await (this.ami as any).findActiveChannelForXpe({
+            preferredChannel: options?.sipChannel,
+            targetUnit: options?.activeCallTargetUnit,
+          });
+        } else if (options?.sipChannel && options.sipChannel.startsWith('PJSIP/')) {
+          targetChannel = options.sipChannel;
+        }
+
+        // Parâmetros para a ação PlayDTMF
+        const dtmfParams: Record<string, string> = {
+          Digit: gate.dtmfCode.replace('*', ''),
+          Duration: String(pulseDurationSeconds * 1000),
+        };
+
+        if (targetChannel) {
+          dtmfParams.Channel = targetChannel;
+        } else if (isProd && !options?.sipChannel) {
+          // Em produção física, Asterisk PlayDTMF requer canal ativo se o HTTP CGI falhou
+          throw new Error(
+            `Falha no acionamento físico: HTTP CGI inacessível (${failureReasons.join(', ') || 'não configurado'}) e nenhum canal PJSIP ativo na chamada para PlayDTMF.`
+          );
+        }
+
+        // Acionamento real via protocolo Asterisk AMI (PJSIP / DTMF)
+        const amiAction = await this.ami.executeSafeAction('PlayDTMF', dtmfParams);
+
+        if (!amiAction.success) {
+          throw new Error(amiAction.message || 'Falha de resposta no socket do Asterisk AMI');
+        }
+
+        commandExecuted = true;
+        commandMethod = 'ASTERISK_AMI_PLAYDTMF';
       }
 
       // Consulta de leitura física real do sensor de fim de curso (reed switch) via SensorReader formal
