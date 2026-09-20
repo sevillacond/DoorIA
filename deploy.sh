@@ -139,6 +139,28 @@ echo ""
 # ETAPA 5 & 6: BOOTSTRAP DE DADOS INICIAIS E SUBIR DEMAIS SERVIÇOS
 # -------------------------------------------------------------------------
 echo -e "${YELLOW}[6/8] Inicializando todos os serviços (Core, Asterisk, Go2RTC)...${NC}"
+
+# Provisiona manager.conf dinamicamente com as credenciais reais do .env (sem segredos em git)
+cat <<EOF > ./config/asterisk/manager.conf
+; ==============================================================================
+; ENLACE-DOORIA: ASTERISK MANAGEMENT INTERFACE (AMI) - CONFIGURAÇÃO SEGURA
+; Gerado dinamicamente pelo deploy.sh a partir de variáveis de ambiente
+; ==============================================================================
+
+[general]
+enabled = yes
+port = 5038
+bindaddr = 127.0.0.1
+displayconnects = no
+
+[${ASTERISK_AMI_USERNAME}]
+secret = ${ASTERISK_AMI_SECRET}
+deny = 0.0.0.0/0.0.0.0
+permit = 127.0.0.1/255.255.255.255
+read = system,call,log,verbose,command,agent,user,config,dtmf,reporting,cdr,dialplan
+write = system,call,command,agent,user,originate
+EOF
+
 $DOCKER_COMPOSE up -d
 
 echo -e "${GREEN}✔ Serviços orquestrados e em execução.${NC}"

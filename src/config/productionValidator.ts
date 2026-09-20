@@ -22,6 +22,7 @@ export function validateProductionConfig(isProduction = process.env.NODE_ENV ===
 
   // Padrões proibidos de secrets em qualquer ambiente de produção
   const BANNED_SECRETS = [
+    'dooria_ami_secret_2026',
     'dooria_local_pass_2026',
     'dooria_session_secret_local_2026',
     'dooria_local',
@@ -167,13 +168,17 @@ export function validateProductionConfig(isProduction = process.env.NODE_ENV ===
     const asteriskAmiUser = (process.env.ASTERISK_AMI_USERNAME || process.env.ASTERISK_AMI_USER || '').trim();
     if (!asteriskAmiUser) {
       errors.push('[CRÍTICO] ASTERISK_AMI_USERNAME é obrigatório em produção para autenticação no socket AMI.');
+    } else if (asteriskAmiUser === 'dooria_admin' || asteriskAmiUser.toLowerCase() === 'admin') {
+      errors.push('[CRÍTICO] ASTERISK_AMI_USERNAME não pode utilizar usuário padrão ("dooria_admin" ou "admin") em produção.');
     }
 
     const asteriskAmiSecret = (process.env.ASTERISK_AMI_SECRET || '').trim();
     if (!asteriskAmiSecret) {
       errors.push('[CRÍTICO] ASTERISK_AMI_SECRET é obrigatório em produção.');
-    } else if (BANNED_SECRETS.includes(asteriskAmiSecret)) {
-      errors.push('[CRÍTICO] ASTERISK_AMI_SECRET não pode utilizar valor padrão ou de exemplo conhecido.');
+    } else if (BANNED_SECRETS.includes(asteriskAmiSecret) || asteriskAmiSecret === 'dooria_ami_secret_2026') {
+      errors.push('[CRÍTICO] ASTERISK_AMI_SECRET não pode utilizar valor padrão ou de exemplo conhecido (dooria_ami_secret_2026).');
+    } else if (asteriskAmiSecret.length < 12) {
+      errors.push('[CRÍTICO] ASTERISK_AMI_SECRET deve possuir no mínimo 12 caracteres em produção.');
     }
 
     const asteriskSipServer = (process.env.ASTERISK_SIP_SERVER || process.env.ASTERISK_HOST || '').trim();

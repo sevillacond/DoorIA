@@ -92,11 +92,12 @@ services:
     container_name: dooria-asterisk
     restart: always
     network_mode: host
+    entrypoint: ["/etc/asterisk/asterisk-entrypoint.sh"]
     volumes:
       - ./config/asterisk:/etc/asterisk
     environment:
-      ASTERISK_AMI_USERNAME: ${ASTERISK_AMI_USERNAME:-dooria_admin}
-      ASTERISK_AMI_SECRET: ${ASTERISK_AMI_SECRET:-dooria_ami_secret_2026}
+      ASTERISK_AMI_USERNAME: ${ASTERISK_AMI_USERNAME:?Erro de Seguranca: ASTERISK_AMI_USERNAME e obrigatorio}
+      ASTERISK_AMI_SECRET: ${ASTERISK_AMI_SECRET:?Erro de Seguranca: ASTERISK_AMI_SECRET e obrigatorio}
     healthcheck:
       test: ["CMD-SHELL", "/etc/asterisk/healthcheck.sh || exit 1"]
       interval: 10s

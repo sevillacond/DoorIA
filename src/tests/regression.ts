@@ -11,6 +11,7 @@ import { CondominiumService } from '../services/CondominiumService.ts';
 import { sanitizeRtspUrl, sanitizeCameraForClient } from '../utils/rtspSanitizer.ts';
 import { validateProductionConfig } from '../config/productionValidator.ts';
 import { AsteriskAMI } from '../services/AsteriskAMI.ts';
+import { AuditService } from '../services/AuditService.ts';
 import type { FinancialBill, Gate, UserSession } from '../types.ts';
 
 let passedTests = 0;
@@ -858,6 +859,215 @@ export async function runRegressionTests() {
   (t6Adapter as any).ami = suiteAmi;
   const t6GateResult = await t6Adapter.triggerRelay(testGate, 1, 'corr-t6', { sipChannel: 'PJSIP/xpe_3115-00000101' });
   assert(t6GateResult.commandStatus === 'HARDWARE_FAILURE', 'TESTE 6: Chamada encerrada resulta em HARDWARE_FAILURE');
+
+  // ==========================================================================
+  // [12/12] TESTES DE SEGURANÇA FINAL PRÉ-HOMOLOGAÇÃO (CENÁRIOS 1 A 5)
+  // ==========================================================================
+  console.log('\n--- [12/12] Testes de Segurança Final Pré-Homologação (Cenários 1 a 5) ---');
+
+  // TESTE 1 — AMI sem conexão
+  // Simular AMI indisponível.
+  // Esperado: findActiveChannelForXpe() -> null; RealHardwareAdapter -> HARDWARE_FAILURE; Nenhum PlayDTMF enviado.
+  const disconnectedAmi = new AsteriskAMI('127.0.0.1', 5038, 'admin_sec', 'SecretSeguro2026!');
+  (disconnectedAmi as any).connect = async () => false;
+  (disconnectedAmi as any).isConnected = () => false;
+  (disconnectedAmi as any).isAuthenticated = () => false;
+  let dtmfSentT1 = false;
+  (disconnectedAmi as any).executeSafeAction = async (action: string) => {
+    if (action === 'PlayDTMF') dtmfSentT1 = true;
+    return { success: false, message: 'AMI indisponível' };
+  };
+
+  const t1Channel = await disconnectedAmi.findActiveChannelForXpe();
+  assert(t1Channel === null, 'Cenário 1: AMI desconectado -> findActiveChannelForXpe retorna estritamente null');
+
+  const t1SecAdapter = new RealHardwareAdapter();
+  (t1SecAdapter as any).ami = disconnectedAmi;
+  const t1RelayResult = await t1SecAdapter.triggerRelay(testGate, 1, 'corr-t1');
+  assert(t1RelayResult.commandStatus === 'HARDWARE_FAILURE', 'Cenário 1: AMI desconectado resulta estritamente em HARDWARE_FAILURE');
+  assert(t1RelayResult.success === false, 'Cenário 1: AMI desconectado retorna success: false');
+  assert(!dtmfSentT1, 'Cenário 1: Nenhum PlayDTMF enviado com AMI desconectado');
+
+  // TESTE 2 — CoreShowChannels falhando
+  // Simular: AMI conectado, mas CoreShowChannels falha. Mesmo que activeChannels contenha canais antigos:
+  // NÃO utilizar cache; NÃO enviar PlayDTMF; Retornar HARDWARE_FAILURE.
+  const failingQueryAmi = new AsteriskAMI('127.0.0.1', 5038, 'admin_sec', 'SecretSeguro2026!');
+  (failingQueryAmi as any).connect = async () => true;
+  (failingQueryAmi as any).isConnected = () => true;
+  (failingQueryAmi as any).isAuthenticated = () => true;
+  // Popula cache local propositalmente com canal antigo do XPE
+  (failingQueryAmi as any).activeChannels.set('PJSIP/xpe_3115-00000888', {
+    channel: 'PJSIP/xpe_3115-00000888',
+    channelStateDesc: 'Up',
+    callerIdNum: '8000',
+    connectedLineNum: '101',
+    uniqueId: 'uid-old-cache',
+    linkedId: 'lid-old-cache',
+  });
+  let dtmfSentT2 = false;
+  (failingQueryAmi as any).executeSafeAction = async (action: string) => {
+    if (action === 'CoreShowChannels') {
+      return { success: false, message: 'Falha ao executar CoreShowChannels' };
+    }
+    if (action === 'PlayDTMF') {
+      dtmfSentT2 = true;
+    }
+    return { success: false };
+  };
+
+  const t2Channel = await failingQueryAmi.findActiveChannelForXpe();
+  assert(t2Channel === null, 'Cenário 2: Falha em CoreShowChannels -> NÃO utiliza cache local e retorna null');
+
+  const t2SecAdapter = new RealHardwareAdapter();
+  (t2SecAdapter as any).ami = failingQueryAmi;
+  const t2RelayResult = await t2SecAdapter.triggerRelay(testGate, 1, 'corr-t2');
+  assert(t2RelayResult.commandStatus === 'HARDWARE_FAILURE', 'Cenário 2: Falha em CoreShowChannels resulta em HARDWARE_FAILURE');
+  assert(!dtmfSentT2, 'Cenário 2: Nenhum PlayDTMF enviado ao falhar CoreShowChannels');
+
+  // TESTE 3 — Cache contém canal antigo
+  // Simular: cache possui PJSIP/8000-000001, mas consulta em tempo real no Asterisk não traz o canal.
+  // Esperado: NÃO utilizar o canal do cache; HARDWARE_FAILURE.
+  const staleCacheAmi = new AsteriskAMI('127.0.0.1', 5038, 'admin_sec', 'SecretSeguro2026!');
+  (staleCacheAmi as any).connect = async () => true;
+  (staleCacheAmi as any).isConnected = () => true;
+  (staleCacheAmi as any).isAuthenticated = () => true;
+  // Cache contém canal fantasma antigo
+  (staleCacheAmi as any).activeChannels.set('PJSIP/8000-000001', {
+    channel: 'PJSIP/8000-000001',
+    channelStateDesc: 'Up',
+    callerIdNum: '8000',
+    connectedLineNum: '101',
+  });
+  let dtmfSentT3 = false;
+  (staleCacheAmi as any).executeSafeAction = async (action: string) => {
+    if (action === 'CoreShowChannels') {
+      // Retorna sucesso com lista de canais vazia (chamada já finalizada no Asterisk)
+      return { success: true, response: { channels: [] } };
+    }
+    if (action === 'PlayDTMF') {
+      dtmfSentT3 = true;
+    }
+    return { success: true };
+  };
+
+  const t3Channel = await staleCacheAmi.findActiveChannelForXpe();
+  assert(t3Channel === null, 'Cenário 3: Canal fantasma no cache ignorado; consulta real vazia retorna null');
+
+  const t3SecAdapter = new RealHardwareAdapter();
+  (t3SecAdapter as any).ami = staleCacheAmi;
+  const t3RelayResult = await t3SecAdapter.triggerRelay(testGate, 1, 'corr-t3');
+  assert(t3RelayResult.commandStatus === 'HARDWARE_FAILURE', 'Cenário 3: Canal antigo no cache resulta em HARDWARE_FAILURE');
+  assert(!dtmfSentT3, 'Cenário 3: Nenhum PlayDTMF enviado para canal fantasma de cache');
+
+  // TESTE 4 — Inicialização sem credencial AMI em produção ou com segredo proibido
+  // Simular: ASTERISK_AMI_USERNAME ou ASTERISK_AMI_SECRET ausentes ou com segredos banidos ("dooria_ami_secret_2026")
+  // Esperado: ProductionValidator falha e bloqueia startup (lança erro fatal de inicialização)
+  const baseValidProdEnv = {
+    ...prodCleanEnv,
+    NODE_ENV: 'production',
+  };
+
+  const backupProdEnv = { ...process.env };
+  try {
+    // 4.1 ASTERISK_AMI_USERNAME ausente
+    const envNoAmiUser = { ...baseValidProdEnv, ASTERISK_AMI_USERNAME: '', ASTERISK_AMI_USER: '' };
+    process.env = envNoAmiUser as any;
+    let failedNoUser = false;
+    try {
+      validateProductionConfig(true);
+    } catch (err: any) {
+      failedNoUser = true;
+      assert(err.message.includes('STARTUP FAILURE'), 'Cenário 4.1: Startup cancelado com STARTUP FAILURE');
+      assert(err.message.includes('ASTERISK_AMI_USERNAME é obrigatório'), 'Cenário 4.1: Erro explícito de username obrigatório');
+    }
+    assert(failedNoUser, 'Cenário 4.1: Falha se ASTERISK_AMI_USERNAME estiver ausente em produção');
+
+    // 4.2 ASTERISK_AMI_USERNAME com default 'dooria_admin'
+    const envDefaultAmiUser = { ...baseValidProdEnv, ASTERISK_AMI_USERNAME: 'dooria_admin' };
+    process.env = envDefaultAmiUser as any;
+    let failedDefaultUser = false;
+    try {
+      validateProductionConfig(true);
+    } catch (err: any) {
+      failedDefaultUser = true;
+      assert(err.message.includes('STARTUP FAILURE'), 'Cenário 4.2: Startup cancelado para usuário padrão');
+      assert(err.message.includes('dooria_admin'), 'Cenário 4.2: Erro explícito de usuário padrão proibido');
+    }
+    assert(failedDefaultUser, 'Cenário 4.2: Falha se ASTERISK_AMI_USERNAME for dooria_admin em produção');
+
+    // 4.3 ASTERISK_AMI_SECRET ausente
+    const envNoAmiSecret = { ...baseValidProdEnv, ASTERISK_AMI_SECRET: '' };
+    process.env = envNoAmiSecret as any;
+    let failedNoSecret = false;
+    try {
+      validateProductionConfig(true);
+    } catch (err: any) {
+      failedNoSecret = true;
+      assert(err.message.includes('STARTUP FAILURE'), 'Cenário 4.3: Startup cancelado por falta de secret AMI');
+      assert(err.message.includes('ASTERISK_AMI_SECRET é obrigatório'), 'Cenário 4.3: Erro explícito de secret AMI obrigatório');
+    }
+    assert(failedNoSecret, 'Cenário 4.3: Falha se ASTERISK_AMI_SECRET estiver ausente em produção');
+
+    // 4.4 ASTERISK_AMI_SECRET com segredo proibido "dooria_ami_secret_2026"
+    const envBannedAmiSecret = { ...baseValidProdEnv, ASTERISK_AMI_SECRET: 'dooria_ami_secret_2026' };
+    process.env = envBannedAmiSecret as any;
+    let failedBannedSecret = false;
+    try {
+      validateProductionConfig(true);
+    } catch (err: any) {
+      failedBannedSecret = true;
+      assert(err.message.includes('STARTUP FAILURE'), 'Cenário 4.4: Startup cancelado por segredo AMI proibido');
+      assert(err.message.includes('dooria_ami_secret_2026') || err.message.includes('valor padrão'), 'Cenário 4.4: Erro explícito de segredo AMI proibido');
+    }
+    assert(failedBannedSecret, 'Cenário 4.4: Falha se ASTERISK_AMI_SECRET for "dooria_ami_secret_2026"');
+
+    // 4.5 ASTERISK_AMI_SECRET curto (< 12 caracteres)
+    const envShortAmiSecret = { ...baseValidProdEnv, ASTERISK_AMI_SECRET: 'curto123' };
+    process.env = envShortAmiSecret as any;
+    let failedShortSecret = false;
+    try {
+      validateProductionConfig(true);
+    } catch (err: any) {
+      failedShortSecret = true;
+      assert(err.message.includes('STARTUP FAILURE'), 'Cenário 4.5: Startup cancelado por secret com baixa entropia');
+      assert(err.message.includes('no mínimo 12 caracteres'), 'Cenário 4.5: Erro explícito de secret com menos de 12 caracteres');
+    }
+    assert(failedShortSecret, 'Cenário 4.5: Falha se ASTERISK_AMI_SECRET tiver menos de 12 caracteres em produção');
+  } finally {
+    process.env = backupProdEnv;
+  }
+
+  // TESTE 5 — AuditService sem IP
+  // Simular chamada de auditoria sem ipAddress.
+  // Esperado: Não preencher com 192.168.1.100; Preencher com unknown ou null.
+  const auditEntryNoIp = await AuditService.record({
+    actor: 'Sistema de Teste',
+    role: 'sistema',
+    action: 'TESTE_AUDIT_SEM_IP',
+    target: 'Unidade 101',
+    status: 'PERMITIDO',
+    details: { test: true },
+  });
+  assert(auditEntryNoIp.ipAddress !== '192.168.1.100', 'Cenário 5: AuditService NUNCA preenche com 192.168.1.100 arbitrário');
+  assert(auditEntryNoIp.ipAddress === 'unknown', 'Cenário 5: AuditService sem IP preenche com "unknown"');
+
+  const recentAudits = await AuditService.getRecentLogs(5);
+  const foundEntry = recentAudits.find((a) => a.id === auditEntryNoIp.id);
+  assert(foundEntry !== undefined, 'Cenário 5: Log de auditoria recuperado com sucesso');
+  assert(foundEntry?.ipAddress !== '192.168.1.100', 'Cenário 5: IP recuperado não é 192.168.1.100');
+  assert(foundEntry?.ipAddress === 'unknown', 'Cenário 5: IP recuperado é "unknown"');
+
+  // Simular chamada de auditoria com IP real fornecido
+  const auditEntryRealIp = await AuditService.record({
+    actor: 'Morador 101',
+    role: 'morador',
+    action: 'TESTE_AUDIT_COM_IP_REAL',
+    target: 'Portão Social',
+    status: 'PERMITIDO',
+    ipAddress: '10.0.4.15',
+    details: { realIp: true },
+  });
+  assert(auditEntryRealIp.ipAddress === '10.0.4.15', 'Cenário 5: AuditService preserva rigorosamente o IP real recebido');
 
   console.log('\n===============================================================');
   console.log(`🎉 TODOS OS ${passedTests}/${totalTests} TESTES DE SEGURANÇA E HARDWARE PASSARAM COM SUCESSO!`);

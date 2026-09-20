@@ -113,7 +113,7 @@ function extractClientIp(req: express.Request): string {
     return socketAddr.replace(/^.*:/, '');
   }
 
-  return req.ip || 'desconhecido';
+  return req.ip || 'unknown';
 }
 
 function logAudit(
@@ -127,7 +127,7 @@ function logAudit(
   dtmfCommand?: string,
   ipAddress?: string
 ) {
-  const finalIp = ipAddress || 'desconhecido';
+  const finalIp = ipAddress && ipAddress !== 'desconhecido' ? ipAddress : (ipAddress || 'unknown');
   const log: AuditLogEntry = {
     id: `aud-${Date.now()}-${Math.floor(Math.random() * 1000)}`,
     timestamp: new Date().toISOString(),
@@ -398,18 +398,19 @@ async function startServer() {
 
   app.post('/api/v1/auth/login', async (req, res) => {
     const { username, password } = req.body;
+    const clientIp = extractClientIp(req);
     if (!username || !password) {
       return res.status(400).json({ error: 'Usuário e senha são obrigatórios.' });
     }
 
     const session = await AuthService.authenticateUser(username, password);
     if (!session) {
-      logAudit(username, 'desconhecido', 'LOGIN_FALHOU', 'AuthService', 'NEGADO', { username });
+      logAudit(username, 'desconhecido', 'LOGIN_FALHOU', 'AuthService', 'NEGADO', { username }, undefined, undefined, clientIp);
       return res.status(401).json({ error: 'Credenciais inválidas ou usuário inativo.' });
     }
 
     const token = AuthService.createSessionToken(session);
-    logAudit(session.name, session.role, 'LOGIN_SUCESSO', 'AuthService', 'PERMITIDO', { username });
+    logAudit(session.name, session.role, 'LOGIN_SUCESSO', 'AuthService', 'PERMITIDO', { username }, undefined, undefined, clientIp);
     res.json({ success: true, session, token });
   });
 
@@ -464,11 +465,12 @@ async function startServer() {
 
   app.put('/api/v1/condominium', requireAuth, requireRole(['super_admin', 'sindico', 'admin_sistema']), async (req, res) => {
     const user = (req as any).user as UserSession;
+    const clientIp = extractClientIp(req);
     try {
       const updated = await CondominiumService.updateConfig(req.body);
       logAudit(user.name, user.role, 'CONFIGURACOES_CONDOMINIO_ATUALIZADAS', updated.name, 'PERMITIDO', {
         updatedBy: user.name,
-      });
+      }, undefined, undefined, clientIp);
       res.json({ success: true, data: updated });
     } catch (err: any) {
       handleDbError(err, res);
@@ -676,6 +678,7 @@ async function startServer() {
         },
       });
 
+      const clientIp = extractClientIp(req);
       logAudit(
         user.name,
         user.role,
@@ -683,7 +686,9 @@ async function startServer() {
         cam.name,
         policy.allowed ? 'PERMITIDO' : 'NEGADO',
         { cameraId: cam.id, location: cam.location },
-        policy.reason
+        policy.reason,
+        undefined,
+        clientIp
       );
 
       if (!policy.allowed) {
@@ -728,6 +733,7 @@ async function startServer() {
     try {
       const bills = await DatabaseRepository.getFinancialBills();
       const bill = bills.find((b) => b.id === id);
+      const clientIp = extractClientIp(req);
 
       if (!bill) {
         return res.status(404).json({ error: 'Fatura condominial não encontrada.' });
@@ -735,7 +741,7 @@ async function startServer() {
 
       // RBAC: Morador só pode pagar a fatura de sua própria unidade
       if (user.role === 'morador' && bill.unitNumber !== user.unitNumber) {
-        logAudit(user.name, user.role, 'TENTATIVA_PAGAMENTO_TERCEIROS', `Fatura ${id}`, 'NEGADO', {});
+        logAudit(user.name, user.role, 'TENTATIVA_PAGAMENTO_TERCEIROS', `Fatura ${id}`, 'NEGADO', {}, undefined, undefined, clientIp);
         return res.status(403).json({ error: 'Permissão negada. Você só pode liquidar faturas da sua própria unidade.' });
       }
 
@@ -747,7 +753,7 @@ async function startServer() {
         paymentMethod,
         receiptNumber: settlement.receiptNumber,
         isSandbox: settlement.isSandbox,
-      });
+      }, undefined, undefined, clientIp);
 
       publishEvent('BILL_PAID', 'financial_core', { billId: bill.id, unitNumber: bill.unitNumber, valor: bill.valorTotal });
 
@@ -826,8 +832,9 @@ async function startServer() {
       status: 'aguardando_retirada',
       pickupCode: pin,
     };
+    const clientIp = extractClientIp(req);
     publishEvent('PACKAGE_RECEIVED', 'portaria_social', { unitNumber, courier, pickupCode: pin });
-    logAudit(user.name, user.role, 'ENCOMENDA_RECEBIDA', `Unidade ${unitNumber}`, 'PERMITIDO', { courier, trackingCode });
+    logAudit(user.name, user.role, 'ENCOMENDA_RECEBIDA', `Unidade ${unitNumber}`, 'PERMITIDO', { courier, trackingCode }, undefined, undefined, clientIp);
     res.json({ success: true, package: pkg });
   });
 
@@ -1331,8 +1338,9 @@ async function startServer() {
   app.post('/api/v1/panic/trigger', requireAuth, (req, res) => {
     const user = (req as any).user as UserSession;
     const { reason, location } = req.body;
+    const clientIp = extractClientIp(req);
     publishEvent('SOS_TRIGGERED', 'painel_panico', { reason, location, triggeredBy: user.name });
-    logAudit(user.name, user.role, 'PANICO_ACIONADO', location || 'Condomínio', 'ALERTA', { reason });
+    logAudit(user.name, user.role, 'PANICO_ACIONADO', location || 'Condomínio', 'ALERTA', { reason }, undefined, undefined, clientIp);
     res.json({ success: true, message: 'Alerta de pânico transmitido para a portaria e síndico!' });
   });
 

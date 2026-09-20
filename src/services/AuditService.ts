@@ -28,7 +28,7 @@ export class AuditService {
     const timestamp = new Date().toISOString();
     const id = `aud-${Date.now()}-${crypto.randomBytes(4).toString('hex')}`;
     const correlationId = params.correlationId || `corr-${crypto.randomBytes(6).toString('hex')}`;
-    const ipAddress = params.ipAddress || '192.168.1.100';
+    const ipAddress = params.ipAddress && params.ipAddress.trim() ? params.ipAddress.trim() : 'unknown';
     const details = params.details || {};
 
     // Geração do Hash SHA-256 de integridade criptográfica
@@ -66,7 +66,7 @@ export class AuditService {
           target: params.target,
           status: params.status,
           reason: params.reason,
-          ipAddress,
+          ipAddress: ipAddress === 'unknown' ? null : ipAddress,
           userAgent: params.userAgent,
           correlationId,
           dtmfCommand: params.dtmfCommand,
@@ -104,7 +104,7 @@ export class AuditService {
           target: r.target,
           status: r.status as any,
           reason: r.reason || undefined,
-          ipAddress: r.ipAddress || undefined,
+          ipAddress: r.ipAddress || 'unknown',
           dtmfCommand: r.dtmfCommand || undefined,
           details: (r.details as Record<string, unknown>) || {},
         }));

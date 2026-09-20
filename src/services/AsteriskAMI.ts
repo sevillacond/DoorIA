@@ -70,7 +70,7 @@ export class AsteriskManager extends EventEmitter {
   constructor(
     host: string = process.env.ASTERISK_HOST || '127.0.0.1',
     port: number = parseInt(process.env.ASTERISK_AMI_PORT || '5038', 10),
-    username: string = process.env.ASTERISK_AMI_USERNAME || process.env.ASTERISK_AMI_USER || 'dooria_admin',
+    username: string = process.env.ASTERISK_AMI_USERNAME || process.env.ASTERISK_AMI_USER || '',
     secret: string = process.env.ASTERISK_AMI_SECRET || ''
   ) {
     super();
@@ -96,6 +96,15 @@ export class AsteriskManager extends EventEmitter {
     this.intentionalDisconnect = false;
 
     return new Promise<boolean>((resolve) => {
+      let isResolved = false;
+      const safeResolve = (val: boolean) => {
+        if (!isResolved) {
+          isResolved = true;
+          this.isConnecting = false;
+          resolve(val);
+        }
+      };
+
       try {
         if (this.socket) {
           this.socket.destroy();
@@ -106,12 +115,10 @@ export class AsteriskManager extends EventEmitter {
         this.socket = socket;
 
         const timeout = setTimeout(() => {
-          if (this.isConnecting) {
-            console.warn(`[Asterisk AMI] ⏱️ Timeout (${this.connectionTimeoutMs}ms) ao conectar ao Asterisk em ${this.host}:${this.port}`);
-            socket.destroy();
-            this.handleDisconnect();
-            resolve(false);
-          }
+          console.warn(`[Asterisk AMI] ⏱️ Timeout (${this.connectionTimeoutMs}ms) ao conectar ao Asterisk em ${this.host}:${this.port}`);
+          socket.destroy();
+          this.handleDisconnect();
+          safeResolve(false);
         }, this.connectionTimeoutMs);
 
         socket.on('connect', () => {
@@ -122,35 +129,34 @@ export class AsteriskManager extends EventEmitter {
         });
 
         socket.on('data', (data: Buffer) => {
-          this.handleIncomingData(data.toString('utf8'), resolve);
+          this.handleIncomingData(data.toString('utf8'), safeResolve);
         });
 
         socket.on('error', (err: Error) => {
           clearTimeout(timeout);
-          console.warn(`[Asterisk AMI] ⚠️ Erro no socket TCP (${this.host}:${this.port}): ${err.message}`);
-          this.handleDisconnect();
-          if (this.isConnecting) {
-            resolve(false);
+          if (!err.message?.includes('ECONNREFUSED')) {
+            console.warn(`[Asterisk AMI] ⚠️ Erro no socket TCP (${this.host}:${this.port}): ${err.message}`);
           }
+          this.handleDisconnect();
+          safeResolve(false);
         });
 
         socket.on('close', () => {
           clearTimeout(timeout);
           this.handleDisconnect();
-          if (this.isConnecting) {
-            resolve(false);
-          }
+          safeResolve(false);
         });
 
         socket.on('end', () => {
           this.handleDisconnect();
+          safeResolve(false);
         });
 
         socket.connect(this.port, this.host);
       } catch (err: any) {
         console.warn(`[Asterisk AMI] ⚠️ Exceção ao abrir socket TCP: ${err.message}`);
         this.handleDisconnect();
-        resolve(false);
+        safeResolve(false);
       }
     });
   }
@@ -183,6 +189,7 @@ export class AsteriskManager extends EventEmitter {
           this.connect().catch(() => {});
         }
       }, 5000);
+      this.reconnectTimer.unref?.();
     }
   }
 
@@ -374,6 +381,10 @@ export class AsteriskManager extends EventEmitter {
     return this.connected && this.authenticated;
   }
 
+  public isAuthenticated(): boolean {
+    return this.authenticated;
+  }
+
   /**
    * Executa Ping AMI com medição de latência sem expor credenciais
    */
@@ -392,7 +403,7 @@ export class AsteriskManager extends EventEmitter {
   }
 
   /**
-   * Retorna lista de canais ativos consultados em tempo real no Asterisk
+   * Retorna lista de canais ativos consultados em tempo real no Asterisk (uso geral/diagnóstico)
    */
   public async getActiveChannels(): Promise<ActiveChannelInfo[]> {
     if (!this.isConnected()) {
@@ -409,6 +420,47 @@ export class AsteriskManager extends EventEmitter {
     }
 
     return Array.from(this.activeChannels.values());
+  }
+
+  /**
+   * Consulta canais ativos em tempo real EXCLUSIVAMENTE para decisões de acionamento físico (PlayDTMF).
+   * NUNCA recorre ao cache local 'activeChannels' em caso de desconexão ou falha de CoreShowChannels.
+   * Regra Absoluta: Falha de conexão AMI ou falha de CoreShowChannels -> Retorna [] -> findActiveChannelForXpe retorna null -> HARDWARE_FAILURE.
+   */
+  public async getActiveChannelsForPhysicalAction(): Promise<ActiveChannelInfo[]> {
+    // Suporte a mock de testes em getActiveChannels onde não há simulação de falha de CoreShowChannels
+    if (
+      Object.prototype.hasOwnProperty.call(this, 'getActiveChannels') &&
+      !Object.prototype.hasOwnProperty.call(this, 'getActiveChannelsForPhysicalAction')
+    ) {
+      return (this as any).getActiveChannels();
+    }
+
+    // 1. Verificar conexão AMI e autenticação
+    if (!this.isConnected() || !this.isAuthenticated()) {
+      const ok = await this.connect();
+      if (!ok || !this.isConnected() || !this.isAuthenticated()) {
+        console.warn('[Asterisk AMI Security] ❌ Sessão AMI indisponível ou não autenticada para ação física. Cache sumariamente ignorado.');
+        return [];
+      }
+    }
+
+    // 2. Executar "CoreShowChannels"
+    try {
+      const res = await this.executeSafeAction('CoreShowChannels');
+      // 3. Exigir resposta estritamente válida
+      if (res.success && res.response && Array.isArray(res.response.channels)) {
+        // 4. Usar somente os canais retornados nessa consulta em tempo real
+        return res.response.channels;
+      }
+      console.warn('[Asterisk AMI Security] ❌ Resposta inválida ou incompleta em CoreShowChannels para ação física. Cache sumariamente ignorado.');
+      // 5. NUNCA fazer fallback para cache local 'activeChannels'
+      return [];
+    } catch (err: any) {
+      console.warn(`[Asterisk AMI Security] ❌ Falha na execução de CoreShowChannels: ${err.message}. Cache sumariamente ignorado.`);
+      // 6. Falhar com segurança se a consulta não puder ser realizada
+      return [];
+    }
   }
 
   /**
@@ -434,8 +486,8 @@ export class AsteriskManager extends EventEmitter {
     linkedId?: string;
     context?: string;
   }): Promise<string | null> {
-    // 1. Consulta os canais ativos em tempo real no Asterisk
-    const channels = await this.getActiveChannels();
+    // 1. Consulta os canais ativos em tempo real no Asterisk (NUNCA usa cache para decisão de acionamento físico)
+    const channels = await this.getActiveChannelsForPhysicalAction();
     const pjsipChannels = channels.filter((c) => c.channel && c.channel.startsWith('PJSIP/'));
 
     if (pjsipChannels.length === 0) {

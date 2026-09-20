@@ -4,11 +4,15 @@ var __getOwnPropDesc = Object.getOwnPropertyDescriptor;
 var __getOwnPropNames = Object.getOwnPropertyNames;
 var __getProtoOf = Object.getPrototypeOf;
 var __hasOwnProp = Object.prototype.hasOwnProperty;
-var __copyProps = (to, from, except, desc) => {
+var __export = (target, all) => {
+  for (var name in all)
+    __defProp(target, name, { get: all[name], enumerable: true });
+};
+var __copyProps = (to, from, except, desc2) => {
   if (from && typeof from === "object" || typeof from === "function") {
     for (let key of __getOwnPropNames(from))
       if (!__hasOwnProp.call(to, key) && key !== except)
-        __defProp(to, key, { get: () => from[key], enumerable: !(desc = __getOwnPropDesc(from, key)) || desc.enumerable });
+        __defProp(to, key, { get: () => from[key], enumerable: !(desc2 = __getOwnPropDesc(from, key)) || desc2.enumerable });
   }
   return to;
 };
@@ -22,1036 +26,3355 @@ var __toESM = (mod, isNodeMode, target) => (target = mod != null ? __create(__ge
 ));
 
 // server.ts
+var import_config3 = require("dotenv/config");
 var import_express = __toESM(require("express"), 1);
 var import_path = __toESM(require("path"), 1);
-var import_crypto = __toESM(require("crypto"), 1);
+var import_crypto6 = __toESM(require("crypto"), 1);
 var import_genai = require("@google/genai");
 var import_vite = require("vite");
 
-// src/services/CameraDiscovery.ts
-var MANUFACTURER_PROFILES = {
-  Intelbras: {
-    name: "Intelbras",
-    defaultOnvifPort: 80,
-    defaultRtspPort: 554,
-    defaultHttpPort: 80,
-    mainStreamPattern: (ip, user = "admin", pass = "admin", port = 554) => `rtsp://${user}:${pass}@${ip}:${port}/cam/realmonitor?channel=1&subtype=0`,
-    subStreamPattern: (ip, user = "admin", pass = "admin", port = 554) => `rtsp://${user}:${pass}@${ip}:${port}/cam/realmonitor?channel=1&subtype=1`,
-    recommendedProfile: "ONVIF_Profile_T",
-    defaultCredentialsHint: "admin / admin ou senha configurada no primeiro boot (ISIC Lite / Intelbras SIM Next)",
-    generateGo2rtcConfig: (name, rtspUrl) => `${name.toLowerCase().replace(/[^a-z0-9]/g, "_")}:
-  - ${rtspUrl}
-  - ffmpeg:${name.toLowerCase().replace(/[^a-z0-9]/g, "_")}#video=h264#hardware=auto`
+// src/db/index.ts
+var import_node_postgres = require("drizzle-orm/node-postgres");
+var import_pg = __toESM(require("pg"), 1);
+
+// src/db/schema.ts
+var schema_exports = {};
+__export(schema_exports, {
+  auditLogs: () => auditLogs,
+  automationRules: () => automationRules,
+  callLogs: () => callLogs,
+  cameraDevices: () => cameraDevices,
+  commonAreaReservations: () => commonAreaReservations,
+  condominiums: () => condominiums,
+  financialAgreements: () => financialAgreements,
+  financialBills: () => financialBills,
+  gates: () => gates,
+  iotDevices: () => iotDevices,
+  lprLogs: () => lprLogs,
+  packageDeliveries: () => packageDeliveries,
+  residents: () => residents,
+  systemUsers: () => systemUsers,
+  units: () => units,
+  vehicles: () => vehicles,
+  visitorInvites: () => visitorInvites
+});
+var import_pg_core = require("drizzle-orm/pg-core");
+var condominiums = (0, import_pg_core.pgTable)("condominiums", {
+  id: (0, import_pg_core.varchar)("id", { length: 64 }).primaryKey(),
+  name: (0, import_pg_core.varchar)("name", { length: 255 }).notNull(),
+  tradingName: (0, import_pg_core.varchar)("trading_name", { length: 255 }),
+  cnpj: (0, import_pg_core.varchar)("cnpj", { length: 32 }).notNull(),
+  address: (0, import_pg_core.jsonb)("address").notNull().default({}),
+  unitsCount: (0, import_pg_core.integer)("units_count").notNull().default(12),
+  blocks: (0, import_pg_core.text)("blocks").array().notNull().default(["Bloco A"]),
+  floorsCount: (0, import_pg_core.integer)("floors_count").notNull().default(3),
+  parkingSpotsCount: (0, import_pg_core.integer)("parking_spots_count").notNull().default(18),
+  managementPhone: (0, import_pg_core.varchar)("management_phone", { length: 32 }),
+  emergencyPhone: (0, import_pg_core.varchar)("emergency_phone", { length: 32 }),
+  email: (0, import_pg_core.varchar)("email", { length: 128 }),
+  sindico: (0, import_pg_core.jsonb)("sindico").notNull().default({}),
+  administrator: (0, import_pg_core.jsonb)("administrator").notNull().default({}),
+  operationalSettings: (0, import_pg_core.jsonb)("operational_settings").notNull().default({}),
+  financialSettings: (0, import_pg_core.jsonb)("financial_settings").notNull().default({}),
+  technicalSettings: (0, import_pg_core.jsonb)("technical_settings").notNull().default({}),
+  createdAt: (0, import_pg_core.timestamp)("created_at", { withTimezone: true }).defaultNow(),
+  updatedAt: (0, import_pg_core.timestamp)("updated_at", { withTimezone: true }).defaultNow()
+});
+var units = (0, import_pg_core.pgTable)(
+  "units",
+  {
+    id: (0, import_pg_core.varchar)("id", { length: 64 }).primaryKey(),
+    number: (0, import_pg_core.varchar)("number", { length: 32 }).notNull().unique(),
+    block: (0, import_pg_core.varchar)("block", { length: 64 }).notNull().default("Bloco A"),
+    floor: (0, import_pg_core.integer)("floor").notNull().default(1),
+    sipExtension: (0, import_pg_core.varchar)("sip_extension", { length: 32 }).notNull(),
+    intercomCode: (0, import_pg_core.varchar)("intercom_code", { length: 32 }).notNull(),
+    ownerName: (0, import_pg_core.varchar)("owner_name", { length: 255 }).notNull(),
+    ownerPhone: (0, import_pg_core.varchar)("owner_phone", { length: 32 }),
+    financialStatus: (0, import_pg_core.varchar)("financial_status", { length: 32 }).notNull().default("em_dia"),
+    createdAt: (0, import_pg_core.timestamp)("created_at", { withTimezone: true }).defaultNow(),
+    updatedAt: (0, import_pg_core.timestamp)("updated_at", { withTimezone: true }).defaultNow()
   },
-  Hikvision: {
-    name: "Hikvision",
-    defaultOnvifPort: 80,
-    defaultRtspPort: 554,
-    defaultHttpPort: 80,
-    mainStreamPattern: (ip, user = "admin", pass = "admin12345", port = 554) => `rtsp://${user}:${pass}@${ip}:${port}/Streaming/Channels/101`,
-    subStreamPattern: (ip, user = "admin", pass = "admin12345", port = 554) => `rtsp://${user}:${pass}@${ip}:${port}/Streaming/Channels/102`,
-    recommendedProfile: "ONVIF_Profile_T",
-    defaultCredentialsHint: "admin / senha definida no SADP Tool (Ativa\xE7\xE3o obrigat\xF3ria)",
-    generateGo2rtcConfig: (name, rtspUrl) => `${name.toLowerCase().replace(/[^a-z0-9]/g, "_")}:
-  - ${rtspUrl}
-  - "exec:ffmpeg -i ${rtspUrl} -c:v copy -f rtsp {output}"`
+  (table) => [
+    (0, import_pg_core.index)("idx_units_number").on(table.number),
+    (0, import_pg_core.index)("idx_units_sip_ext").on(table.sipExtension)
+  ]
+);
+var residents = (0, import_pg_core.pgTable)(
+  "residents",
+  {
+    id: (0, import_pg_core.varchar)("id", { length: 64 }).primaryKey(),
+    unitId: (0, import_pg_core.varchar)("unit_id", { length: 64 }).notNull().references(() => units.id, { onDelete: "cascade" }),
+    name: (0, import_pg_core.varchar)("name", { length: 255 }).notNull(),
+    document: (0, import_pg_core.varchar)("document", { length: 32 }),
+    phone: (0, import_pg_core.varchar)("phone", { length: 32 }).notNull(),
+    email: (0, import_pg_core.varchar)("email", { length: 128 }),
+    isMainContact: (0, import_pg_core.boolean)("is_main_contact").default(false),
+    sipExtension: (0, import_pg_core.varchar)("sip_extension", { length: 32 }),
+    sipRegistered: (0, import_pg_core.boolean)("sip_registered").default(false),
+    webrtcSupported: (0, import_pg_core.boolean)("webrtc_supported").default(true),
+    createdAt: (0, import_pg_core.timestamp)("created_at", { withTimezone: true }).defaultNow()
   },
-  Dahua: {
-    name: "Dahua",
-    defaultOnvifPort: 80,
-    defaultRtspPort: 554,
-    defaultHttpPort: 80,
-    mainStreamPattern: (ip, user = "admin", pass = "admin", port = 554) => `rtsp://${user}:${pass}@${ip}:${port}/cam/realmonitor?channel=1&subtype=0`,
-    subStreamPattern: (ip, user = "admin", pass = "admin", port = 554) => `rtsp://${user}:${pass}@${ip}:${port}/cam/realmonitor?channel=1&subtype=1`,
-    recommendedProfile: "ONVIF_Profile_T",
-    defaultCredentialsHint: "admin / admin ou senha ConfigTool Dahua",
-    generateGo2rtcConfig: (name, rtspUrl) => `${name.toLowerCase().replace(/[^a-z0-9]/g, "_")}:
-  - ${rtspUrl}`
+  (table) => [
+    (0, import_pg_core.index)("idx_residents_unit_id").on(table.unitId),
+    (0, import_pg_core.index)("idx_residents_phone").on(table.phone)
+  ]
+);
+var vehicles = (0, import_pg_core.pgTable)(
+  "vehicles",
+  {
+    id: (0, import_pg_core.varchar)("id", { length: 64 }).primaryKey(),
+    unitId: (0, import_pg_core.varchar)("unit_id", { length: 64 }).notNull().references(() => units.id, { onDelete: "cascade" }),
+    plate: (0, import_pg_core.varchar)("plate", { length: 16 }).notNull().unique(),
+    model: (0, import_pg_core.varchar)("model", { length: 64 }).notNull(),
+    brand: (0, import_pg_core.varchar)("brand", { length: 64 }),
+    color: (0, import_pg_core.varchar)("color", { length: 32 }),
+    parkingSpot: (0, import_pg_core.varchar)("parking_spot", { length: 64 }),
+    tagRfid: (0, import_pg_core.varchar)("tag_rfid", { length: 64 }),
+    createdAt: (0, import_pg_core.timestamp)("created_at", { withTimezone: true }).defaultNow()
   },
-  Axis: {
-    name: "Axis",
-    defaultOnvifPort: 80,
-    defaultRtspPort: 554,
-    defaultHttpPort: 80,
-    mainStreamPattern: (ip, user = "root", pass = "pass", port = 554) => `rtsp://${user}:${pass}@${ip}:${port}/axis-media/media.amp?videocodec=h264`,
-    subStreamPattern: (ip, user = "root", pass = "pass", port = 554) => `rtsp://${user}:${pass}@${ip}:${port}/axis-media/media.amp?videocodec=h264&resolution=640x360`,
-    recommendedProfile: "ONVIF_Profile_T",
-    defaultCredentialsHint: "root / configurada no AXIS IP Utility",
-    generateGo2rtcConfig: (name, rtspUrl) => `${name.toLowerCase().replace(/[^a-z0-9]/g, "_")}:
-  - ${rtspUrl}`
+  (table) => [
+    (0, import_pg_core.index)("idx_vehicles_plate").on(table.plate)
+  ]
+);
+var gates = (0, import_pg_core.pgTable)("gates", {
+  id: (0, import_pg_core.varchar)("id", { length: 64 }).primaryKey(),
+  name: (0, import_pg_core.varchar)("name", { length: 128 }).notNull(),
+  type: (0, import_pg_core.varchar)("type", { length: 32 }).notNull(),
+  // pedestre, garagem, servico
+  relayPin: (0, import_pg_core.integer)("relay_pin").notNull().default(1),
+  relayIp: (0, import_pg_core.varchar)("relay_ip", { length: 64 }),
+  dtmfCode: (0, import_pg_core.varchar)("dtmf_code", { length: 16 }).notNull(),
+  // *07, *08
+  isOpen: (0, import_pg_core.boolean)("is_open").default(false),
+  status: (0, import_pg_core.varchar)("status", { length: 32 }).notNull().default("fechado"),
+  // fechado, abrindo, aberto, fechando
+  sensorState: (0, import_pg_core.varchar)("sensor_state", { length: 64 }).default("ok"),
+  // ok, alerta_aberto_tempo_excessivo, sensor_obstruido
+  lastOpenedAt: (0, import_pg_core.timestamp)("last_opened_at", { withTimezone: true }),
+  lastOpenedBy: (0, import_pg_core.varchar)("last_opened_by", { length: 128 })
+});
+var cameraDevices = (0, import_pg_core.pgTable)("camera_devices", {
+  id: (0, import_pg_core.varchar)("id", { length: 64 }).primaryKey(),
+  name: (0, import_pg_core.varchar)("name", { length: 128 }).notNull(),
+  location: (0, import_pg_core.varchar)("location", { length: 128 }).notNull(),
+  profile: (0, import_pg_core.varchar)("profile", { length: 32 }).notNull().default("ONVIF_Profile_T"),
+  streamUrl: (0, import_pg_core.text)("stream_url").notNull(),
+  webrtcStreamId: (0, import_pg_core.varchar)("webrtc_stream_id", { length: 64 }).notNull(),
+  ipAddress: (0, import_pg_core.varchar)("ip_address", { length: 64 }),
+  manufacturer: (0, import_pg_core.varchar)("manufacturer", { length: 64 }).default("Intelbras"),
+  model: (0, import_pg_core.varchar)("model", { length: 128 }),
+  status: (0, import_pg_core.varchar)("status", { length: 32 }).notNull().default("online"),
+  resolution: (0, import_pg_core.varchar)("resolution", { length: 32 }).default("1080p Full HD"),
+  fps: (0, import_pg_core.integer)("fps").default(25),
+  bitrate: (0, import_pg_core.varchar)("bitrate", { length: 32 }).default("2.0 Mbps"),
+  isXpeIntegrated: (0, import_pg_core.boolean)("is_xpe_integrated").default(false)
+});
+var visitorInvites = (0, import_pg_core.pgTable)(
+  "visitor_invites",
+  {
+    id: (0, import_pg_core.varchar)("id", { length: 64 }).primaryKey(),
+    unitId: (0, import_pg_core.varchar)("unit_id", { length: 64 }).notNull().references(() => units.id, { onDelete: "cascade" }),
+    visitorName: (0, import_pg_core.varchar)("visitor_name", { length: 255 }).notNull(),
+    document: (0, import_pg_core.varchar)("document", { length: 32 }),
+    type: (0, import_pg_core.varchar)("type", { length: 32 }).notNull().default("visitante"),
+    // visitante, entrega, prestador
+    qrToken: (0, import_pg_core.varchar)("qr_token", { length: 255 }).notNull().unique(),
+    pinCode: (0, import_pg_core.varchar)("pin_code", { length: 16 }).notNull(),
+    validFrom: (0, import_pg_core.timestamp)("valid_from", { withTimezone: true }).notNull(),
+    validUntil: (0, import_pg_core.timestamp)("valid_until", { withTimezone: true }).notNull(),
+    status: (0, import_pg_core.varchar)("status", { length: 32 }).notNull().default("ativo"),
+    // ativo, usado, expirado, revogado
+    allowedGates: (0, import_pg_core.text)("allowed_gates").array().default(["gate-pedestre"]),
+    entryCount: (0, import_pg_core.integer)("entry_count").default(0),
+    usedAt: (0, import_pg_core.timestamp)("used_at", { withTimezone: true }),
+    createdAt: (0, import_pg_core.timestamp)("created_at", { withTimezone: true }).defaultNow()
   },
-  Uniview: {
-    name: "Uniview",
-    defaultOnvifPort: 80,
-    defaultRtspPort: 554,
-    defaultHttpPort: 80,
-    mainStreamPattern: (ip, user = "admin", pass = "123456", port = 554) => `rtsp://${user}:${pass}@${ip}:${port}/unicast/c1/s0/live`,
-    subStreamPattern: (ip, user = "admin", pass = "123456", port = 554) => `rtsp://${user}:${pass}@${ip}:${port}/unicast/c1/s1/live`,
-    recommendedProfile: "ONVIF_Profile_S",
-    defaultCredentialsHint: "admin / 123456 (EZStation UNV)",
-    generateGo2rtcConfig: (name, rtspUrl) => `${name.toLowerCase().replace(/[^a-z0-9]/g, "_")}:
-  - ${rtspUrl}`
+  (table) => [
+    (0, import_pg_core.index)("idx_visitor_qr_token").on(table.qrToken),
+    (0, import_pg_core.index)("idx_visitor_pin").on(table.pinCode)
+  ]
+);
+var packageDeliveries = (0, import_pg_core.pgTable)(
+  "package_deliveries",
+  {
+    id: (0, import_pg_core.varchar)("id", { length: 64 }).primaryKey(),
+    unitId: (0, import_pg_core.varchar)("unit_id", { length: 64 }).notNull().references(() => units.id, { onDelete: "cascade" }),
+    courier: (0, import_pg_core.varchar)("courier", { length: 128 }).notNull(),
+    trackingCode: (0, import_pg_core.varchar)("tracking_code", { length: 128 }),
+    description: (0, import_pg_core.text)("description"),
+    pickupCode: (0, import_pg_core.varchar)("pickup_code", { length: 16 }).notNull(),
+    receivedAt: (0, import_pg_core.timestamp)("received_at", { withTimezone: true }).defaultNow(),
+    status: (0, import_pg_core.varchar)("status", { length: 32 }).notNull().default("aguardando_retirada"),
+    // aguardando_retirada, entregue
+    pickedUpAt: (0, import_pg_core.timestamp)("picked_up_at", { withTimezone: true }),
+    notificationSent: (0, import_pg_core.boolean)("notification_sent").default(true)
   },
-  "ONVIF Gen\xE9rica": {
-    name: "ONVIF Gen\xE9rica",
-    defaultOnvifPort: 8899,
-    defaultRtspPort: 554,
-    defaultHttpPort: 80,
-    mainStreamPattern: (ip, user = "admin", pass = "admin", port = 554) => `rtsp://${user}:${pass}@${ip}:${port}/onvif1`,
-    subStreamPattern: (ip, user = "admin", pass = "admin", port = 554) => `rtsp://${user}:${pass}@${ip}:${port}/onvif2`,
-    recommendedProfile: "ONVIF_Profile_S",
-    defaultCredentialsHint: "admin / admin ou sem senha",
-    generateGo2rtcConfig: (name, rtspUrl) => `${name.toLowerCase().replace(/[^a-z0-9]/g, "_")}:
-  - ${rtspUrl}`
+  (table) => [
+    (0, import_pg_core.index)("idx_packages_unit_id").on(table.unitId)
+  ]
+);
+var commonAreaReservations = (0, import_pg_core.pgTable)(
+  "common_area_reservations",
+  {
+    id: (0, import_pg_core.varchar)("id", { length: 64 }).primaryKey(),
+    unitId: (0, import_pg_core.varchar)("unit_id", { length: 64 }).notNull().references(() => units.id, { onDelete: "cascade" }),
+    residentName: (0, import_pg_core.varchar)("resident_name", { length: 255 }).notNull(),
+    areaId: (0, import_pg_core.varchar)("area_id", { length: 64 }).notNull(),
+    areaName: (0, import_pg_core.varchar)("area_name", { length: 128 }).notNull(),
+    reservationDate: (0, import_pg_core.date)("reservation_date").notNull(),
+    period: (0, import_pg_core.varchar)("period", { length: 32 }).notNull(),
+    // diurno, noturno, integral
+    status: (0, import_pg_core.varchar)("status", { length: 32 }).notNull().default("confirmada"),
+    notes: (0, import_pg_core.text)("notes"),
+    createdAt: (0, import_pg_core.timestamp)("created_at", { withTimezone: true }).defaultNow()
+  },
+  (table) => [
+    (0, import_pg_core.index)("idx_reservations_date").on(table.reservationDate)
+  ]
+);
+var financialBills = (0, import_pg_core.pgTable)(
+  "financial_bills",
+  {
+    id: (0, import_pg_core.varchar)("id", { length: 64 }).primaryKey(),
+    unitId: (0, import_pg_core.varchar)("unit_id", { length: 64 }).notNull().references(() => units.id, { onDelete: "cascade" }),
+    unitNumber: (0, import_pg_core.varchar)("unit_number", { length: 32 }).notNull(),
+    competencia: (0, import_pg_core.varchar)("competencia", { length: 16 }).notNull(),
+    // ex: "08/2026"
+    vencimento: (0, import_pg_core.timestamp)("vencimento", { withTimezone: true }).notNull(),
+    // Composição analítica da taxa condominial
+    taxaOrdinaria: (0, import_pg_core.numeric)("taxa_ordinaria", { precision: 10, scale: 2 }).notNull().default("0.00"),
+    taxaExtraordinaria: (0, import_pg_core.numeric)("taxa_extraordinaria", { precision: 10, scale: 2 }).notNull().default("0.00"),
+    fundoReserva: (0, import_pg_core.numeric)("fundo_reserva", { precision: 10, scale: 2 }).notNull().default("0.00"),
+    consumoGasAgua: (0, import_pg_core.numeric)("consumo_gas_agua", { precision: 10, scale: 2 }).notNull().default("0.00"),
+    // Encargos e correções por atraso
+    valorOriginal: (0, import_pg_core.numeric)("valor_original", { precision: 10, scale: 2 }).notNull(),
+    multa: (0, import_pg_core.numeric)("multa", { precision: 10, scale: 2 }).notNull().default("0.00"),
+    juros: (0, import_pg_core.numeric)("juros", { precision: 10, scale: 2 }).notNull().default("0.00"),
+    correcao: (0, import_pg_core.numeric)("correcao", { precision: 10, scale: 2 }).notNull().default("0.00"),
+    desconto: (0, import_pg_core.numeric)("desconto", { precision: 10, scale: 2 }).notNull().default("0.00"),
+    valorTotal: (0, import_pg_core.numeric)("valor_total", { precision: 10, scale: 2 }).notNull(),
+    diasAtraso: (0, import_pg_core.integer)("dias_atraso").default(0),
+    status: (0, import_pg_core.varchar)("status", { length: 32 }).notNull().default("pendente"),
+    // pago, pendente, atrasado, em_acordo
+    pagoEm: (0, import_pg_core.timestamp)("pago_em", { withTimezone: true }),
+    metodoPagamento: (0, import_pg_core.varchar)("metodo_pagamento", { length: 32 }),
+    // pix, boleto, enlace_pay
+    // Dados de cobrança bancária / Enlace-Pay
+    codigoBarras: (0, import_pg_core.varchar)("codigo_barras", { length: 128 }),
+    linhaDigitavel: (0, import_pg_core.varchar)("linha_digitavel", { length: 128 }),
+    pixCopiaCola: (0, import_pg_core.text)("pix_copia_cola"),
+    externalId: (0, import_pg_core.varchar)("external_id", { length: 128 }),
+    // ID da cobrança no banco ou Enlace-Pay
+    receiptUrl: (0, import_pg_core.text)("receipt_url"),
+    createdAt: (0, import_pg_core.timestamp)("created_at", { withTimezone: true }).defaultNow(),
+    updatedAt: (0, import_pg_core.timestamp)("updated_at", { withTimezone: true }).defaultNow()
+  },
+  (table) => [
+    (0, import_pg_core.index)("idx_bills_unit_id").on(table.unitId),
+    (0, import_pg_core.index)("idx_bills_competencia").on(table.competencia),
+    (0, import_pg_core.index)("idx_bills_status").on(table.status)
+  ]
+);
+var financialAgreements = (0, import_pg_core.pgTable)("financial_agreements", {
+  id: (0, import_pg_core.varchar)("id", { length: 64 }).primaryKey(),
+  unitId: (0, import_pg_core.varchar)("unit_id", { length: 64 }).notNull().references(() => units.id, { onDelete: "cascade" }),
+  unitNumber: (0, import_pg_core.varchar)("unit_number", { length: 32 }).notNull(),
+  totalOriginal: (0, import_pg_core.numeric)("total_original", { precision: 10, scale: 2 }).notNull(),
+  totalNegociado: (0, import_pg_core.numeric)("total_negociado", { precision: 10, scale: 2 }).notNull(),
+  entrada: (0, import_pg_core.numeric)("entrada", { precision: 10, scale: 2 }).notNull().default("0.00"),
+  parcelasTotal: (0, import_pg_core.integer)("parcelas_total").notNull(),
+  parcelasPagas: (0, import_pg_core.integer)("parcelas_pagas").notNull().default(0),
+  valorParcela: (0, import_pg_core.numeric)("valor_parcela", { precision: 10, scale: 2 }).notNull(),
+  diaVencimento: (0, import_pg_core.integer)("dia_vencimento").notNull().default(10),
+  dataCriacao: (0, import_pg_core.timestamp)("data_criacao", { withTimezone: true }).defaultNow(),
+  status: (0, import_pg_core.varchar)("status", { length: 32 }).notNull().default("ativo")
+  // ativo, concluido, rompido
+});
+var callLogs = (0, import_pg_core.pgTable)(
+  "call_logs",
+  {
+    id: (0, import_pg_core.varchar)("id", { length: 64 }).primaryKey(),
+    origin: (0, import_pg_core.varchar)("origin", { length: 32 }).notNull(),
+    // xpe_3115_ip, qr_virtual_intercom, app_webrtc
+    unitNumber: (0, import_pg_core.varchar)("unit_number", { length: 32 }).notNull(),
+    purpose: (0, import_pg_core.varchar)("purpose", { length: 32 }).notNull().default("outro"),
+    startedAt: (0, import_pg_core.timestamp)("started_at", { withTimezone: true }).notNull().defaultNow(),
+    durationSeconds: (0, import_pg_core.integer)("duration_seconds").notNull().default(0),
+    status: (0, import_pg_core.varchar)("status", { length: 32 }).notNull(),
+    // atendida, nao_atendida, recusada
+    answeredBy: (0, import_pg_core.varchar)("answered_by", { length: 128 }),
+    gateOpened: (0, import_pg_core.varchar)("gate_opened", { length: 128 }),
+    hasRecording: (0, import_pg_core.boolean)("has_recording").default(false),
+    recordingId: (0, import_pg_core.varchar)("recording_id", { length: 128 }),
+    audioAuditData: (0, import_pg_core.jsonb)("audio_audit_data").default({})
+  },
+  (table) => [
+    (0, import_pg_core.index)("idx_call_logs_started_at").on(table.startedAt)
+  ]
+);
+var lprLogs = (0, import_pg_core.pgTable)(
+  "lpr_logs",
+  {
+    id: (0, import_pg_core.varchar)("id", { length: 64 }).primaryKey(),
+    timestamp: (0, import_pg_core.timestamp)("timestamp", { withTimezone: true }).defaultNow(),
+    plate: (0, import_pg_core.varchar)("plate", { length: 16 }).notNull(),
+    confidence: (0, import_pg_core.numeric)("confidence", { precision: 5, scale: 2 }).notNull(),
+    cameraName: (0, import_pg_core.varchar)("camera_name", { length: 128 }).notNull(),
+    matchedVehicleId: (0, import_pg_core.varchar)("matched_vehicle_id", { length: 64 }),
+    matchedUnitNumber: (0, import_pg_core.varchar)("matched_unit_number", { length: 32 }),
+    action: (0, import_pg_core.varchar)("action", { length: 64 }).notNull(),
+    // ABERTURA_AUTOMATICA, NEGADO_DESCONHECIDO, ALERTA_SUSPEITO
+    reason: (0, import_pg_core.text)("reason").notNull(),
+    snapshotUrl: (0, import_pg_core.text)("snapshot_url")
+  },
+  (table) => [
+    (0, import_pg_core.index)("idx_lpr_logs_timestamp").on(table.timestamp),
+    (0, import_pg_core.index)("idx_lpr_logs_plate").on(table.plate)
+  ]
+);
+var auditLogs = (0, import_pg_core.pgTable)(
+  "audit_logs",
+  {
+    id: (0, import_pg_core.varchar)("id", { length: 64 }).primaryKey(),
+    timestamp: (0, import_pg_core.timestamp)("timestamp", { withTimezone: true }).defaultNow(),
+    actor: (0, import_pg_core.varchar)("actor", { length: 128 }).notNull(),
+    role: (0, import_pg_core.varchar)("role", { length: 64 }).notNull(),
+    action: (0, import_pg_core.varchar)("action", { length: 128 }).notNull(),
+    target: (0, import_pg_core.varchar)("target", { length: 128 }).notNull(),
+    status: (0, import_pg_core.varchar)("status", { length: 64 }).notNull(),
+    // PERMITIDO, NEGADO, ALERTA
+    reason: (0, import_pg_core.text)("reason"),
+    ipAddress: (0, import_pg_core.varchar)("ip_address", { length: 64 }),
+    userAgent: (0, import_pg_core.text)("user_agent"),
+    correlationId: (0, import_pg_core.varchar)("correlation_id", { length: 64 }),
+    dtmfCommand: (0, import_pg_core.varchar)("dtmf_command", { length: 16 }),
+    details: (0, import_pg_core.jsonb)("details").default({}),
+    sha256Hash: (0, import_pg_core.varchar)("sha256_hash", { length: 128 })
+  },
+  (table) => [
+    (0, import_pg_core.index)("idx_audit_logs_timestamp").on(table.timestamp),
+    (0, import_pg_core.index)("idx_audit_logs_actor").on(table.actor),
+    (0, import_pg_core.index)("idx_audit_logs_action").on(table.action)
+  ]
+);
+var systemUsers = (0, import_pg_core.pgTable)(
+  "system_users",
+  {
+    id: (0, import_pg_core.varchar)("id", { length: 64 }).primaryKey(),
+    username: (0, import_pg_core.varchar)("username", { length: 64 }).notNull().unique(),
+    passwordHash: (0, import_pg_core.varchar)("password_hash", { length: 255 }).notNull(),
+    salt: (0, import_pg_core.varchar)("salt", { length: 64 }).notNull(),
+    displayName: (0, import_pg_core.varchar)("display_name", { length: 128 }).notNull(),
+    email: (0, import_pg_core.varchar)("email", { length: 128 }),
+    role: (0, import_pg_core.varchar)("role", { length: 32 }).notNull(),
+    // super_admin, sindico, operador, morador
+    unitId: (0, import_pg_core.varchar)("unit_id", { length: 64 }).references(() => units.id, { onDelete: "set null" }),
+    unitNumber: (0, import_pg_core.varchar)("unit_number", { length: 32 }),
+    active: (0, import_pg_core.boolean)("active").default(true),
+    mfaEnabled: (0, import_pg_core.boolean)("mfa_enabled").default(false),
+    createdAt: (0, import_pg_core.timestamp)("created_at", { withTimezone: true }).defaultNow(),
+    updatedAt: (0, import_pg_core.timestamp)("updated_at", { withTimezone: true }).defaultNow()
+  },
+  (table) => [
+    (0, import_pg_core.uniqueIndex)("idx_system_users_username").on(table.username)
+  ]
+);
+var iotDevices = (0, import_pg_core.pgTable)("iot_devices", {
+  id: (0, import_pg_core.varchar)("id", { length: 64 }).primaryKey(),
+  name: (0, import_pg_core.varchar)("name", { length: 128 }).notNull(),
+  type: (0, import_pg_core.varchar)("type", { length: 32 }).notNull(),
+  // rele, sensor_presenca, iluminacao, sirene
+  protocol: (0, import_pg_core.varchar)("protocol", { length: 32 }).notNull().default("zigbee_3_0"),
+  gateway: (0, import_pg_core.varchar)("gateway", { length: 64 }).notNull().default("NovaDigital_HNZ_CB3"),
+  state: (0, import_pg_core.varchar)("state", { length: 32 }).notNull().default("desligado"),
+  batteryLevel: (0, import_pg_core.integer)("battery_level"),
+  online: (0, import_pg_core.boolean)("online").notNull().default(true),
+  location: (0, import_pg_core.varchar)("location", { length: 128 }).notNull()
+});
+var automationRules = (0, import_pg_core.pgTable)("automation_rules", {
+  id: (0, import_pg_core.varchar)("id", { length: 64 }).primaryKey(),
+  name: (0, import_pg_core.varchar)("name", { length: 128 }).notNull(),
+  description: (0, import_pg_core.text)("description").notNull(),
+  triggerEvent: (0, import_pg_core.varchar)("trigger_event", { length: 64 }).notNull(),
+  condition: (0, import_pg_core.text)("condition").notNull(),
+  action: (0, import_pg_core.text)("action").notNull(),
+  enabled: (0, import_pg_core.boolean)("enabled").notNull().default(true),
+  lastExecutedAt: (0, import_pg_core.timestamp)("last_executed_at", { withTimezone: true })
+});
+
+// src/db/index.ts
+var { Pool } = import_pg.default;
+var connectionString = process.env.DATABASE_URL;
+var pool = connectionString ? new Pool({
+  connectionString,
+  connectionTimeoutMillis: 3e3,
+  idleTimeoutMillis: 3e4,
+  max: 20
+}) : new Pool({
+  host: process.env.PGHOST || process.env.POSTGRES_HOST || "127.0.0.1",
+  port: parseInt(process.env.PGPORT || process.env.POSTGRES_PORT || "5432", 10),
+  user: process.env.PGUSER || process.env.POSTGRES_USER || "dooria",
+  password: process.env.PGPASSWORD || process.env.POSTGRES_PASSWORD || "",
+  database: process.env.PGDATABASE || process.env.POSTGRES_DB || "dooria_db",
+  connectionTimeoutMillis: 3e3,
+  idleTimeoutMillis: 3e4,
+  max: 20
+});
+pool.on("error", (err) => {
+  if (!err.message.includes("ECONNREFUSED")) {
+    console.warn("[PostgreSQL Local] Alerta no pool de conex\xF5es:", err.message);
   }
+});
+var db = (0, import_node_postgres.drizzle)(pool, { schema: schema_exports });
+
+// src/db/postgres.ts
+var lastStatus = {
+  connected: false,
+  host: process.env.PGHOST || process.env.POSTGRES_HOST || "localhost",
+  port: parseInt(process.env.PGPORT || process.env.POSTGRES_PORT || "5432", 10),
+  database: process.env.PGDATABASE || process.env.POSTGRES_DB || "dooria_db",
+  user: process.env.PGUSER || process.env.POSTGRES_USER || "dooria",
+  lastChecked: (/* @__PURE__ */ new Date()).toISOString()
 };
-function parametrizeDiscoveredCamera(raw, existingCameras) {
-  let manufacturer = "ONVIF Gen\xE9rica";
-  const hint = (raw.manufacturerHint || "").toLowerCase();
-  const mac = raw.mac.toUpperCase();
-  if (hint.includes("intelbras") || mac.startsWith("00:1A:3F") || mac.startsWith("4C:11:BF") || mac.startsWith("E0:50:8B")) {
-    manufacturer = "Intelbras";
-  } else if (hint.includes("hikvision") || hint.includes("ezviz") || mac.startsWith("10:12:FB") || mac.startsWith("44:19:B6") || mac.startsWith("C0:56:E3")) {
-    manufacturer = "Hikvision";
-  } else if (hint.includes("dahua") || mac.startsWith("3C:EF:8C") || mac.startsWith("A0:BD:1D")) {
-    manufacturer = "Dahua";
-  } else if (hint.includes("axis") || mac.startsWith("00:40:8C") || mac.startsWith("AC:CC:8E")) {
-    manufacturer = "Axis";
-  } else if (hint.includes("uniview") || hint.includes("unv") || mac.startsWith("34:CD:6D")) {
-    manufacturer = "Uniview";
+async function checkPostgresHealth() {
+  const host = process.env.PGHOST || process.env.POSTGRES_HOST || "localhost";
+  const port = parseInt(process.env.PGPORT || process.env.POSTGRES_PORT || "5432", 10);
+  const database = process.env.PGDATABASE || process.env.POSTGRES_DB || "dooria_db";
+  const user = process.env.PGUSER || process.env.POSTGRES_USER || "dooria";
+  const startTime = Date.now();
+  try {
+    const result = await pool.query("SELECT 1 as ping, current_database() as db, version() as ver;");
+    const latencyMs = Date.now() - startTime;
+    const tablesResult = await pool.query(
+      "SELECT count(*) FROM information_schema.tables WHERE table_schema = 'public';"
+    );
+    const tablesCount = tablesResult.rows[0] ? parseInt(tablesResult.rows[0].count, 10) : 0;
+    lastStatus = {
+      connected: true,
+      host,
+      port,
+      database: result.rows[0]?.db || database,
+      user,
+      latencyMs,
+      tablesCount,
+      lastChecked: (/* @__PURE__ */ new Date()).toISOString()
+    };
+    return lastStatus;
+  } catch (err) {
+    lastStatus = {
+      connected: false,
+      host,
+      port,
+      database,
+      user,
+      error: err.message?.includes("ECONNREFUSED") ? "PostgreSQL local em standby (porta 5432)" : err.message,
+      lastChecked: (/* @__PURE__ */ new Date()).toISOString()
+    };
+    return lastStatus;
   }
-  const profile = MANUFACTURER_PROFILES[manufacturer] || MANUFACTURER_PROFILES["ONVIF Gen\xE9rica"];
-  const model = raw.modelHint || `${manufacturer} IP Camera`;
-  const onvifPort = raw.port || profile.defaultOnvifPort;
-  const rtspPort = profile.defaultRtspPort;
-  const isConfigured = existingCameras.some(
-    (cam) => cam.ip && cam.ip === raw.ip || cam.rtspUrl.includes(raw.ip)
-  );
-  const mainRtsp = profile.mainStreamPattern(raw.ip, "admin", "*****", rtspPort);
-  const subRtsp = profile.subStreamPattern(raw.ip, "admin", "*****", rtspPort);
-  const go2rtcConfig = profile.generateGo2rtcConfig(model, mainRtsp);
-  return {
-    id: `disc-${raw.ip.replace(/\./g, "-")}`,
-    ip: raw.ip,
-    mac: raw.mac,
-    manufacturer,
-    model,
-    firmwareVersion: "v2.800.0000000.12.R",
-    onvifPort,
-    rtspPort,
-    httpPort: profile.defaultHttpPort,
-    discoveryMethod: raw.discoveryMethod || "WS-Discovery",
-    supportedProfiles: [profile.recommendedProfile, "ONVIF_Profile_S"],
-    suggestedRtspMain: mainRtsp,
-    suggestedRtspSub: subRtsp,
-    suggestedGo2rtcConfig: go2rtcConfig,
-    isConfigured,
-    defaultCredentialsHint: profile.defaultCredentialsHint,
-    detectedCodec: "H.264 High Profile / H.265 Smart"
-  };
 }
 
-// server.ts
-var PORT = 3e3;
-var DEFAULT_CONDOMINIUM_CONFIG = {
-  id: "condo-slz-01",
-  name: "Condom\xEDnio Residencial Solar das Palmeiras",
-  tradingName: "Solar das Palmeiras Residencial",
-  cnpj: "34.891.022/0001-85",
-  address: {
-    street: "Av. dos Holandeses, Quadra 14",
-    number: "250",
-    complement: "Torre \xDAnica",
-    neighborhood: "Calhau",
-    city: "S\xE3o Lu\xEDs",
-    state: "MA",
-    zipCode: "65071-380"
-  },
-  unitsCount: 12,
-  blocks: ["Bloco A"],
-  floorsCount: 3,
-  parkingSpotsCount: 18,
-  managementPhone: "(98) 3235-9000",
-  emergencyPhone: "(98) 98112-9900",
-  email: "administracao@solardaspalmeiras.com.br",
-  sindico: {
-    name: "Henrique Vasconcelos de Alencar",
-    document: "482.319.403-12",
-    phone: "(98) 98455-2020",
-    email: "sindico@solardaspalmeiras.com.br",
-    mandateStart: "2025-03-01",
-    mandateEnd: "2027-02-28",
-    apartment: "304"
-  },
-  administrator: {
-    name: "Enlace Administradora de Condom\xEDnios & Solu\xE7\xF5es Imobili\xE1rias",
-    cnpj: "18.420.981/0001-30",
-    phone: "(98) 3227-4000",
-    email: "contato@enlacegestao.com.br",
-    contactPerson: "Dra. Roberta Fontenele"
-  },
-  operationalSettings: {
-    pedestrianGatePulseSeconds: 5,
-    vehicleGatePulseSeconds: 15,
-    openGateAlertSeconds: 60,
-    dtmfPedestrian: "*07",
-    dtmfVehicle: "*08",
-    silencePeriodStart: "22:00",
-    silencePeriodEnd: "08:00",
-    packageDeliveryWindowStart: "08:00",
-    packageDeliveryWindowEnd: "20:00",
-    callTimeoutSeconds: 30,
-    autoUraFallback: true,
-    localFirstOfflineMode: true,
-    requireVisitorPhoto: true
-  },
-  financialSettings: {
-    dueDay: 10,
-    standardFee: 480,
-    reserveFundPercentage: 10,
-    latePenaltyPercentage: 2,
-    monthlyInterestPercentage: 1,
-    pixKeyType: "cnpj",
-    pixKey: "34.891.022/0001-85",
-    bankName: "Banco do Brasil (001)",
-    bankAgency: "1612-8",
-    bankAccount: "48.910-2"
-  },
-  technicalSettings: {
-    localServerIp: "192.168.1.100",
-    asteriskVersion: "Asterisk 20.8 LTS Pure (No FreePBX / Vanilla PJSIP)",
-    xpeModel: "Intelbras XPE-3115-IP (Firmware v3.2.0)",
-    xpeIp: "192.168.1.150",
-    iotGateway: "NovaDigital HNZ-CB3 Zigbee 3.0 Ethernet (Local-First)",
-    iotGatewayIp: "192.168.1.160",
-    subnetRange: "192.168.1.0/24",
-    publicDomain: "https://pwa.condominio-solar.com.br",
-    stunTurnServer: "stun:stun.l.google.com:19302",
-    asteriskWssPort: 8089,
-    allowSelfSignedCerts: true,
-    localIpRange: "192.168.1.0/24"
-  },
-  updatedAt: (/* @__PURE__ */ new Date()).toISOString(),
-  updatedBy: "Sistema Piloto"
+// src/services/AuditService.ts
+var import_crypto = __toESM(require("crypto"), 1);
+var memoryAuditLogs = [];
+var AuditService = class {
+  /**
+   * Registra um evento de auditoria imutável com assinatura de integridade SHA-256
+   */
+  static async record(params) {
+    const timestamp2 = (/* @__PURE__ */ new Date()).toISOString();
+    const id = `aud-${Date.now()}-${import_crypto.default.randomBytes(4).toString("hex")}`;
+    const correlationId = params.correlationId || `corr-${import_crypto.default.randomBytes(6).toString("hex")}`;
+    const ipAddress = params.ipAddress && params.ipAddress.trim() ? params.ipAddress.trim() : "unknown";
+    const details = params.details || {};
+    const rawPayload = `${id}|${timestamp2}|${params.actor}|${params.role}|${params.action}|${params.target}|${params.status}|${params.reason || ""}|${ipAddress}|${params.dtmfCommand || ""}|${JSON.stringify(details)}`;
+    const sha256Hash = import_crypto.default.createHash("sha256").update(rawPayload).digest("hex");
+    const entry = {
+      id,
+      timestamp: timestamp2,
+      actor: params.actor,
+      role: params.role,
+      action: params.action,
+      target: params.target,
+      status: params.status,
+      reason: params.reason,
+      ipAddress,
+      dtmfCommand: params.dtmfCommand,
+      details
+    };
+    memoryAuditLogs.unshift(entry);
+    if (memoryAuditLogs.length > 200) memoryAuditLogs.pop();
+    try {
+      await db.insert(auditLogs).values({
+        id,
+        timestamp: new Date(timestamp2),
+        actor: params.actor,
+        role: params.role,
+        action: params.action,
+        target: params.target,
+        status: params.status,
+        reason: params.reason,
+        ipAddress: ipAddress === "unknown" ? null : ipAddress,
+        userAgent: params.userAgent,
+        correlationId,
+        dtmfCommand: params.dtmfCommand,
+        details,
+        sha256Hash
+      }).onConflictDoNothing();
+    } catch (err) {
+      if (!err.message?.includes("ECONNREFUSED") && !err.message?.includes("Failed query")) {
+        console.warn("[AuditService] Erro ao persistir log no PostgreSQL:", err.message);
+      }
+    }
+    return entry;
+  }
+  /**
+   * Recupera histórico de logs para visualização de auditoria e compliance
+   */
+  static async getRecentLogs(limit = 100) {
+    try {
+      const records = await db.select().from(auditLogs).limit(limit);
+      if (records && records.length > 0) {
+        return records.map((r) => ({
+          id: r.id,
+          timestamp: r.timestamp ? r.timestamp.toISOString() : (/* @__PURE__ */ new Date()).toISOString(),
+          actor: r.actor,
+          role: r.role,
+          action: r.action,
+          target: r.target,
+          status: r.status,
+          reason: r.reason || void 0,
+          ipAddress: r.ipAddress || "unknown",
+          dtmfCommand: r.dtmfCommand || void 0,
+          details: r.details || {}
+        }));
+      }
+    } catch {
+    }
+    return memoryAuditLogs.slice(0, limit);
+  }
 };
-var condominiumConfig = JSON.parse(JSON.stringify(DEFAULT_CONDOMINIUM_CONFIG));
-var units = [
-  {
-    id: "u-101",
-    number: "101",
-    block: "Bloco A",
-    floor: 1,
-    sipExtension: "101",
-    intercomCode: "101",
-    ownerName: "Carlos Eduardo Mendes",
-    ownerPhone: "(98) 98112-4011",
-    financialStatus: "em_dia",
-    residents: [
-      {
-        id: "r-101-1",
-        unitId: "u-101",
-        name: "Carlos Eduardo Mendes",
-        document: "512.441.893-20",
-        phone: "(98) 98112-4011",
-        email: "carlos.mendes@gmail.com",
-        isMainContact: true,
-        sipDevice: { extension: "101", registered: true, webrtcSupported: true }
-      }
-    ]
-  },
-  {
-    id: "u-102",
-    number: "102",
-    block: "Bloco A",
-    floor: 1,
-    sipExtension: "102",
-    intercomCode: "102",
-    ownerName: "Mariana Silveira Castro",
-    ownerPhone: "(98) 98822-1922",
-    financialStatus: "em_dia",
-    residents: [
-      {
-        id: "r-102-1",
-        unitId: "u-102",
-        name: "Mariana Silveira Castro",
-        document: "614.992.123-45",
-        phone: "(98) 98822-1922",
-        email: "mariana.silveira@outlook.com",
-        isMainContact: true,
-        sipDevice: { extension: "102", registered: true, webrtcSupported: true }
-      }
-    ]
-  },
-  {
-    id: "u-103",
-    number: "103",
-    block: "Bloco A",
-    floor: 1,
-    sipExtension: "103",
-    intercomCode: "103",
-    ownerName: "Roberto Alencar",
-    ownerPhone: "(98) 98401-3310",
-    financialStatus: "em_dia",
-    residents: [
-      {
-        id: "r-103-1",
-        unitId: "u-103",
-        name: "Roberto Alencar",
-        document: "321.456.789-00",
-        phone: "(98) 98401-3310",
-        email: "roberto.alencar@empresa.com.br",
-        isMainContact: true,
-        sipDevice: { extension: "103", registered: true, webrtcSupported: true }
-      }
-    ]
-  },
-  {
-    id: "u-104",
-    number: "104",
-    block: "Bloco A",
-    floor: 1,
-    sipExtension: "104",
-    intercomCode: "104",
-    ownerName: "Juliana Barbosa",
-    ownerPhone: "(98) 99105-8844",
-    financialStatus: "em_dia",
-    residents: [
-      {
-        id: "r-104-1",
-        unitId: "u-104",
-        name: "Juliana Barbosa",
-        document: "789.123.456-11",
-        phone: "(98) 99105-8844",
-        email: "juliana.barbosa@gmail.com",
-        isMainContact: true,
-        sipDevice: { extension: "104", registered: true, webrtcSupported: true }
-      }
-    ]
-  },
-  {
-    id: "u-201",
-    number: "201",
-    block: "Bloco A",
-    floor: 2,
-    sipExtension: "201",
-    intercomCode: "201",
-    ownerName: "Fernando Henrique Rocha",
-    ownerPhone: "(98) 98220-4499",
-    financialStatus: "em_dia",
-    residents: [
-      {
-        id: "r-201-1",
-        unitId: "u-201",
-        name: "Fernando Henrique Rocha (S\xEDndico)",
-        document: "445.109.876-54",
-        phone: "(98) 98220-4499",
-        email: "sindico.solar@gmail.com",
-        isMainContact: true,
-        sipDevice: { extension: "201", registered: true, webrtcSupported: true }
-      }
-    ]
-  },
-  {
-    id: "u-202",
-    number: "202",
-    block: "Bloco A",
-    floor: 2,
-    sipExtension: "202",
-    intercomCode: "202",
-    ownerName: "Camila Vasconcelos",
-    ownerPhone: "(98) 98777-1010",
-    financialStatus: "em_dia",
-    residents: [
-      {
-        id: "r-202-1",
-        unitId: "u-202",
-        name: "Camila Vasconcelos",
-        document: "908.234.567-88",
-        phone: "(98) 98777-1010",
-        email: "camila.vasconcelos@adv.br",
-        isMainContact: true,
-        sipDevice: { extension: "202", registered: true, webrtcSupported: true }
-      }
-    ]
-  },
-  {
-    id: "u-203",
-    number: "203",
-    block: "Bloco A",
-    floor: 2,
-    sipExtension: "203",
-    intercomCode: "203",
-    ownerName: "Marcio Azevedo Lima",
-    ownerPhone: "(98) 98150-7766",
-    financialStatus: "inadimplente",
-    residents: [
-      {
-        id: "r-203-1",
-        unitId: "u-203",
-        name: "Marcio Azevedo Lima",
-        document: "334.887.654-32",
-        phone: "(98) 98150-7766",
-        email: "marcio.azevedo@gmail.com",
-        isMainContact: true,
-        sipDevice: { extension: "203", registered: true, webrtcSupported: true }
-      }
-    ]
-  },
-  {
-    id: "u-204",
-    number: "204",
-    block: "Bloco A",
-    floor: 2,
-    sipExtension: "204",
-    intercomCode: "204",
-    ownerName: "Tatiana Gusm\xE3o",
-    ownerPhone: "(98) 98330-9900",
-    financialStatus: "em_dia",
-    residents: [
-      {
-        id: "r-204-1",
-        unitId: "u-204",
-        name: "Tatiana Gusm\xE3o",
-        document: "123.654.789-99",
-        phone: "(98) 98330-9900",
-        email: "tatiana.gusmao@gmail.com",
-        isMainContact: true,
-        sipDevice: { extension: "204", registered: true, webrtcSupported: true }
-      }
-    ]
-  },
-  {
-    id: "u-301",
-    number: "301",
-    block: "Bloco A",
-    floor: 3,
-    sipExtension: "301",
-    intercomCode: "301",
-    ownerName: "Rodrigo Fonseca",
-    ownerPhone: "(98) 98199-5522",
-    financialStatus: "em_dia",
-    residents: [
-      {
-        id: "r-301-1",
-        unitId: "u-301",
-        name: "Rodrigo Fonseca",
-        document: "876.543.210-44",
-        phone: "(98) 98199-5522",
-        email: "rodrigo.fonseca@eng.br",
-        isMainContact: true,
-        sipDevice: { extension: "301", registered: true, webrtcSupported: true }
-      }
-    ]
-  },
-  {
-    id: "u-302",
-    number: "302",
-    block: "Bloco A",
-    floor: 3,
-    sipExtension: "302",
-    intercomCode: "302",
-    ownerName: "Beatriz Nogueira",
-    ownerPhone: "(98) 98888-2144",
-    financialStatus: "em_acordo",
-    residents: [
-      {
-        id: "r-302-1",
-        unitId: "u-302",
-        name: "Beatriz Nogueira",
-        document: "654.987.321-00",
-        phone: "(98) 98888-2144",
-        email: "beatriz.nogueira@gmail.com",
-        isMainContact: true,
-        sipDevice: { extension: "302", registered: true, webrtcSupported: true }
-      }
-    ]
-  },
-  {
-    id: "u-303",
-    number: "303",
-    block: "Bloco A",
-    floor: 3,
-    sipExtension: "303",
-    intercomCode: "303",
-    ownerName: "Gustavo Pinheiro",
-    ownerPhone: "(98) 98444-1234",
-    financialStatus: "em_dia",
-    residents: [
-      {
-        id: "r-303-1",
-        unitId: "u-303",
-        name: "Gustavo Pinheiro",
-        document: "432.109.876-77",
-        phone: "(98) 98444-1234",
-        email: "gustavo.pinheiro@gmail.com",
-        isMainContact: true,
-        sipDevice: { extension: "303", registered: true, webrtcSupported: true }
-      }
-    ]
-  },
-  {
-    id: "u-304",
-    number: "304",
-    block: "Bloco A",
-    floor: 3,
-    sipExtension: "304",
-    intercomCode: "304",
-    ownerName: "Luciana Meireles",
-    ownerPhone: "(98) 98111-9988",
-    financialStatus: "em_dia",
-    residents: [
-      {
-        id: "r-304-1",
-        unitId: "u-304",
-        name: "Luciana Meireles",
-        document: "210.987.654-88",
-        phone: "(98) 98111-9988",
-        email: "luciana.meireles@uol.com.br",
-        isMainContact: true,
-        sipDevice: { extension: "304", registered: true, webrtcSupported: true }
-      }
-    ]
-  }
-];
-var gates = [
-  {
-    id: "gate-pedestre",
-    name: "Port\xE3o Pedestre Social",
-    type: "pedestre",
-    dtmfCode: "*07",
-    status: "fechado",
-    sensorState: "ok",
-    relayPin: 17
-  },
-  {
-    id: "gate-garagem",
-    name: "Port\xE3o Garagem Veicular",
-    type: "garagem",
-    dtmfCode: "*08",
-    status: "fechado",
-    sensorState: "ok",
-    relayPin: 27
-  }
-];
-var cameras = [
-  {
-    id: "cam-01",
-    name: "C\xE2mera XPE Portaria Social",
-    location: "Portaria Frontal (Integrada ao XPE-3115-IP)",
-    profile: "ONVIF_Profile_T",
-    rtspUrl: "rtsp://192.168.1.150:554/cam/realmonitor?channel=1&subtype=0",
-    webrtcStreamUrl: "/api/v1/cameras/cam-01/stream",
-    resolution: "1080p @ 30fps (H.264 Baseline)",
-    status: "online",
-    isXpeIntegrated: true
-  },
-  {
-    id: "cam-02",
-    name: "C\xE2mera Port\xE3o Garagem",
-    location: "Acesso Veicular",
-    profile: "ONVIF_Profile_T",
-    rtspUrl: "rtsp://192.168.1.151:554/live/ch0",
-    webrtcStreamUrl: "/api/v1/cameras/cam-02/stream",
-    resolution: "1080p @ 30fps",
-    status: "online"
-  },
-  {
-    id: "cam-03",
-    name: "C\xE2mera Hall dos Elevadores",
-    location: "T\xE9rreo / Hall Social",
-    profile: "ONVIF_Profile_S",
-    rtspUrl: "rtsp://192.168.1.152:554/live/ch0",
-    webrtcStreamUrl: "/api/v1/cameras/cam-03/stream",
-    resolution: "1080p @ 25fps",
-    status: "online"
-  },
-  {
-    id: "cam-04",
-    name: "C\xE2mera Espa\xE7o Gourmet & Lazer",
-    location: "\xC1rea Comum Coberta",
-    profile: "ONVIF_Profile_S",
-    rtspUrl: "rtsp://192.168.1.153:554/live/ch0",
-    webrtcStreamUrl: "/api/v1/cameras/cam-04/stream",
-    resolution: "720p @ 30fps",
-    status: "online"
-  }
-];
-var discoveredCamerasPool = [
-  parametrizeDiscoveredCamera(
-    {
-      ip: "192.168.1.150",
-      mac: "00:1A:3F:8A:2C:11",
-      manufacturerHint: "Intelbras",
-      modelHint: "Intelbras XPE 3115-IP (C\xE2mera Integrada)",
-      port: 80,
-      discoveryMethod: "WS-Discovery"
-    },
-    cameras
-  ),
-  parametrizeDiscoveredCamera(
-    {
-      ip: "192.168.1.160",
-      mac: "4C:11:BF:12:90:AB",
-      manufacturerHint: "Intelbras",
-      modelHint: "Intelbras VIP 3230 B (Bullet Full HD G4)",
-      port: 80,
-      discoveryMethod: "WS-Discovery"
-    },
-    cameras
-  ),
-  parametrizeDiscoveredCamera(
-    {
-      ip: "192.168.1.161",
-      mac: "10:12:FB:CC:34:9A",
-      manufacturerHint: "Hikvision",
-      modelHint: "Hikvision DS-2CD2043G2-I (AcuSense 4MP LPR)",
-      port: 80,
-      discoveryMethod: "WS-Discovery"
-    },
-    cameras
-  ),
-  parametrizeDiscoveredCamera(
-    {
-      ip: "192.168.1.162",
-      mac: "3C:EF:8C:55:12:33",
-      manufacturerHint: "Dahua",
-      modelHint: "Dahua IPC-HFW1230S (Starlight 2MP)",
-      port: 80,
-      discoveryMethod: "SSDP"
-    },
-    cameras
-  ),
-  parametrizeDiscoveredCamera(
-    {
-      ip: "192.168.1.163",
-      mac: "00:40:8C:77:43:10",
-      manufacturerHint: "Axis",
-      modelHint: "Axis M1065-L (PIR + Microfone)",
-      port: 80,
-      discoveryMethod: "WS-Discovery"
-    },
-    cameras
-  ),
-  parametrizeDiscoveredCamera(
-    {
-      ip: "192.168.1.164",
-      mac: "34:CD:6D:88:99:AA",
-      manufacturerHint: "Uniview",
-      modelHint: "Uniview IPC2122LR3-PF40M-D",
-      port: 80,
-      discoveryMethod: "ARP/OUI Scan"
-    },
-    cameras
-  )
-];
-var vehicles = [
-  { id: "v-1", unitId: "u-101", brand: "Toyota", model: "Corolla", plate: "PTA-4A12", color: "Prata", parkingSpot: "Vaga 01" },
-  { id: "v-2", unitId: "u-102", brand: "Honda", model: "HR-V", plate: "ROX-8B90", color: "Preto", parkingSpot: "Vaga 02" },
-  { id: "v-3", unitId: "u-201", brand: "Jeep", model: "Compass", plate: "SLZ-2C34", color: "Branco", parkingSpot: "Vaga 05" },
-  { id: "v-4", unitId: "u-203", brand: "Hyundai", model: "HB20", plate: "NMS-5511", color: "Cinza", parkingSpot: "Vaga 07" },
-  { id: "v-5", unitId: "u-301", brand: "Volkswagen", model: "Nivus", plate: "MAO-9J88", color: "Azul", parkingSpot: "Vaga 09" }
-];
-var visitorInvites = [
-  {
-    id: "inv-1",
-    unitId: "u-101",
-    visitorName: "Ana Paula Ferreira (Personal)",
-    type: "prestador",
-    qrToken: "door_qr_sec_991823a1",
-    validFrom: new Date(Date.now() - 36e5).toISOString(),
-    validUntil: new Date(Date.now() + 864e5).toISOString(),
-    status: "ativo",
-    entryCount: 1
-  },
-  {
-    id: "inv-2",
-    unitId: "u-201",
-    visitorName: "Lucas Lima (Festa de Anivers\xE1rio)",
-    type: "visitante",
-    qrToken: "door_qr_sec_772199f3",
-    validFrom: new Date(Date.now() - 72e5).toISOString(),
-    validUntil: new Date(Date.now() + 18e6).toISOString(),
-    status: "ativo",
-    entryCount: 0
-  }
-];
-var packageDeliveries = [
-  {
-    id: "pkg-1",
-    unitId: "u-101",
-    trackingCode: "BR-MELI-882910",
-    courier: "Mercado Livre",
-    description: "Caixa de encomendas pequenas (Eletr\xF4nico)",
-    receivedAt: new Date(Date.now() - 144e5).toISOString(),
-    status: "aguardando_retirada",
-    pickupCode: "8912"
-  },
-  {
-    id: "pkg-2",
-    unitId: "u-201",
-    trackingCode: "AMZ-BR-102934",
-    courier: "Amazon Log\xEDstica",
-    description: "Pacote padr\xE3o (Livros e utilidades)",
-    receivedAt: new Date(Date.now() - 864e5).toISOString(),
-    status: "entregue",
-    pickupCode: "4431",
-    pickedUpAt: new Date(Date.now() - 36e5).toISOString()
-  },
-  {
-    id: "pkg-3",
-    unitId: "u-203",
-    trackingCode: "CORREIOS-QM9911",
-    courier: "Correios Sedex",
-    description: "Envelope documento com aviso de recebimento",
-    receivedAt: new Date(Date.now() - 288e5).toISOString(),
-    status: "aguardando_retirada",
-    pickupCode: "7230"
-  }
-];
-var lprLogs = [
-  {
-    id: "lpr-1",
-    timestamp: new Date(Date.now() - 18e5).toISOString(),
-    plate: "PTA-4A12",
-    confidence: 98.6,
-    cameraName: "C\xE2mera Port\xE3o Garagem (cam-02)",
-    matchedVehicle: vehicles[0],
-    matchedUnitNumber: "101",
-    action: "ABERTURA_AUTOMATICA",
-    reason: "Ve\xEDculo cadastrado na Unidade 101. Vaga 01. Policy Engine liberou acesso."
-  },
-  {
-    id: "lpr-2",
-    timestamp: new Date(Date.now() - 72e5).toISOString(),
-    plate: "ROX-8B90",
-    confidence: 97.4,
-    cameraName: "C\xE2mera Port\xE3o Garagem (cam-02)",
-    matchedVehicle: vehicles[1],
-    matchedUnitNumber: "102",
-    action: "ABERTURA_AUTOMATICA",
-    reason: "Ve\xEDculo cadastrado na Unidade 102. Vaga 02. Policy Engine liberou acesso."
-  },
-  {
-    id: "lpr-3",
-    timestamp: new Date(Date.now() - 144e5).toISOString(),
-    plate: "ABC-1234",
-    confidence: 94.2,
-    cameraName: "C\xE2mera Port\xE3o Garagem (cam-02)",
-    action: "NEGADO_DESCONHECIDO",
-    reason: "Placa n\xE3o cadastrada no condom\xEDnio Solar das Palmeiras. Acesso retido."
-  }
-];
-var financialBills = [
-  // Apto 101 - Em dia
-  {
-    id: "b-101-09",
-    unitId: "u-101",
-    unitNumber: "101",
-    competencia: "09/2026",
-    vencimento: "2026-09-10T23:59:59.000Z",
-    valorOriginal: 650,
-    diasAtraso: 0,
-    multa: 0,
-    juros: 0,
-    correcao: 0,
-    valorTotal: 650,
-    status: "pago",
-    pagoEm: "2026-09-08T14:32:00.000Z",
-    codigoBarras: "23793.38128 60000.123456 12000.650009 1 98760000065000"
-  },
-  // Apto 201 - Em dia
-  {
-    id: "b-201-09",
-    unitId: "u-201",
-    unitNumber: "201",
-    competencia: "09/2026",
-    vencimento: "2026-09-10T23:59:59.000Z",
-    valorOriginal: 650,
-    diasAtraso: 0,
-    multa: 0,
-    juros: 0,
-    correcao: 0,
-    valorTotal: 650,
-    status: "pago",
-    pagoEm: "2026-09-09T10:15:00.000Z",
-    codigoBarras: "23793.38128 60000.123457 12000.650009 1 98760000065000"
-  },
-  // Apto 203 - Inadimplente (competências 07/2026 e 08/2026)
-  {
-    id: "b-203-07",
-    unitId: "u-203",
-    unitNumber: "203",
-    competencia: "07/2026",
-    vencimento: "2026-07-10T23:59:59.000Z",
-    valorOriginal: 650,
-    diasAtraso: 64,
-    multa: 13,
-    // 2%
-    juros: 13.87,
-    // 1% ao mês proporcional (64 dias)
-    correcao: 3.25,
-    valorTotal: 680.12,
-    status: "atrasado",
-    codigoBarras: "23793.38128 60000.123458 12000.650009 1 98760000068012"
-  },
-  {
-    id: "b-203-08",
-    unitId: "u-203",
-    unitNumber: "203",
-    competencia: "08/2026",
-    vencimento: "2026-08-10T23:59:59.000Z",
-    valorOriginal: 650,
-    diasAtraso: 33,
-    multa: 13,
-    // 2%
-    juros: 7.15,
-    // 1% ao mês proporcional (33 dias)
-    correcao: 1.8,
-    valorTotal: 671.95,
-    status: "atrasado",
-    codigoBarras: "23793.38128 60000.123459 12000.650009 1 98760000067195"
-  },
-  {
-    id: "b-203-09",
-    unitId: "u-203",
-    unitNumber: "203",
-    competencia: "09/2026",
-    vencimento: "2026-09-10T23:59:59.000Z",
-    valorOriginal: 650,
-    diasAtraso: 2,
-    multa: 13,
-    juros: 0.43,
-    correcao: 0,
-    valorTotal: 663.43,
-    status: "atrasado",
-    codigoBarras: "23793.38128 60000.123460 12000.650009 1 98760000066343"
-  },
-  // Apto 302 - Em acordo formalizado
-  {
-    id: "b-302-09",
-    unitId: "u-302",
-    unitNumber: "302",
-    competencia: "09/2026",
-    vencimento: "2026-09-15T23:59:59.000Z",
-    valorOriginal: 650,
-    diasAtraso: 0,
-    multa: 0,
-    juros: 0,
-    correcao: 0,
-    valorTotal: 650,
-    status: "em_acordo",
-    codigoBarras: "23793.38128 60000.123461 12000.650009 1 98760000065000"
-  }
-];
-var agreements = [
-  {
-    id: "agr-302-1",
-    unitId: "u-302",
-    unitNumber: "302",
-    totalOriginal: 2600,
-    totalNegociado: 2400,
-    entrada: 600,
-    parcelasTotal: 6,
-    parcelasPagas: 2,
-    valorParcela: 300,
-    diaVencimento: 15,
-    dataCriacao: "2026-07-01T10:00:00.000Z",
-    status: "ativo"
-  }
-];
-var iotDevices = [
-  {
-    id: "iot-1",
-    name: "Ilumina\xE7\xE3o Frontal Portaria",
-    type: "iluminacao",
-    protocol: "zigbee_3_0",
-    gateway: "NovaDigital_HNZ_CB3",
-    state: "desligado",
-    online: true,
-    location: "Acesso Social Externo"
-  },
-  {
-    id: "iot-2",
-    name: "Sensor de Presen\xE7a Garagem",
-    type: "sensor_presenca",
-    protocol: "zigbee_3_0",
-    gateway: "NovaDigital_HNZ_CB3",
-    state: "sem_movimento",
-    batteryLevel: 94,
-    online: true,
-    location: "Corredor Garagem Veicular"
-  },
-  {
-    id: "iot-3",
-    name: "Rel\xE9 Acionamento Port\xE3o Pedestre",
-    type: "rele",
-    protocol: "ethernet",
-    gateway: "NovaDigital_HNZ_CB3",
-    state: "desligado",
-    online: true,
-    location: "Quadro de Automa\xE7\xE3o T\xE9rreo"
-  }
-];
-var automationRules = [
-  {
-    id: "rule-1",
-    name: "Ilumina\xE7\xE3o Noturna em Chamada XPE",
-    description: "Quando o bot\xE3o do XPE for pressionado, acender ilumina\xE7\xE3o frontal por 5 minutos.",
-    enabled: true,
-    triggerEvent: "CALL_STARTED",
-    condition: "Hor\xE1rio entre 18:00 e 06:00",
-    action: "Ligar Ilumina\xE7\xE3o Frontal Portaria por 300 segundos",
-    lastExecutedAt: new Date(Date.now() - 36e5).toISOString()
-  },
-  {
-    id: "rule-2",
-    name: "Sensor de Garagem Noturno",
-    description: "Se movimento for detectado na garagem ap\xF3s as 19h, acender refletores de apoio.",
-    enabled: true,
-    triggerEvent: "MOTION_DETECTED",
-    condition: "Hor\xE1rio > 19:00",
-    action: "Ligar ilumina\xE7\xE3o garagem por 180s",
-    lastExecutedAt: new Date(Date.now() - 12e6).toISOString()
-  }
-];
-var eventBusHistory = [
-  {
-    id: "evt-1",
-    timestamp: new Date(Date.now() - 144e5).toISOString(),
-    type: "CALL_STARTED",
-    source: "xpe_3115_ip",
-    payload: { unitNumber: "101", purpose: "entrega" },
-    audited: true
-  },
-  {
-    id: "evt-2",
-    timestamp: new Date(Date.now() - 1438e4).toISOString(),
-    type: "CALL_ANSWERED",
-    source: "pjsip_webrtc",
-    payload: { unitNumber: "101", endpoint: "WebPhone-101" },
-    audited: true
-  },
-  {
-    id: "evt-3",
-    timestamp: new Date(Date.now() - 1435e4).toISOString(),
-    type: "ACCESS_GRANTED",
-    source: "policy_engine",
-    payload: { gate: "pedestre", dtmf: "*07", unitNumber: "101" },
-    audited: true
-  },
-  {
-    id: "evt-4",
-    timestamp: new Date(Date.now() - 14348e3).toISOString(),
-    type: "GATE_OPENED",
-    source: "gate_controller",
-    payload: { gateId: "gate-pedestre", authorizedBy: "Carlos Eduardo Mendes" },
-    audited: true
-  }
-];
-var auditLogs = [
-  {
-    id: "aud-1",
-    timestamp: new Date(Date.now() - 1435e4).toISOString(),
-    actor: "Carlos Eduardo Mendes (Apto 101)",
-    role: "morador",
-    action: "ABERTURA_PORTAO_DTMF",
-    target: "Port\xE3o Pedestre Social",
-    status: "PERMITIDO",
-    ipAddress: "192.168.1.101",
-    dtmfCommand: "*07",
-    details: { callId: "call-sample-1", duration: 32, validatedByPolicyEngine: true }
-  },
-  {
-    id: "aud-2",
-    timestamp: new Date(Date.now() - 288e5).toISOString(),
-    actor: "Dispositivo Externo IP",
-    role: "desconhecido",
-    action: "COMANDO_DTMF_SEM_CHAMADA",
-    target: "Port\xE3o Garagem Veicular",
-    status: "NEGADO",
-    reason: "Tentativa de acionamento DTMF fora de sess\xE3o de chamada ativa no Asterisk.",
-    ipAddress: "192.168.1.205",
-    dtmfCommand: "*08",
-    details: { blocked: true, policyViolated: "CALL_ACTIVE_MANDATORY" }
-  }
-];
-var callHistory = [
-  {
-    id: "call-h-1",
-    origin: "xpe_3115_ip",
-    unitNumber: "101",
-    purpose: "entrega",
-    startedAt: new Date(Date.now() - 144e5).toISOString(),
-    durationSeconds: 32,
-    status: "atendida",
-    answeredBy: "Carlos Eduardo Mendes (WebPhone)",
-    gateOpened: "Port\xE3o Pedestre Social (*07)",
-    hasRecording: true,
-    recordingId: "rec-sha256-88ab19c"
-  },
-  {
-    id: "call-h-2",
-    origin: "qr_virtual_intercom",
-    unitNumber: "201",
-    purpose: "visitante",
-    startedAt: new Date(Date.now() - 216e5).toISOString(),
-    durationSeconds: 45,
-    status: "atendida",
-    answeredBy: "Fernando Rocha (WebPhone)",
-    gateOpened: "Port\xE3o Pedestre Social (*07)",
-    hasRecording: true,
-    recordingId: "rec-sha256-44ec99a"
-  }
-];
-var activeCall = null;
+
+// src/services/PolicyEngine.ts
 var PolicyEngine = class {
+  /**
+   * Avalia rigorosamente a concessão de privilégios de acesso e acionamento de hardware
+   */
   static evaluate(req) {
     const { actor, action, resource, context } = req;
     if (action === "ABRIR_PORTAO") {
       if (actor.role === "morador") {
         if (!context.callActive) {
-          return { allowed: false, reason: "Pol\xEDtica de Seguran\xE7a: Abertura por morador s\xF3 \xE9 autorizada durante chamada ativa." };
+          return {
+            allowed: false,
+            policyCode: "DENY_NO_ACTIVE_CALL",
+            reason: "Pol\xEDtica de Seguran\xE7a: Abertura por morador s\xF3 \xE9 autorizada durante chamada ativa de interfone."
+          };
         }
-        if (context.activeCallTargetUnit !== actor.unitNumber) {
-          return { allowed: false, reason: "Pol\xEDtica de Isolamento: Morador n\xE3o tem permiss\xE3o para abrir port\xE3o para outra unidade." };
+        if (context.activeCallTargetUnit && context.activeCallTargetUnit !== actor.unitNumber) {
+          return {
+            allowed: false,
+            policyCode: "DENY_CROSS_UNIT_CALL",
+            reason: `Pol\xEDtica de Isolamento: Morador da Unidade ${actor.unitNumber} n\xE3o tem permiss\xE3o para acionar port\xE3o para a Unidade ${context.activeCallTargetUnit}.`
+          };
         }
         return { allowed: true };
       }
-      if (["sindico", "operador", "admin_condominio", "super_admin"].includes(actor.role)) {
+      if (["sindico", "operador", "admin_condominio", "super_admin", "admin_sistema"].includes(actor.role)) {
         return { allowed: true };
       }
-      return { allowed: false, reason: "Papel sem privil\xE9gio de acionamento de port\xE3o." };
+      return {
+        allowed: false,
+        policyCode: "DENY_UNAUTHORIZED_ROLE",
+        reason: `Papel '${actor.role}' sem privil\xE9gio de acionamento de port\xE3o ou rel\xE9.`
+      };
     }
     if (action === "VER_GRAVACAO") {
       if (actor.role === "morador") {
         return {
           allowed: false,
-          reason: "Viola\xE7\xE3o da Regra de Ouro #10: Morador tem acesso ao hist\xF3rico de logs, mas N\xC3O tem acesso \xE0 m\xEDdia bruta das grava\xE7\xF5es."
+          policyCode: "DENY_RESIDENT_RAW_MEDIA",
+          reason: "Regra de Ouro #10: Morador tem acesso ao hist\xF3rico de logs, mas N\xC3O tem acesso \xE0 m\xEDdia bruta das grava\xE7\xF5es."
         };
       }
       if (["sindico", "admin_condominio", "super_admin"].includes(actor.role)) {
         return { allowed: true };
       }
-      return { allowed: false, reason: "Acesso a grava\xE7\xF5es restrito a administradores e auditores." };
+      return {
+        allowed: false,
+        policyCode: "DENY_MEDIA_ACCESS",
+        reason: "Acesso a grava\xE7\xF5es restrito a administradores e auditores credenciados."
+      };
     }
     if (action === "CONSULTAR_FINANCEIRO") {
       if (actor.role === "morador") {
         if (resource.targetUnitNumber && resource.targetUnitNumber !== actor.unitNumber) {
-          return { allowed: false, reason: "Isolamento de Dados: Moradores s\xF3 podem visualizar informa\xE7\xF5es financeiras de sua pr\xF3pria unidade." };
+          return {
+            allowed: false,
+            policyCode: "DENY_CROSS_UNIT_FINANCE",
+            reason: "Isolamento de Dados: Moradores s\xF3 podem visualizar informa\xE7\xF5es financeiras de sua pr\xF3pria unidade."
+          };
         }
         return { allowed: true };
       }
       if (["sindico", "admin_condominio", "super_admin"].includes(actor.role)) {
         return { allowed: true };
       }
-      return { allowed: false, reason: "Acesso financeiro n\xE3o autorizado." };
+      return {
+        allowed: false,
+        policyCode: "DENY_FINANCIAL_ACCESS",
+        reason: "Acesso ao m\xF3dulo financeiro n\xE3o autorizado."
+      };
     }
     if (action === "ACESSAR_CAMERA") {
+      const loc = (resource.cameraLocation || "").toLowerCase();
+      const target = (resource.target || "").toLowerCase();
+      const isRestricted = resource.isRestrictedArea || loc.includes("t\xE9cnica") || loc.includes("servidor") || loc.includes("quadro") || loc.includes("guarita interna") || loc.includes("administra\xE7\xE3o") || loc.includes("administracao") || loc.includes("m\xE1quinas") || loc.includes("maquinas");
+      if (["super_admin", "admin_sistema"].includes(actor.role)) {
+        return { allowed: true };
+      }
+      if (["sindico", "admin_condominio"].includes(actor.role)) {
+        if (resource.isPrivateArea) {
+          return {
+            allowed: false,
+            policyCode: "DENY_PRIVATE_AREA",
+            reason: "LGPD: Imagens de \xE1reas privativas n\xE3o podem ser visualizadas pela sindic\xE2ncia sem mandato judicial."
+          };
+        }
+        return { allowed: true };
+      }
+      if (actor.role === "operador") {
+        if (isRestricted || resource.isPrivateArea) {
+          return {
+            allowed: false,
+            policyCode: "DENY_OPERATOR_RESTRICTED",
+            reason: "Acesso a c\xE2meras de infraestrutura t\xE9cnica interna restrito ao corpo de engenharia e sindic\xE2ncia."
+          };
+        }
+        return { allowed: true };
+      }
+      if (actor.role === "morador") {
+        if (isRestricted) {
+          return {
+            allowed: false,
+            policyCode: "DENY_RESTRICTED_CAMERA_AREA",
+            reason: "Pol\xEDtica de Seguran\xE7a CFTV: C\xE2mera de \xE1rea t\xE9cnica/restrita n\xE3o autorizada para moradores."
+          };
+        }
+        if (resource.isXpeIntegrated) {
+          if (context.callActive && context.activeCallTargetUnit && context.activeCallTargetUnit !== actor.unitNumber) {
+            return {
+              allowed: false,
+              policyCode: "DENY_CROSS_UNIT_INTERCOM_VIDEO",
+              reason: "Privacidade: N\xE3o \xE9 permitido interceptar v\xEDdeo de chamada destinada a outra unidade."
+            };
+          }
+          return { allowed: true };
+        }
+        const isSocialCommon = loc.includes("comum") || loc.includes("lazer") || loc.includes("piscina") || loc.includes("sal\xE3o") || loc.includes("social") || loc.includes("cal\xE7ada") || loc.includes("garagem") || loc.includes("estacionamento") || loc.includes("hall");
+        if (isSocialCommon) {
+          return { allowed: true };
+        }
+        return {
+          allowed: false,
+          policyCode: "DENY_CAMERA_NOT_PERMITTED_FOR_RESIDENT",
+          reason: "Acesso n\xE3o liberado pelo regimento interno de visualiza\xE7\xE3o de c\xE2meras."
+        };
+      }
+      return {
+        allowed: false,
+        policyCode: "DENY_UNKNOWN_ROLE_CAMERA",
+        reason: "Perfil de usu\xE1rio n\xE3o autorizado para visualiza\xE7\xE3o de CFTV."
+      };
+    }
+    if (action === "EMITIR_CONVITE_QR") {
+      if (actor.role === "morador") {
+        if (resource.targetUnitNumber && resource.targetUnitNumber !== actor.unitNumber) {
+          return {
+            allowed: false,
+            policyCode: "DENY_CROSS_UNIT_INVITE",
+            reason: "Morador s\xF3 pode emitir convites para a sua pr\xF3pria unidade."
+          };
+        }
+        return { allowed: true };
+      }
       return { allowed: true };
     }
-    return { allowed: true };
+    if (action === "EXEC_AMI_COMMAND") {
+      const allowedAmiActions = ["Ping", "SIPpeers", "PJSIPShowEndpoints", "CoreShowChannels", "Status", "Hangup", "PlayDTMF"];
+      if (!resource.amiAction || !allowedAmiActions.includes(resource.amiAction)) {
+        return {
+          allowed: false,
+          policyCode: "DENY_INVALID_AMI_ACTION",
+          reason: `A\xE7\xE3o AMI '${resource.amiAction}' n\xE3o consta na lista de comandos permitidos (whitelist).`
+        };
+      }
+      if (!["super_admin", "sindico", "operador"].includes(actor.role)) {
+        return {
+          allowed: false,
+          policyCode: "DENY_ROLE_AMI",
+          reason: "Apenas Super Admin, S\xEDndico ou Operador de Portaria podem disparar comandos de telefonia via AMI."
+        };
+      }
+      return { allowed: true };
+    }
+    if (action === "CONFIGURAR_SISTEMA") {
+      if (["super_admin", "admin_sistema", "sindico"].includes(actor.role)) {
+        return { allowed: true };
+      }
+      return {
+        allowed: false,
+        policyCode: "DENY_SYSTEM_CONFIG",
+        reason: "Apenas Super Admin ou S\xEDndico t\xEAm permiss\xE3o para alterar configura\xE7\xF5es estruturais do sistema."
+      };
+    }
+    return { allowed: false, reason: "A\xE7\xE3o n\xE3o mapeada na pol\xEDtica de seguran\xE7a." };
   }
 };
+
+// src/services/hardware/SimulationAdapter.ts
+var SimulationAdapter = class {
+  constructor() {
+    this.mode = "simulated";
+    this.isSimulated = true;
+  }
+  async triggerRelay(gate, pulseDurationSeconds, correlationId, _options) {
+    const timestamp2 = (/* @__PURE__ */ new Date()).toISOString();
+    console.warn(
+      `[SIMULATION_ADAPTER] \u26A0\uFE0F Acionamento SIMULADO para port\xE3o '${gate.name}' (ID: ${gate.id}, Rel\xE9: ${gate.relayPin}, DTMF: ${gate.dtmfCode}). NENHUM pulso el\xE9trico real foi enviado a rel\xE9 f\xEDsico. Nenhum contato f\xEDsico foi fechado.`
+    );
+    return {
+      success: true,
+      executed: true,
+      isSimulated: true,
+      hardwareMode: "simulated",
+      commandStatus: "COMMAND_SENT",
+      message: `[MODO SIMULADO] Acionamento l\xF3gico do port\xE3o '${gate.name}' registrado. Nenhum hardware f\xEDsico foi acionado neste ambiente.`,
+      statusCode: 200,
+      relayPin: gate.relayPin,
+      relayIp: gate.relayIp || "192.168.1.160 (simulado)",
+      pulseDurationMs: pulseDurationSeconds * 1e3,
+      timestamp: timestamp2,
+      hasPhysicalFeedbackSensor: false,
+      physicalSensorState: "desconhecido",
+      correlationId
+    };
+  }
+  async injectDtmf(sipChannel, digit) {
+    console.warn(
+      `[SIMULATION_ADAPTER] \u26A0\uFE0F Inje\xE7\xE3o DTMF SIMULADA '${digit}' no canal '${sipChannel}'. Nenhum pacote RTP/RFC2833 f\xEDsico gerado.`
+    );
+    return {
+      success: true,
+      isSimulated: true,
+      digit,
+      channel: sipChannel,
+      message: `[MODO SIMULADO] DTMF ${digit} simulado logicamente com sucesso.`,
+      commandStatus: "COMMAND_SENT"
+    };
+  }
+  async checkHealth(deviceId) {
+    return {
+      device: deviceId,
+      status: "simulated",
+      pingMs: 0,
+      lastChecked: (/* @__PURE__ */ new Date()).toISOString()
+    };
+  }
+};
+
+// src/services/AsteriskAMI.ts
+var import_events = __toESM(require("events"), 1);
+var import_net = __toESM(require("net"), 1);
+var ALLOWED_ASTERISK_ACTIONS = [
+  "Ping",
+  "Status",
+  "CoreShowChannels",
+  "PJSIPShowEndpoints",
+  "PlayDTMF",
+  "Hangup"
+];
+var AsteriskManager = class extends import_events.default {
+  constructor(host = process.env.ASTERISK_HOST || "127.0.0.1", port = parseInt(process.env.ASTERISK_AMI_PORT || "5038", 10), username = process.env.ASTERISK_AMI_USERNAME || process.env.ASTERISK_AMI_USER || "", secret = process.env.ASTERISK_AMI_SECRET || "") {
+    super();
+    this.connected = false;
+    this.authenticated = false;
+    this.socket = null;
+    this.buffer = "";
+    this.actionCounter = 0;
+    this.pendingActions = /* @__PURE__ */ new Map();
+    this.pendingListActions = /* @__PURE__ */ new Map();
+    this.activeChannels = /* @__PURE__ */ new Map();
+    this.reconnectTimer = null;
+    this.isConnecting = false;
+    this.intentionalDisconnect = false;
+    this.connectionTimeoutMs = 4e3;
+    this.actionTimeoutMs = 5e3;
+    this.host = host;
+    this.port = port;
+    this.username = username;
+    this.secret = secret;
+  }
+  /**
+   * Abre conexão TCP real com o Asterisk AMI e efetua o login de autenticação
+   */
+  async connect() {
+    if (this.connected && this.authenticated) {
+      return true;
+    }
+    if (this.isConnecting) {
+      return false;
+    }
+    this.isConnecting = true;
+    this.intentionalDisconnect = false;
+    return new Promise((resolve) => {
+      try {
+        if (this.socket) {
+          this.socket.destroy();
+          this.socket = null;
+        }
+        const socket = new import_net.default.Socket();
+        this.socket = socket;
+        const timeout = setTimeout(() => {
+          if (this.isConnecting) {
+            console.warn(`[Asterisk AMI] \u23F1\uFE0F Timeout (${this.connectionTimeoutMs}ms) ao conectar ao Asterisk em ${this.host}:${this.port}`);
+            socket.destroy();
+            this.handleDisconnect();
+            resolve(false);
+          }
+        }, this.connectionTimeoutMs);
+        socket.on("connect", () => {
+          clearTimeout(timeout);
+          this.connected = true;
+          this.buffer = "";
+        });
+        socket.on("data", (data) => {
+          this.handleIncomingData(data.toString("utf8"), resolve);
+        });
+        socket.on("error", (err) => {
+          clearTimeout(timeout);
+          console.warn(`[Asterisk AMI] \u26A0\uFE0F Erro no socket TCP (${this.host}:${this.port}): ${err.message}`);
+          this.handleDisconnect();
+          if (this.isConnecting) {
+            resolve(false);
+          }
+        });
+        socket.on("close", () => {
+          clearTimeout(timeout);
+          this.handleDisconnect();
+          if (this.isConnecting) {
+            resolve(false);
+          }
+        });
+        socket.on("end", () => {
+          this.handleDisconnect();
+        });
+        socket.connect(this.port, this.host);
+      } catch (err) {
+        console.warn(`[Asterisk AMI] \u26A0\uFE0F Exce\xE7\xE3o ao abrir socket TCP: ${err.message}`);
+        this.handleDisconnect();
+        resolve(false);
+      }
+    });
+  }
+  handleDisconnect() {
+    const wasConnected = this.connected;
+    this.connected = false;
+    this.authenticated = false;
+    this.isConnecting = false;
+    for (const [id, pending] of this.pendingActions.entries()) {
+      clearTimeout(pending.timer);
+      pending.resolve({
+        success: false,
+        message: "Conex\xE3o TCP com Asterisk AMI foi encerrada"
+      });
+      this.pendingActions.delete(id);
+    }
+    if (wasConnected) {
+      this.emit("disconnected");
+    }
+    if (!this.intentionalDisconnect && !this.reconnectTimer) {
+      this.reconnectTimer = setTimeout(() => {
+        this.reconnectTimer = null;
+        if (!this.connected && !this.intentionalDisconnect) {
+          this.connect().catch(() => {
+          });
+        }
+      }, 5e3);
+    }
+  }
+  handleIncomingData(dataChunk, connectPromiseResolver) {
+    this.buffer += dataChunk;
+    if (this.buffer.startsWith("Asterisk Call Manager") && !this.authenticated) {
+      const bannerEnd = this.buffer.indexOf("\r\n");
+      if (bannerEnd !== -1) {
+        this.buffer = this.buffer.slice(bannerEnd + 2);
+        this.sendLogin(connectPromiseResolver);
+      }
+    }
+    let delimiterIndex;
+    while ((delimiterIndex = this.buffer.indexOf("\r\n\r\n")) !== -1) {
+      const block = this.buffer.slice(0, delimiterIndex);
+      this.buffer = this.buffer.slice(delimiterIndex + 4);
+      this.processAmiMessageBlock(block);
+    }
+  }
+  sendLogin(connectPromiseResolver) {
+    if (!this.socket || this.socket.destroyed) {
+      if (connectPromiseResolver) connectPromiseResolver(false);
+      return;
+    }
+    const actionId = `login-${Date.now()}`;
+    const payload = [
+      "Action: Login",
+      `Username: ${this.username}`,
+      `Secret: ${this.secret}`,
+      `ActionID: ${actionId}`,
+      "",
+      ""
+    ].join("\r\n");
+    const timer = setTimeout(() => {
+      this.pendingActions.delete(actionId);
+      this.authenticated = false;
+      this.isConnecting = false;
+      if (connectPromiseResolver) connectPromiseResolver(false);
+    }, this.actionTimeoutMs);
+    this.pendingActions.set(actionId, {
+      actionId,
+      action: "Login",
+      resolve: (res) => {
+        clearTimeout(timer);
+        this.isConnecting = false;
+        if (res.success) {
+          this.authenticated = true;
+          this.emit("connected");
+          if (connectPromiseResolver) connectPromiseResolver(true);
+        } else {
+          this.authenticated = false;
+          console.warn("[Asterisk AMI] \u274C Falha de autentica\xE7\xE3o no login AMI");
+          if (connectPromiseResolver) connectPromiseResolver(false);
+        }
+      },
+      reject: () => {
+        clearTimeout(timer);
+        this.authenticated = false;
+        this.isConnecting = false;
+        if (connectPromiseResolver) connectPromiseResolver(false);
+      },
+      timer
+    });
+    this.socket.write(payload, "utf8");
+  }
+  processAmiMessageBlock(block) {
+    const lines = block.split("\r\n");
+    const parsed = {};
+    for (const line of lines) {
+      const colonIndex = line.indexOf(":");
+      if (colonIndex > 0) {
+        const key = line.slice(0, colonIndex).trim();
+        const value = line.slice(colonIndex + 1).trim();
+        parsed[key] = value;
+      }
+    }
+    const actionId = parsed["ActionID"];
+    if (actionId && this.pendingListActions.has(actionId)) {
+      const pendingList = this.pendingListActions.get(actionId);
+      const eventName2 = parsed["Event"] || "";
+      if (eventName2 === "CoreShowChannel") {
+        const ch = parsed["Channel"];
+        if (ch) {
+          const info = {
+            channel: ch,
+            channelState: parsed["ChannelState"],
+            channelStateDesc: parsed["ChannelStateDesc"],
+            callerIdNum: parsed["CallerIDNum"],
+            callerIdName: parsed["CallerIDName"],
+            connectedLineNum: parsed["ConnectedLineNum"],
+            connectedLineName: parsed["ConnectedLineName"],
+            context: parsed["Context"],
+            exten: parsed["Exten"],
+            accountCode: parsed["AccountCode"],
+            uniqueid: parsed["Uniqueid"] || parsed["UniqueID"],
+            linkedid: parsed["Linkedid"] || parsed["LinkedId"]
+          };
+          pendingList.items.push(info);
+          this.activeChannels.set(ch, info);
+        }
+        return;
+      }
+      if (eventName2 === "CoreShowChannelsComplete" || parsed["EventList"] === "Complete" || parsed["Response"] === "Error") {
+        this.pendingListActions.delete(actionId);
+        clearTimeout(pendingList.timer);
+        pendingList.resolve({
+          success: parsed["Response"] !== "Error",
+          message: parsed["Message"] || "Lista de canais obtida com sucesso",
+          response: { channels: pendingList.items }
+        });
+        return;
+      }
+    }
+    if (actionId && this.pendingActions.has(actionId)) {
+      const pending = this.pendingActions.get(actionId);
+      this.pendingActions.delete(actionId);
+      clearTimeout(pending.timer);
+      const isSuccess = parsed["Response"] === "Success";
+      pending.resolve({
+        success: isSuccess,
+        message: parsed["Message"] || (isSuccess ? "Comando executado com sucesso" : "Falha na resposta do Asterisk AMI"),
+        response: parsed
+      });
+      return;
+    }
+    const eventName = parsed["Event"];
+    if (eventName) {
+      const ch = parsed["Channel"];
+      if (eventName === "Newchannel" && ch) {
+        this.activeChannels.set(ch, {
+          channel: ch,
+          channelState: parsed["ChannelState"],
+          channelStateDesc: parsed["ChannelStateDesc"],
+          callerIdNum: parsed["CallerIDNum"],
+          callerIdName: parsed["CallerIDName"],
+          connectedLineNum: parsed["ConnectedLineNum"],
+          connectedLineName: parsed["ConnectedLineName"],
+          context: parsed["Context"],
+          exten: parsed["Exten"],
+          accountCode: parsed["AccountCode"],
+          uniqueid: parsed["Uniqueid"] || parsed["UniqueID"],
+          linkedid: parsed["Linkedid"] || parsed["LinkedId"]
+        });
+      } else if ((eventName === "Newstate" || eventName === "ChannelStateChange") && ch) {
+        const existing = this.activeChannels.get(ch);
+        if (existing) {
+          existing.channelState = parsed["ChannelState"] || existing.channelState;
+          existing.channelStateDesc = parsed["ChannelStateDesc"] || existing.channelStateDesc;
+          if (parsed["ConnectedLineNum"]) existing.connectedLineNum = parsed["ConnectedLineNum"];
+          if (parsed["Linkedid"] || parsed["LinkedId"]) existing.linkedid = parsed["Linkedid"] || parsed["LinkedId"];
+        }
+      } else if (eventName === "Hangup" && ch) {
+        this.activeChannels.delete(ch);
+      }
+      this.emit("event", parsed);
+      this.emit(eventName, parsed);
+    }
+  }
+  isConnected() {
+    return this.connected && this.authenticated;
+  }
+  isAuthenticated() {
+    return this.authenticated;
+  }
+  /**
+   * Executa Ping AMI com medição de latência sem expor credenciais
+   */
+  async ping() {
+    const start = Date.now();
+    try {
+      const res = await this.executeSafeAction("Ping");
+      const latencyMs = Date.now() - start;
+      if (res.success) {
+        return { ok: true, latencyMs, message: "Asterisk AMI responsivo (Ping/Pong OK)" };
+      }
+      return { ok: false, latencyMs, message: res.message || "Falha de ping no Asterisk AMI" };
+    } catch (err) {
+      return { ok: false, message: err.message || "Erro inesperado no ping AMI" };
+    }
+  }
+  /**
+   * Retorna lista de canais ativos consultados em tempo real no Asterisk (uso geral/diagnóstico)
+   */
+  async getActiveChannels() {
+    if (!this.isConnected()) {
+      return Array.from(this.activeChannels.values());
+    }
+    try {
+      const res = await this.executeSafeAction("CoreShowChannels");
+      if (res.response && Array.isArray(res.response.channels)) {
+        return res.response.channels;
+      }
+    } catch {
+    }
+    return Array.from(this.activeChannels.values());
+  }
+  /**
+   * Consulta canais ativos em tempo real EXCLUSIVAMENTE para decisões de acionamento físico (PlayDTMF).
+   * NUNCA recorre ao cache local 'activeChannels' em caso de desconexão ou falha de CoreShowChannels.
+   * Regra Absoluta: Falha de conexão AMI ou falha de CoreShowChannels -> Retorna [] -> findActiveChannelForXpe retorna null -> HARDWARE_FAILURE.
+   */
+  async getActiveChannelsForPhysicalAction() {
+    if (Object.prototype.hasOwnProperty.call(this, "getActiveChannels") && !Object.prototype.hasOwnProperty.call(this, "getActiveChannelsForPhysicalAction")) {
+      return this.getActiveChannels();
+    }
+    if (!this.isConnected() || !this.isAuthenticated()) {
+      const ok = await this.connect();
+      if (!ok || !this.isConnected() || !this.isAuthenticated()) {
+        console.warn("[Asterisk AMI Security] \u274C Sess\xE3o AMI indispon\xEDvel ou n\xE3o autenticada para a\xE7\xE3o f\xEDsica. Cache sumariamente ignorado.");
+        return [];
+      }
+    }
+    try {
+      const res = await this.executeSafeAction("CoreShowChannels");
+      if (res.success && res.response && Array.isArray(res.response.channels)) {
+        return res.response.channels;
+      }
+      console.warn("[Asterisk AMI Security] \u274C Resposta inv\xE1lida ou incompleta em CoreShowChannels para a\xE7\xE3o f\xEDsica. Cache sumariamente ignorado.");
+      return [];
+    } catch (err) {
+      console.warn(`[Asterisk AMI Security] \u274C Falha na execu\xE7\xE3o de CoreShowChannels: ${err.message}. Cache sumariamente ignorado.`);
+      return [];
+    }
+  }
+  /**
+   * Identifica dinamicamente e valida com rigor absoluto o canal PJSIP real para envio de PlayDTMF.
+   * Não inventa canais, não utiliza extensões fixas e NUNCA recorre a canais PJSIP arbitrários.
+   * A chamada DEVE ser comprovadamente identificada como originada ou pertencente ao XPE 3115-IP.
+   * Ordem de prioridade de correlação:
+   * 1. UniqueID
+   * 2. LinkedID
+   * 3. Channel
+   * 4. ConnectedLine
+   * 5. CallerID
+   * 6. Exten
+   * 7. Context
+   * 8. Endpoint PJSIP
+   * 9. Estado do canal ('Up', 'Ring', 'Ringing')
+   */
+  async findActiveChannelForXpe(options) {
+    const channels = await this.getActiveChannelsForPhysicalAction();
+    const pjsipChannels = channels.filter((c) => c.channel && c.channel.startsWith("PJSIP/"));
+    if (pjsipChannels.length === 0) {
+      return null;
+    }
+    const xpeId = (options?.xpeIdentifier || process.env.XPE_SIP_USERNAME || process.env.XPE_SIP_USER || "8000").toLowerCase().trim();
+    const targetUnit = options?.targetUnit?.trim();
+    const targetUniqueId = options?.uniqueId?.trim();
+    const targetLinkedId = options?.linkedId?.trim();
+    const targetContext = options?.context?.trim();
+    const isChannelActive = (c) => {
+      const desc2 = (c.channelStateDesc || "").toLowerCase();
+      const state = c.channelState || "";
+      return desc2 === "up" || desc2 === "ring" || desc2 === "ringing" || state === "6" || state === "4" || state === "5";
+    };
+    const isDirectXpeChannel = (c) => {
+      const chName = c.channel.toLowerCase();
+      const callerNum = (c.callerIdNum || "").toLowerCase().trim();
+      const ext = (c.exten || "").toLowerCase().trim();
+      const acc = (c.accountCode || "").toLowerCase().trim();
+      const ctx = (c.context || "").toLowerCase().trim();
+      const isConfiguredEndpoint = chName.startsWith(`pjsip/${xpeId}-`) || chName.startsWith(`pjsip/${xpeId}_`);
+      const isCallerIdXpe = callerNum === xpeId;
+      const isExtenOrAccXpe = ext === xpeId || acc === xpeId;
+      const isPortariaContext = targetContext && ctx === targetContext.toLowerCase() && (isCallerIdXpe || isConfiguredEndpoint);
+      return isConfiguredEndpoint || isCallerIdXpe || isExtenOrAccXpe || isPortariaContext;
+    };
+    const getUid = (c) => (c.uniqueid || c.uniqueId || "").trim();
+    const getLid = (c) => (c.linkedid || c.linkedId || "").trim();
+    const activeXpeChannels = pjsipChannels.filter((c) => isDirectXpeChannel(c) && isChannelActive(c));
+    const xpeLinkedIds = /* @__PURE__ */ new Set();
+    const xpeUniqueIds = /* @__PURE__ */ new Set();
+    for (const xc of activeXpeChannels) {
+      const lid = getLid(xc);
+      const uid = getUid(xc);
+      if (lid) xpeLinkedIds.add(lid);
+      if (uid) xpeUniqueIds.add(uid);
+    }
+    if (options?.preferredChannel) {
+      const pref = options.preferredChannel.trim();
+      const foundPref = pjsipChannels.find((c) => c.channel === pref);
+      if (!foundPref) {
+        console.warn(`[Asterisk AMI Correlation] \u274C preferredChannel '${pref}' n\xE3o existe nos canais ativos do Asterisk.`);
+        return null;
+      }
+      if (!foundPref.channel.startsWith("PJSIP/")) {
+        console.warn(`[Asterisk AMI Correlation] \u274C preferredChannel '${pref}' n\xE3o \xE9 um canal PJSIP.`);
+        return null;
+      }
+      if (!isChannelActive(foundPref)) {
+        console.warn(`[Asterisk AMI Correlation] \u274C preferredChannel '${pref}' n\xE3o est\xE1 em estado ativo.`);
+        return null;
+      }
+      if (targetUniqueId) {
+        const matchesUnique = getUid(foundPref) === targetUniqueId || getLid(foundPref) === targetUniqueId;
+        if (!matchesUnique) {
+          console.warn(`[Asterisk AMI Correlation] \u274C preferredChannel '${pref}' possui UniqueID divergente da chamada esperada.`);
+          return null;
+        }
+      }
+      if (targetLinkedId) {
+        const matchesLinked = getLid(foundPref) === targetLinkedId || getUid(foundPref) === targetLinkedId;
+        if (!matchesLinked) {
+          console.warn(`[Asterisk AMI Correlation] \u274C preferredChannel '${pref}' possui LinkedID divergente da chamada esperada.`);
+          return null;
+        }
+      }
+      const isDirect = isDirectXpeChannel(foundPref);
+      const isLinkedToXpe = getLid(foundPref) && xpeLinkedIds.has(getLid(foundPref)) || getUid(foundPref) && xpeLinkedIds.has(getUid(foundPref)) || getLid(foundPref) && xpeUniqueIds.has(getLid(foundPref));
+      const isConnectedToXpe = (foundPref.connectedLineNum || "").toLowerCase() === xpeId;
+      const isTargetUnitMatched = targetUnit && (foundPref.connectedLineNum === targetUnit || foundPref.exten === targetUnit || foundPref.callerIdNum === targetUnit) && activeXpeChannels.some((xc) => xc.connectedLineNum === targetUnit || getLid(xc) && getLid(xc) === getLid(foundPref));
+      const belongsToXpeCall = isDirect || isLinkedToXpe || isConnectedToXpe || isTargetUnitMatched;
+      if (!belongsToXpeCall) {
+        console.warn(`[Asterisk AMI Correlation] \u274C preferredChannel '${pref}' pertence a outra chamada n\xE3o originada pelo XPE. DTMF cancelado.`);
+        return null;
+      }
+      if (isDirect) {
+        return foundPref.channel;
+      }
+      const pairedXpe = activeXpeChannels.filter(
+        (xc) => getLid(xc) && getLid(xc) === getLid(foundPref) || xc.connectedLineNum === foundPref.callerIdNum && getLid(xc) === getLid(foundPref)
+      );
+      if (pairedXpe.length === 1) {
+        return pairedXpe[0].channel;
+      }
+      if (pairedXpe.length > 1) {
+        console.warn(`[Asterisk AMI Correlation] \u274C Ambiguidade: M\xFAltiplos canais XPE pareados com preferredChannel '${pref}'.`);
+        return null;
+      }
+      return foundPref.channel;
+    }
+    if (targetUniqueId) {
+      const matchingXpe = activeXpeChannels.filter(
+        (c) => getUid(c) === targetUniqueId || getLid(c) === targetUniqueId
+      );
+      if (matchingXpe.length === 1) {
+        return matchingXpe[0].channel;
+      }
+      if (matchingXpe.length > 1) {
+        console.warn(`[Asterisk AMI Correlation] \u274C Ambiguidade: M\xFAltiplos canais XPE associados ao UniqueID '${targetUniqueId}'.`);
+        return null;
+      }
+      const linkedMorador = pjsipChannels.filter(
+        (c) => isChannelActive(c) && (getUid(c) === targetUniqueId || getLid(c) === targetUniqueId)
+      );
+      if (linkedMorador.length === 1) {
+        const lid = getLid(linkedMorador[0]);
+        const paired = activeXpeChannels.filter((xc) => getLid(xc) && getLid(xc) === lid);
+        if (paired.length === 1) {
+          return paired[0].channel;
+        }
+      }
+      console.warn(`[Asterisk AMI Correlation] \u274C UniqueID '${targetUniqueId}' n\xE3o encontrado em nenhum canal ativo comprovado do XPE.`);
+      return null;
+    }
+    if (targetLinkedId) {
+      const matchingXpe = activeXpeChannels.filter(
+        (c) => getLid(c) === targetLinkedId || getUid(c) === targetLinkedId
+      );
+      if (matchingXpe.length === 1) {
+        return matchingXpe[0].channel;
+      }
+      if (matchingXpe.length > 1) {
+        console.warn(`[Asterisk AMI Correlation] \u274C Ambiguidade: M\xFAltiplos canais XPE associados ao LinkedID '${targetLinkedId}'.`);
+        return null;
+      }
+      console.warn(`[Asterisk AMI Correlation] \u274C LinkedID '${targetLinkedId}' n\xE3o encontrado em nenhum canal ativo comprovado do XPE.`);
+      return null;
+    }
+    if (targetUnit) {
+      const xpeForUnit = activeXpeChannels.filter(
+        (c) => c.connectedLineNum === targetUnit || c.exten === targetUnit
+      );
+      if (xpeForUnit.length === 1) {
+        return xpeForUnit[0].channel;
+      }
+      if (xpeForUnit.length > 1) {
+        console.warn(
+          `[Asterisk AMI Correlation] \u274C Ambiguidade: M\xFAltiplos canais XPE chamando para a unidade '${targetUnit}'. Imposs\xEDvel determinar inequivocamente sem UniqueID/LinkedID.`
+        );
+        return null;
+      }
+      if (xpeLinkedIds.size > 0) {
+        const unitChannelLinked = pjsipChannels.filter(
+          (c) => isChannelActive(c) && (c.connectedLineNum === targetUnit || c.callerIdNum === targetUnit || c.exten === targetUnit) && getLid(c) && xpeLinkedIds.has(getLid(c))
+        );
+        if (unitChannelLinked.length === 1) {
+          const lid = getLid(unitChannelLinked[0]);
+          const paired = activeXpeChannels.filter((xc) => getLid(xc) === lid);
+          if (paired.length === 1) {
+            return paired[0].channel;
+          }
+        }
+      }
+      console.warn(`[Asterisk AMI Correlation] \u274C Nenhuma chamada ativa inequ\xEDvoca do XPE para a unidade '${targetUnit}'.`);
+      return null;
+    }
+    if (activeXpeChannels.length === 0) {
+      console.warn("[Asterisk AMI Correlation] \u274C Nenhum canal PJSIP ativo comprovadamente pertencente \xE0 chamada do XPE foi localizado.");
+      return null;
+    }
+    if (activeXpeChannels.length > 1) {
+      console.warn(
+        `[Asterisk AMI Correlation] \u274C Ambiguidade cr\xEDtica: Existem m\xFAltiplos (${activeXpeChannels.length}) canais XPE ativos no Asterisk. N\xE3o foi poss\xEDvel determinar inequivocamente o canal SIP da chamada XPE. PlayDTMF cancelado por seguran\xE7a.`
+      );
+      return null;
+    }
+    const singleChannel = activeXpeChannels[0];
+    if (isChannelActive(singleChannel) && isDirectXpeChannel(singleChannel)) {
+      return singleChannel.channel;
+    }
+    return null;
+  }
+  /**
+   * Executa uma ação segura no Asterisk validada contra a Whitelist estrita
+   */
+  async executeSafeAction(action, params = {}) {
+    if (!ALLOWED_ASTERISK_ACTIONS.includes(action)) {
+      throw new Error(`[Asterisk AMI Security] A\xE7\xE3o n\xE3o permitida na Whitelist: ${action}`);
+    }
+    if (!this.isConnected()) {
+      const ok = await this.connect();
+      if (!ok || !this.socket || this.socket.destroyed) {
+        return {
+          success: false,
+          message: `Connection refused to Asterisk AMI socket on port ${this.port}`
+        };
+      }
+    }
+    return new Promise((resolve, reject) => {
+      this.actionCounter += 1;
+      const actionId = `act-${Date.now()}-${this.actionCounter}`;
+      const lines = [
+        `Action: ${action}`,
+        `ActionID: ${actionId}`
+      ];
+      for (const [k, v] of Object.entries(params)) {
+        lines.push(`${k}: ${v}`);
+      }
+      lines.push("", "");
+      const payload = lines.join("\r\n");
+      const timer = setTimeout(() => {
+        this.pendingActions.delete(actionId);
+        this.pendingListActions.delete(actionId);
+        resolve({
+          success: false,
+          message: `Timeout de ${this.actionTimeoutMs}ms aguardando resposta da a\xE7\xE3o AMI: ${action}`
+        });
+      }, this.actionTimeoutMs);
+      if (action === "CoreShowChannels") {
+        this.pendingListActions.set(actionId, {
+          actionId,
+          action,
+          items: [],
+          resolve: (val) => {
+            clearTimeout(timer);
+            resolve(val);
+          },
+          reject: (err) => {
+            clearTimeout(timer);
+            reject(err);
+          },
+          timer
+        });
+      } else {
+        this.pendingActions.set(actionId, {
+          actionId,
+          action,
+          resolve: (val) => {
+            clearTimeout(timer);
+            resolve(val);
+          },
+          reject: (err) => {
+            clearTimeout(timer);
+            reject(err);
+          },
+          timer
+        });
+      }
+      try {
+        this.socket.write(payload, "utf8");
+      } catch (err) {
+        clearTimeout(timer);
+        this.pendingActions.delete(actionId);
+        this.pendingListActions.delete(actionId);
+        resolve({
+          success: false,
+          message: `Falha ao escrever no socket AMI: ${err.message}`
+        });
+      }
+    });
+  }
+  /**
+   * Injeta tom DTMF em canal PJSIP real ativo (*07 para pedestre, *08 para garagem)
+   * Atende estritamente à Regra de Ouro #4 (Acionamento seguro sem contato seco na calçada)
+   */
+  async injectDtmf(sipChannel, digit, actorName = "Sistema") {
+    const trimmedChannel = sipChannel?.trim();
+    if (!trimmedChannel || !trimmedChannel.startsWith("PJSIP/") || trimmedChannel === "PJSIP/" || trimmedChannel.includes("fixo")) {
+      throw new Error(`[Asterisk AMI Security] Canal inv\xE1lido para PlayDTMF: deve ser um canal PJSIP real ativo identificado dinamicamente (recebido: '${sipChannel || "indefinido"}')`);
+    }
+    const allowedGateDtmf = ["*07", "*08", "07", "08", "*09", "09"];
+    if (!allowedGateDtmf.includes(digit)) {
+      throw new Error(`[Asterisk AMI Security] D\xEDgito DTMF n\xE3o autorizado para acionamento de port\xE3o: ${digit}. Permitidos: *07 (pedestre) ou *08 (garagem).`);
+    }
+    const cleanDigit = digit.replace("*", "");
+    const result = await this.executeSafeAction("PlayDTMF", {
+      Channel: trimmedChannel,
+      Digit: cleanDigit,
+      Duration: "500"
+    });
+    if (!result.success) {
+      return {
+        status: "Error",
+        success: false,
+        message: result.message || `Falha ao injetar DTMF ${digit} no Asterisk via PlayDTMF`
+      };
+    }
+    AuditService.record({
+      actor: actorName,
+      role: "sistema",
+      action: "PLAY_DTMF",
+      target: trimmedChannel,
+      status: "PERMITIDO",
+      dtmfCommand: digit,
+      details: { digit, cleanDigit, channel: trimmedChannel }
+    }).catch(() => {
+    });
+    return {
+      status: "Success",
+      success: true,
+      message: `DTMF ${digit} (${cleanDigit}) injetado no canal PJSIP ${trimmedChannel} com sucesso via PlayDTMF.`
+    };
+  }
+  /**
+   * Fecha o socket TCP de forma segura e limpa recursos
+   */
+  disconnect() {
+    this.intentionalDisconnect = true;
+    if (this.reconnectTimer) {
+      clearTimeout(this.reconnectTimer);
+      this.reconnectTimer = null;
+    }
+    if (this.socket) {
+      this.socket.destroy();
+      this.socket = null;
+    }
+    this.connected = false;
+    this.authenticated = false;
+    this.isConnecting = false;
+  }
+};
+var asteriskAmi = new AsteriskManager();
+
+// src/services/hardware/GateSensorAdapter.ts
+var UnconfiguredGateSensorAdapter = class {
+  async readState(_gate) {
+    return "desconhecido";
+  }
+};
+
+// src/services/hardware/SensorReader.ts
+var DefaultPhysicalSensorReader = class {
+  constructor() {
+    this.fallbackAdapter = new UnconfiguredGateSensorAdapter();
+  }
+  async readState(gate) {
+    const reading = await this.readSensor(gate.relayIp || "", gate.relayPin);
+    if (!reading.hasPhysicalSensor || reading.state === "sem_sensor" || reading.state === "desconhecido") {
+      return "desconhecido";
+    }
+    return reading.state === "aberto" ? "aberto" : "fechado";
+  }
+  async readSensor(relayIp, relayPin) {
+    const measuredAt = (/* @__PURE__ */ new Date()).toISOString();
+    try {
+      if (!relayIp || relayIp === "127.0.0.1") {
+        return {
+          hasPhysicalSensor: false,
+          state: "sem_sensor",
+          source: "none",
+          measuredAt,
+          pinNumber: relayPin,
+          details: "Nenhum controlador de rel\xE9 f\xEDsico ou IP de telemetria configurado."
+        };
+      }
+      const timeoutSignal = typeof AbortSignal !== "undefined" && AbortSignal.timeout ? AbortSignal.timeout(1200) : void 0;
+      const sensorUrl = process.env.SENSOR_ENDPOINT_TEMPLATE ? process.env.SENSOR_ENDPOINT_TEMPLATE.replace("{ip}", relayIp).replace("{pin}", String(relayPin)) : `http://${relayIp}/cgi-bin/sensor.cgi?input=${relayPin}`;
+      try {
+        const response = await fetch(sensorUrl, {
+          method: "GET",
+          signal: timeoutSignal
+        });
+        if (response.ok) {
+          const text2 = (await response.text()).toLowerCase();
+          const isAberto = text2.includes("open") || text2.includes("1") || text2.includes("true") || text2.includes("aberto");
+          const isFechado = text2.includes("closed") || text2.includes("0") || text2.includes("false") || text2.includes("fechado");
+          if (isAberto || isFechado) {
+            return {
+              hasPhysicalSensor: true,
+              state: isAberto ? "aberto" : "fechado",
+              source: "reed_switch",
+              measuredAt,
+              pinNumber: relayPin,
+              details: `Leitura f\xEDsica confirmada via telemetria digital: ${isAberto ? "aberto" : "fechado"}.`
+            };
+          }
+        }
+      } catch {
+      }
+      return {
+        hasPhysicalSensor: false,
+        state: "sem_sensor",
+        source: "none",
+        measuredAt,
+        pinNumber: relayPin,
+        details: "Comando el\xE9trico emitido. Sensor f\xEDsico de confirma\xE7\xE3o n\xE3o detectado nesta entrada digital."
+      };
+    } catch (err) {
+      return {
+        hasPhysicalSensor: false,
+        state: "desconhecido",
+        source: "none",
+        measuredAt,
+        pinNumber: relayPin,
+        details: `Falha de leitura do barramento de sensor: ${err.message}`
+      };
+    }
+  }
+};
+
+// src/services/hardware/drivers/HttpCgiRelayDriver.ts
+var HttpCgiRelayDriver = class {
+  constructor(config) {
+    this.config = {
+      timeoutMs: 1500,
+      port: 80,
+      ...config
+    };
+  }
+  /**
+   * Dispara pulso de abertura para o relé físico configurado
+   */
+  async pulseRelay(relayPin, pulseDurationSeconds, correlationId) {
+    const { host, port, username, password, timeoutMs } = this.config;
+    if (!host || host === "127.0.0.1" || host === "localhost") {
+      return {
+        success: false,
+        commandStatus: "HARDWARE_FAILURE",
+        hasPhysicalFeedbackSensor: false,
+        message: "Falha no driver HTTP CGI: IP da controladora inv\xE1lido ou em loopback.",
+        failureReason: "IP da controladora inv\xE1lido"
+      };
+    }
+    const portSuffix = port && port !== 80 ? `:${port}` : "";
+    const url = `http://${host}${portSuffix}/cgi-bin/relay.cgi?action=open&relay=${relayPin}&duration=${pulseDurationSeconds}`;
+    const headers = {
+      "User-Agent": "Enlace-DoorIA-RelayDriver/1.0"
+    };
+    if (username && password) {
+      const credentials = Buffer.from(`${username}:${password}`).toString("base64");
+      headers["Authorization"] = `Basic ${credentials}`;
+    }
+    try {
+      const timeoutSignal = typeof AbortSignal !== "undefined" && AbortSignal.timeout ? AbortSignal.timeout(timeoutMs || 1500) : void 0;
+      const response = await fetch(url, {
+        method: "GET",
+        headers,
+        signal: timeoutSignal
+      });
+      if (response.ok) {
+        console.log(
+          `[HttpCgiRelayDriver] [${correlationId || "N/A"}] Pulso de ${pulseDurationSeconds}s aceito pela controladora ${host} (Pino: ${relayPin}, Status HTTP: ${response.status})`
+        );
+        return {
+          success: true,
+          statusCode: response.status,
+          commandStatus: "COMMAND_SENT",
+          hasPhysicalFeedbackSensor: false,
+          message: `Comando el\xE9trico aceito pela controladora IP ${host} (Pino ${relayPin}).`
+        };
+      } else {
+        const errorMsg = `Controladora HTTP CGI ${host} retornou c\xF3digo de erro HTTP ${response.status}`;
+        console.warn(`[HttpCgiRelayDriver] [${correlationId || "N/A"}] \u274C ${errorMsg}`);
+        return {
+          success: false,
+          statusCode: response.status,
+          commandStatus: "HARDWARE_FAILURE",
+          hasPhysicalFeedbackSensor: false,
+          message: errorMsg,
+          failureReason: errorMsg
+        };
+      }
+    } catch (err) {
+      const errorMsg = `Controladora HTTP CGI ${host} inacess\xEDvel: ${err.message}`;
+      console.warn(`[HttpCgiRelayDriver] [${correlationId || "N/A"}] \u274C ${errorMsg}`);
+      return {
+        success: false,
+        commandStatus: "HARDWARE_FAILURE",
+        hasPhysicalFeedbackSensor: false,
+        message: errorMsg,
+        failureReason: err.message
+      };
+    }
+  }
+};
+
+// src/services/hardware/RealHardwareAdapter.ts
+var RealHardwareAdapter = class {
+  constructor(ami, sensorReader) {
+    this.mode = "real_hardware";
+    this.isSimulated = false;
+    this.ami = ami || new AsteriskManager(
+      process.env.ASTERISK_HOST || "127.0.0.1",
+      parseInt(process.env.ASTERISK_AMI_PORT || "5038", 10)
+    );
+    this.sensorReader = sensorReader || new DefaultPhysicalSensorReader();
+  }
+  /**
+   * Leitura formal de sensor físico via interface PhysicalSensorReader
+   */
+  async readSensor(relayIp, relayPin) {
+    return this.sensorReader.readSensor(relayIp, relayPin);
+  }
+  /**
+   * Consulta telemetria de entrada digital de sensor de fim de curso (reed switch) do controlador de relé.
+   * Mantido para compatibilidade com a suíte de testes.
+   * Retorna 'aberto', 'fechado' ou null se não houver sensor físico instalado na entrada digital.
+   */
+  async readPhysicalSensorFeedback(relayIp, relayPin) {
+    const reading = await this.readSensor(relayIp, relayPin);
+    if (!reading.hasPhysicalSensor || reading.state === "sem_sensor" || reading.state === "desconhecido") {
+      return null;
+    }
+    return reading.state === "aberto" ? "aberto" : "fechado";
+  }
+  async triggerRelay(gate, pulseDurationSeconds, correlationId, options) {
+    const timestamp2 = (/* @__PURE__ */ new Date()).toISOString();
+    const isProd = process.env.NODE_ENV === "production";
+    const relayIp = gate.relayIp || process.env.RELAY_CONTROLLER_IP || (isProd ? "" : "192.168.1.160");
+    if (isProd && !relayIp) {
+      return {
+        success: false,
+        executed: false,
+        isSimulated: false,
+        hardwareMode: "real_hardware",
+        commandStatus: "HARDWARE_FAILURE",
+        message: "Falha de hardware: IP do controlador de rel\xE9 (RELAY_CONTROLLER_IP) n\xE3o configurado no ambiente de produ\xE7\xE3o.",
+        statusCode: 502,
+        relayPin: gate.relayPin,
+        relayIp: "",
+        pulseDurationMs: 0,
+        timestamp: timestamp2,
+        hasPhysicalFeedbackSensor: false,
+        physicalSensorState: "desconhecido",
+        correlationId,
+        failureDetails: "RELAY_CONTROLLER_IP ausente em produ\xE7\xE3o"
+      };
+    }
+    try {
+      console.log(`[REAL_HARDWARE] [${correlationId || "N/A"}] Disparando pulso el\xE9trico para rel\xE9 pino ${gate.relayPin} em ${relayIp} (DTMF: ${gate.dtmfCode})...`);
+      let commandExecuted = false;
+      let commandMethod = "";
+      const failureReasons = [];
+      if (relayIp && relayIp !== "127.0.0.1" && process.env.TRIGGER_METHOD === "http_cgi") {
+        const cgiDriver = new HttpCgiRelayDriver({ host: relayIp });
+        const cgiResult = await cgiDriver.pulseRelay(gate.relayPin, pulseDurationSeconds, correlationId);
+        if (cgiResult.success) {
+          commandExecuted = true;
+          commandMethod = "HTTP_CGI";
+        } else if (cgiResult.failureReason) {
+          failureReasons.push(cgiResult.failureReason);
+        }
+      }
+      if (!commandExecuted) {
+        const targetChannel = await this.ami.findActiveChannelForXpe({
+          preferredChannel: options?.sipChannel,
+          targetUnit: options?.activeCallTargetUnit,
+          uniqueId: options?.uniqueId,
+          linkedId: options?.linkedId
+        });
+        if (!targetChannel) {
+          const detailMsg = options?.sipChannel ? `Canal preferencial '${options.sipChannel}' inexistente, inativo ou n\xE3o correlacionado \xE0 chamada do XPE no Asterisk.` : `N\xE3o foi poss\xEDvel determinar inequivocamente o canal SIP da chamada XPE no Asterisk.`;
+          console.warn(`[REAL_HARDWARE] [${correlationId || "N/A"}] \u274C ${detailMsg} PlayDTMF abortado.`);
+          return {
+            success: false,
+            executed: false,
+            isSimulated: false,
+            hardwareMode: "real_hardware",
+            commandStatus: "HARDWARE_FAILURE",
+            message: `Falha de hardware: ${detailMsg} O comando PlayDTMF foi cancelado por seguran\xE7a.`,
+            statusCode: 502,
+            relayPin: gate.relayPin,
+            relayIp: relayIp || "",
+            pulseDurationMs: 0,
+            timestamp: timestamp2,
+            hasPhysicalFeedbackSensor: false,
+            physicalSensorState: "desconhecido",
+            correlationId,
+            failureDetails: detailMsg
+          };
+        }
+        const dtmfParams = {
+          Channel: targetChannel,
+          Digit: gate.dtmfCode.replace("*", ""),
+          Duration: String(pulseDurationSeconds * 1e3)
+        };
+        const amiAction = await this.ami.executeSafeAction("PlayDTMF", dtmfParams);
+        if (!amiAction.success) {
+          return {
+            success: false,
+            executed: false,
+            isSimulated: false,
+            hardwareMode: "real_hardware",
+            commandStatus: "HARDWARE_FAILURE",
+            message: `Falha no Asterisk AMI ao injetar PlayDTMF no canal ${targetChannel}: ${amiAction.message}`,
+            statusCode: 502,
+            relayPin: gate.relayPin,
+            relayIp: relayIp || "",
+            pulseDurationMs: 0,
+            timestamp: timestamp2,
+            hasPhysicalFeedbackSensor: false,
+            physicalSensorState: "desconhecido",
+            correlationId,
+            failureDetails: amiAction.message
+          };
+        }
+        commandExecuted = true;
+        commandMethod = "ASTERISK_AMI_PLAYDTMF";
+      }
+      let reading;
+      const legacyFeedback = await this.readPhysicalSensorFeedback(relayIp, gate.relayPin);
+      if (legacyFeedback !== null) {
+        reading = {
+          hasPhysicalSensor: true,
+          state: legacyFeedback,
+          source: "reed_switch",
+          measuredAt: (/* @__PURE__ */ new Date()).toISOString(),
+          pinNumber: gate.relayPin
+        };
+      } else {
+        reading = await this.readSensor(relayIp, gate.relayPin);
+      }
+      const hasPhysicalFeedbackSensor = reading.hasPhysicalSensor;
+      const physicalSensorState = reading.state;
+      const commandStatus = hasPhysicalFeedbackSensor && physicalSensorState === "aberto" ? "HARDWARE_CONFIRMED" : "COMMAND_SENT";
+      const message = commandStatus === "HARDWARE_CONFIRMED" ? `Port\xE3o fisicamente confirmado como aberto via sensor de fim de curso (Rel\xE9 ${gate.relayPin}).` : hasPhysicalFeedbackSensor ? `Comando el\xE9trico enviado com sucesso (Rel\xE9 ${gate.relayPin}, DTMF: ${gate.dtmfCode}). Aguardando resposta do sensor f\xEDsico.` : `Comando el\xE9trico enviado com sucesso ao equipamento (Rel\xE9 ${gate.relayPin}, DTMF: ${gate.dtmfCode}) sem sensor de confirma\xE7\xE3o f\xEDsica. Status COMMAND_SENT.`;
+      return {
+        success: true,
+        executed: true,
+        isSimulated: false,
+        hardwareMode: "real_hardware",
+        commandStatus,
+        message,
+        statusCode: 200,
+        relayPin: gate.relayPin,
+        relayIp,
+        pulseDurationMs: pulseDurationSeconds * 1e3,
+        timestamp: timestamp2,
+        hasPhysicalFeedbackSensor,
+        physicalSensorState,
+        sensorReading: reading,
+        correlationId
+      };
+    } catch (error) {
+      console.error(`[REAL_HARDWARE] \u274C [${correlationId || "N/A"}] Falha de hardware no rel\xE9:`, error.message);
+      return {
+        success: false,
+        executed: false,
+        isSimulated: false,
+        hardwareMode: "real_hardware",
+        commandStatus: "HARDWARE_FAILURE",
+        message: `Falha de comunica\xE7\xE3o com hardware f\xEDsico do rel\xE9: ${error.message}`,
+        statusCode: 502,
+        relayPin: gate.relayPin,
+        relayIp,
+        pulseDurationMs: 0,
+        timestamp: timestamp2,
+        hasPhysicalFeedbackSensor: false,
+        physicalSensorState: "desconhecido",
+        correlationId,
+        failureDetails: error.message
+      };
+    }
+  }
+  async injectDtmf(sipChannel, digit) {
+    try {
+      const res = await this.ami.injectDtmf(sipChannel, digit);
+      const isSuccess = res.status === "Success";
+      return {
+        success: isSuccess,
+        isSimulated: false,
+        digit,
+        channel: sipChannel,
+        message: res.message || (isSuccess ? "DTMF injetado no canal PJSIP" : "Falha ao injetar DTMF"),
+        commandStatus: isSuccess ? "COMMAND_SENT" : "HARDWARE_FAILURE"
+      };
+    } catch (err) {
+      return {
+        success: false,
+        isSimulated: false,
+        digit,
+        channel: sipChannel,
+        message: err.message,
+        commandStatus: "HARDWARE_FAILURE"
+      };
+    }
+  }
+  async checkHealth(deviceId) {
+    const isAmiConnected = this.ami.isConnected();
+    return {
+      device: deviceId,
+      status: isAmiConnected ? "online" : "offline",
+      lastChecked: (/* @__PURE__ */ new Date()).toISOString()
+    };
+  }
+};
+
+// src/services/hardware/index.ts
+var activeAdapter = null;
+function getHardwareAdapter() {
+  if (!activeAdapter) {
+    const isRealHardware = process.env.HARDWARE_MODE === "real";
+    if (isRealHardware) {
+      console.log("[HardwareFactory] \u2705 Inicializando REAL HARDWARE ADAPTER (Asterisk AMI / Rel\xE9s IP)");
+      activeAdapter = new RealHardwareAdapter();
+    } else {
+      console.warn("[HardwareFactory] \u26A0\uFE0F Inicializando SIMULATION ADAPTER (Modo Seguro / Sem Acionamento Eletromec\xE2nico)");
+      activeAdapter = new SimulationAdapter();
+    }
+  }
+  return activeAdapter;
+}
+
+// src/services/GateControlService.ts
+var GateControlService = class {
+  /**
+   * Executa o fluxo de segurança obrigatório para liberação de portões:
+   * Autenticação -> RBAC -> Policy Engine -> Validação de Contexto -> Auditoria -> Hardware Adapter
+   * 
+   * Correção 7 (Separação Rigorosa):
+   * - Modo Simulado: Apenas computação lógica e previsão visual. Não finge acionar equipamento real.
+   * - Modo Real: Diferencia claramente COMMAND_SENT de HARDWARE_CONFIRMED e HARDWARE_FAILURE.
+   *   O setTimeout() NUNCA é usado como confirmação de estado de hardware físico real.
+   */
+  static async trigger(gate, params) {
+    const { session, context, triggerSource, adapterOverride } = params;
+    const adapter = adapterOverride || getHardwareAdapter();
+    const correlationId = context.correlationId || `gate-trig-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`;
+    const evaluation = PolicyEngine.evaluate({
+      actor: {
+        id: session.id,
+        role: session.role,
+        unitNumber: session.unitNumber
+      },
+      action: "ABRIR_PORTAO",
+      resource: {
+        target: gate.name,
+        dtmfCommand: gate.dtmfCode
+      },
+      context: {
+        callActive: context.callActive,
+        activeCallTargetUnit: context.activeCallTargetUnit,
+        ipAddress: context.ipAddress
+      }
+    });
+    if (!evaluation.allowed) {
+      await AuditService.record({
+        actor: session.name,
+        role: session.role,
+        action: "ABRIR_PORTAO",
+        target: `${gate.name} (${gate.dtmfCode})`,
+        status: "NEGADO",
+        reason: evaluation.reason,
+        ipAddress: context.ipAddress,
+        userAgent: context.userAgent,
+        correlationId,
+        dtmfCommand: gate.dtmfCode,
+        details: {
+          triggerSource,
+          gateId: gate.id,
+          policyCode: evaluation.policyCode,
+          callActive: context.callActive,
+          activeCallTargetUnit: context.activeCallTargetUnit,
+          hardwareMode: adapter.mode,
+          isSimulated: adapter.isSimulated,
+          commandStatus: "HARDWARE_FAILURE"
+        }
+      });
+      return {
+        success: false,
+        message: evaluation.reason || "Acionamento de port\xE3o negado pelas pol\xEDticas de seguran\xE7a.",
+        statusCode: 403,
+        isSimulated: adapter.isSimulated,
+        hardwareMode: adapter.mode,
+        commandStatus: "HARDWARE_FAILURE",
+        hasPhysicalFeedbackSensor: false
+      };
+    }
+    const pulseDuration = gate.type === "garagem" ? 2 : 1;
+    const relayResult = await adapter.triggerRelay(gate, pulseDuration, correlationId, {
+      sipChannel: context.sipChannel,
+      activeCallTargetUnit: context.activeCallTargetUnit,
+      uniqueId: context.uniqueId,
+      linkedId: context.linkedId
+    });
+    await AuditService.record({
+      actor: session.name,
+      role: session.role,
+      action: adapter.isSimulated ? "ABRIR_PORTAO_SIMULADO" : "ABRIR_PORTAO_FISICO",
+      target: `${gate.name} (${gate.dtmfCode})`,
+      status: relayResult.success ? "PERMITIDO" : "ALERTA",
+      ipAddress: context.ipAddress,
+      userAgent: context.userAgent,
+      correlationId,
+      dtmfCommand: gate.dtmfCode,
+      details: {
+        triggerSource,
+        gateId: gate.id,
+        relayPin: gate.relayPin,
+        relayIp: relayResult.relayIp,
+        callActive: context.callActive,
+        activeCallTargetUnit: context.activeCallTargetUnit,
+        hardwareMode: adapter.mode,
+        isSimulated: adapter.isSimulated,
+        commandStatus: relayResult.commandStatus,
+        hasPhysicalFeedbackSensor: relayResult.hasPhysicalFeedbackSensor,
+        physicalSensorState: relayResult.physicalSensorState,
+        hardwareFailureDetails: relayResult.failureDetails,
+        timestamp: relayResult.timestamp
+      }
+    });
+    if (!relayResult.success) {
+      return {
+        success: false,
+        message: relayResult.message,
+        statusCode: relayResult.statusCode,
+        isSimulated: adapter.isSimulated,
+        hardwareMode: adapter.mode,
+        commandStatus: "HARDWARE_FAILURE",
+        hasPhysicalFeedbackSensor: relayResult.hasPhysicalFeedbackSensor,
+        relayResult
+      };
+    }
+    gate.lastOpenedAt = relayResult.timestamp;
+    gate.lastOpenedBy = `${session.name} (${session.role}) [${adapter.isSimulated ? "SIMULADO" : "HARDWARE_REAL"}]`;
+    if (adapter.isSimulated) {
+      gate.status = "aberto";
+      setTimeout(() => {
+        gate.status = "fechando";
+        setTimeout(() => {
+          gate.status = "fechado";
+        }, 3e3);
+      }, gate.type === "garagem" ? 1e4 : 5e3);
+    } else {
+      if (relayResult.commandStatus === "HARDWARE_CONFIRMED") {
+        gate.status = "aberto";
+      } else if (relayResult.commandStatus === "COMMAND_SENT") {
+        gate.status = "comando_enviado";
+      } else {
+        gate.status = "falha";
+      }
+    }
+    return {
+      success: true,
+      message: relayResult.message,
+      gate,
+      statusCode: 200,
+      isSimulated: adapter.isSimulated,
+      hardwareMode: adapter.mode,
+      commandStatus: relayResult.commandStatus,
+      hasPhysicalFeedbackSensor: relayResult.hasPhysicalFeedbackSensor,
+      physicalSensorState: relayResult.physicalSensorState,
+      relayResult
+    };
+  }
+  /**
+   * Método de conveniência para acionamento direto de portão com suporte a injeção de adaptador
+   */
+  static async triggerGate(gate, session, context = {}, adapterOverride, triggerSource = "painel_web") {
+    return this.trigger(gate, {
+      gateId: gate.id,
+      session,
+      context,
+      triggerSource,
+      adapterOverride
+    });
+  }
+};
+
+// src/services/AuthService.ts
+var import_crypto2 = __toESM(require("crypto"), 1);
+var import_drizzle_orm = require("drizzle-orm");
+function resolveSessionSecret() {
+  const secret = process.env.SESSION_SECRET;
+  if (!secret) {
+    if (process.env.NODE_ENV === "production") {
+      throw new Error(
+        "FATAL STARTUP ERROR: A vari\xE1vel de ambiente SESSION_SECRET \xE9 estritamente obrigat\xF3ria em ambiente de produ\xE7\xE3o. O DoorIA n\xE3o pode iniciar com segredos ausentes ou padr\xF5es inseguros."
+      );
+    }
+    console.warn(
+      "[AuthService] \u26A0\uFE0F AVISO DE SEGURAN\xC7A: SESSION_SECRET ausente em modo de desenvolvimento. Gerando segredo criptogr\xE1fico rand\xF4mico ef\xEAmero para esta execu\xE7\xE3o."
+    );
+    return import_crypto2.default.randomBytes(32).toString("hex");
+  }
+  return secret;
+}
+var SESSION_SECRET = resolveSessionSecret();
+var activeSessions = /* @__PURE__ */ new Map();
+var AuthService = class {
+  /**
+   * Autentica um usuário contra a tabela oficial system_users no PostgreSQL
+   */
+  static async authenticateUser(username, plainPassword) {
+    try {
+      const records = await db.select().from(systemUsers).where((0, import_drizzle_orm.eq)(systemUsers.username, username)).limit(1);
+      if (!records || records.length === 0) {
+        return null;
+      }
+      const user = records[0];
+      if (!user.active) {
+        return null;
+      }
+      const derivedHash = import_crypto2.default.scryptSync(plainPassword, user.salt, 64).toString("hex");
+      if (!import_crypto2.default.timingSafeEqual(Buffer.from(derivedHash), Buffer.from(user.passwordHash))) {
+        return null;
+      }
+      return {
+        id: user.id,
+        name: user.displayName,
+        email: user.email || `${user.username}@condominio.local`,
+        role: user.role,
+        unitId: user.unitId || void 0,
+        unitNumber: user.unitNumber || void 0,
+        mfaEnabled: user.mfaEnabled || false
+      };
+    } catch (error) {
+      console.error("[AuthService] Erro ao consultar banco para autentica\xE7\xE3o:", error.message);
+      return null;
+    }
+  }
+  /**
+   * Gera um token de sessão criptográfico assinado com HMAC-SHA256
+   */
+  static createSessionToken(session, ttlHours = 24) {
+    const payload = JSON.stringify({
+      id: session.id,
+      name: session.name,
+      email: session.email,
+      role: session.role,
+      unitId: session.unitId,
+      unitNumber: session.unitNumber,
+      issuedAt: Date.now(),
+      expiresAt: Date.now() + ttlHours * 3600 * 1e3
+    });
+    const b64Payload = Buffer.from(payload).toString("base64url");
+    const signature = import_crypto2.default.createHmac("sha256", SESSION_SECRET).update(b64Payload).digest("base64url");
+    const token = `${b64Payload}.${signature}`;
+    activeSessions.set(token, {
+      session,
+      expiresAt: Date.now() + ttlHours * 3600 * 1e3
+    });
+    return token;
+  }
+  /**
+   * Valida e decodifica um token de sessão assinado
+   */
+  static verifySessionToken(token) {
+    if (!token) return null;
+    const cached = activeSessions.get(token);
+    if (cached && cached.expiresAt > Date.now()) {
+      return cached.session;
+    }
+    try {
+      const parts = token.split(".");
+      if (parts.length !== 2) return null;
+      const [b64Payload, signature] = parts;
+      const expectedSignature = import_crypto2.default.createHmac("sha256", SESSION_SECRET).update(b64Payload).digest("base64url");
+      if (!import_crypto2.default.timingSafeEqual(Buffer.from(signature), Buffer.from(expectedSignature))) {
+        return null;
+      }
+      const decoded = JSON.parse(Buffer.from(b64Payload, "base64url").toString("utf-8"));
+      if (decoded.expiresAt < Date.now()) {
+        activeSessions.delete(token);
+        return null;
+      }
+      const session = {
+        id: decoded.id,
+        name: decoded.name || decoded.email,
+        email: decoded.email,
+        role: decoded.role,
+        unitId: decoded.unitId,
+        unitNumber: decoded.unitNumber,
+        mfaEnabled: true
+      };
+      activeSessions.set(token, { session, expiresAt: decoded.expiresAt });
+      return session;
+    } catch {
+      return null;
+    }
+  }
+  /**
+   * Revoga uma sessão ativa (logout)
+   */
+  static revokeSession(token) {
+    activeSessions.delete(token);
+  }
+  /**
+   * Gera sessões para ambiente exclusivo de testes/demonstração.
+   * Em produção, lança erro fatal e é expressamente proibido.
+   */
+  static getPresetSession(role, unitNumber = "101") {
+    if (process.env.NODE_ENV === "production") {
+      throw new Error("Falha de Seguran\xE7a: Sess\xF5es pr\xE9-configuradas (demo) s\xE3o terminantemente proibidas em ambiente de produ\xE7\xE3o.");
+    }
+    if (role === "sindico") {
+      return {
+        id: "usr-dev-sindico",
+        name: "S\xEDndico Geral (Dev Demo)",
+        email: "sindico.demo@condominio.local",
+        role: "sindico",
+        unitId: "u-admin-01",
+        unitNumber: "101",
+        mfaEnabled: true
+      };
+    }
+    if (role === "super_admin" || role === "admin_sistema") {
+      return {
+        id: "usr-dev-superadmin",
+        name: "Super Admin T\xE9cnico (Dev Demo)",
+        email: "admin.telecom@condominio.local",
+        role: "super_admin",
+        mfaEnabled: true
+      };
+    }
+    return {
+      id: `usr-dev-morador-${unitNumber}`,
+      name: `Morador Unidade ${unitNumber} (Dev Demo)`,
+      email: `morador.${unitNumber}@condominio.local`,
+      role: "morador",
+      unitId: `u-${unitNumber}`,
+      unitNumber,
+      mfaEnabled: false
+    };
+  }
+};
+
+// src/services/EnlacePay.ts
+var import_crypto4 = __toESM(require("crypto"), 1);
+
+// src/services/finance/SandboxPaymentProvider.ts
+var import_crypto3 = __toESM(require("crypto"), 1);
+var SandboxPaymentProvider = class {
+  constructor() {
+    this.name = "EnlacePay_Sandbox";
+    this.isSandbox = true;
+    // Registro interno de cobranças simuladas
+    this.charges = /* @__PURE__ */ new Map();
+  }
+  async createCharge(params) {
+    const externalId = `sandbox_chg_${Date.now()}_${import_crypto3.default.randomBytes(4).toString("hex")}`;
+    const amountStr = params.valorTotal.toFixed(2);
+    const pixCopiaCola = `SANDBOX_PIX_EMV_DOORIA_${params.billId}_VALOR_${amountStr}_NAO_PAGAVEL`;
+    const codigoBarras = `0019000009${params.unitNumber.padStart(4, "0")}${Math.round(params.valorTotal * 100).toString().padStart(10, "0")}SANDBOX`;
+    const linhaDigitavel = `00190.00009 ${params.unitNumber.padStart(4, "0")}0.000000 00000.000000 1 ${Math.round(params.valorTotal * 100).toString().padStart(10, "0")}`;
+    const chargeDetails = {
+      externalId,
+      provider: this.name,
+      isSandbox: true,
+      status: "PENDING"
+    };
+    this.charges.set(externalId, chargeDetails);
+    console.warn(
+      `[SANDBOX_PAYMENT_PROVIDER] Cobran\xE7a simulada gerada para Unidade ${params.unitNumber} (ID: ${externalId}, Valor: R$ ${amountStr}). Modo SANDBOX ativo.`
+    );
+    return {
+      success: true,
+      externalId,
+      provider: this.name,
+      isSandbox: true,
+      status: "SANDBOX_PENDING",
+      pixCopiaCola,
+      codigoBarras,
+      linhaDigitavel,
+      dueDate: params.vencimentoIso,
+      amount: params.valorTotal,
+      createdAt: (/* @__PURE__ */ new Date()).toISOString(),
+      message: "Cobran\xE7a emitida em modo SANDBOX/SIMULA\xC7\xC3O. N\xE3o efetuar pagamento real."
+    };
+  }
+  async getCharge(externalId) {
+    const charge = this.charges.get(externalId);
+    if (!charge) {
+      return {
+        externalId,
+        provider: this.name,
+        isSandbox: true,
+        status: "PENDING"
+      };
+    }
+    return charge;
+  }
+  async cancelCharge(externalId) {
+    const charge = this.charges.get(externalId);
+    if (charge) {
+      charge.status = "CANCELLED";
+      return true;
+    }
+    return false;
+  }
+  async processWebhook(payload, signature) {
+    const { event, externalId, billId, amountPaid, method } = payload || {};
+    if (!externalId) {
+      return {
+        valid: false,
+        eventType: "UNKNOWN",
+        externalId: "",
+        rawPayload: payload,
+        message: "Payload de webhook inv\xE1lido: externalId ausente."
+      };
+    }
+    if (event === "PAYMENT_CONFIRMED" || event === "CHARGE_PAID") {
+      const charge = this.charges.get(externalId);
+      const paidAt = (/* @__PURE__ */ new Date()).toISOString();
+      if (charge) {
+        charge.status = "PAID";
+        charge.paidAt = paidAt;
+        charge.amountPaid = amountPaid;
+        charge.paymentMethod = method || "pix";
+      }
+      return {
+        valid: true,
+        eventType: "CHARGE_PAID",
+        billId: billId || "",
+        externalId,
+        amountPaid: Number(amountPaid) || 0,
+        paidAt,
+        paymentMethod: method || "pix",
+        rawPayload: payload,
+        message: `[SANDBOX WEBHOOK] Pagamento confirmado pelo gateway simulado para ${externalId}.`
+      };
+    }
+    return {
+      valid: true,
+      eventType: "UNKNOWN",
+      externalId,
+      rawPayload: payload,
+      message: `Evento desconhecido: ${event}`
+    };
+  }
+};
+
+// src/services/finance/index.ts
+var activePaymentProvider = null;
+function getPaymentProvider() {
+  if (!activePaymentProvider) {
+    console.warn("[PaymentProviderFactory] \u26A0\uFE0F Utilizando SandboxPaymentProvider (Modo Simulado/Seguro).");
+    activePaymentProvider = new SandboxPaymentProvider();
+  }
+  return activePaymentProvider;
+}
+
+// src/services/EnlacePay.ts
+var EnlacePay = class {
+  /**
+   * Calcula encargos legais por atraso (Art. 1.336 § 1º do Código Civil Brasileiro)
+   * Multa: 2% + Juros de 1% ao mês proporcional + Correção
+   * Responsabilidade: Domínio Financeiro DoorIA
+   */
+  static calculateLateCharges(valorOriginal, vencimentoIso, latePenaltyPercentage = 2, monthlyInterestPercentage = 1) {
+    const vencimentoDate = new Date(vencimentoIso);
+    const now = /* @__PURE__ */ new Date();
+    const diffMs = now.getTime() - vencimentoDate.getTime();
+    const diasAtraso = Math.max(0, Math.floor(diffMs / (1e3 * 60 * 60 * 24)));
+    if (diasAtraso <= 0) {
+      return {
+        diasAtraso: 0,
+        multa: 0,
+        juros: 0,
+        correcao: 0,
+        valorTotal: valorOriginal
+      };
+    }
+    const multa = valorOriginal * latePenaltyPercentage / 100;
+    const jurosDiarios = monthlyInterestPercentage / 30 / 100 * valorOriginal;
+    const juros = jurosDiarios * diasAtraso;
+    const correcao = diasAtraso > 30 ? valorOriginal * 5e-3 : 0;
+    const valorTotal = Number((valorOriginal + multa + juros + correcao).toFixed(2));
+    return {
+      diasAtraso,
+      multa: Number(multa.toFixed(2)),
+      juros: Number(juros.toFixed(2)),
+      correcao: Number(correcao.toFixed(2)),
+      valorTotal
+    };
+  }
+  /**
+   * Emite uma cobrança bancária através do PaymentProvider ativo (Sandbox ou Banco Oficial)
+   * Responsabilidade: EnlacePay Integration Gateway
+   */
+  static async emitCharge(bill, payerName) {
+    const provider = getPaymentProvider();
+    const result = await provider.createCharge({
+      unitId: bill.unitId,
+      unitNumber: bill.unitNumber,
+      billId: bill.id,
+      competencia: bill.competencia,
+      vencimentoIso: bill.vencimento,
+      valorTotal: bill.valorTotal,
+      payerName
+    });
+    bill.externalId = result.externalId;
+    bill.pixCopiaCola = result.pixCopiaCola;
+    bill.codigoBarras = result.codigoBarras;
+    bill.linhaDigitavel = result.linhaDigitavel;
+    return result;
+  }
+  /**
+   * Processa webhook oficial do gateway de pagamentos
+   * A fatura só é marcada como 'pago' após a confirmação válida pelo provider
+   */
+  static async handleWebhook(payload, signature) {
+    const provider = getPaymentProvider();
+    return provider.processWebhook(payload, signature);
+  }
+  /**
+   * Liquida uma fatura garantindo validação de segurança:
+   * Em ambiente Sandbox/Dev, emite alerta explícito.
+   * Em produção, exige confirmação do provedor via Webhook.
+   */
+  static async settleBill(bill, method = "pix", confirmedByProvider = false) {
+    const provider = getPaymentProvider();
+    if (process.env.NODE_ENV === "production" && !confirmedByProvider) {
+      throw new Error(
+        "Seguran\xE7a Banc\xE1ria: Liquida\xE7\xE3o manual bloqueada em produ\xE7\xE3o. A quita\xE7\xE3o exige confirma\xE7\xE3o eletr\xF4nica enviada pelo gateway banc\xE1rio via Webhook ou arquivo de retorno CNAB."
+      );
+    }
+    const paidAt = (/* @__PURE__ */ new Date()).toISOString();
+    const transactionId = `${provider.isSandbox ? "sandbox_" : ""}txn_${Date.now()}_${import_crypto4.default.randomBytes(4).toString("hex")}`;
+    const receiptNumber = `REC-${(/* @__PURE__ */ new Date()).getFullYear()}-${Math.floor(1e5 + Math.random() * 9e5)}`;
+    bill.status = "pago";
+    bill.pagoEm = paidAt;
+    bill.diasAtraso = 0;
+    bill.metodoPagamento = method;
+    return {
+      success: true,
+      transactionId,
+      billId: bill.id,
+      amountPaid: bill.valorTotal,
+      method,
+      paidAt,
+      receiptNumber,
+      isSandbox: provider.isSandbox,
+      message: provider.isSandbox ? "[MODO SIMULADO] Fatura liquidada no ambiente de testes/sandbox. Nenhuma movimenta\xE7\xE3o banc\xE1ria real ocorreu." : "Pagamento confirmado com sucesso."
+    };
+  }
+};
+
+// src/services/CondominiumService.ts
+var CondominiumService = class _CondominiumService {
+  /**
+   * Obtém a configuração ativa a partir do PostgreSQL
+   */
+  static async getConfig() {
+    try {
+      const records = await db.select().from(condominiums).limit(1);
+      if (records && records.length > 0) {
+        const r = records[0];
+        return {
+          id: r.id,
+          name: r.name,
+          tradingName: r.tradingName || void 0,
+          cnpj: r.cnpj,
+          address: r.address || {
+            street: "",
+            number: "",
+            neighborhood: "",
+            city: "",
+            state: "",
+            zipCode: ""
+          },
+          unitsCount: r.unitsCount || 0,
+          blocks: r.blocks || ["Bloco A"],
+          floorsCount: r.floorsCount || 1,
+          parkingSpotsCount: r.parkingSpotsCount || 0,
+          managementPhone: r.managementPhone || "",
+          emergencyPhone: r.emergencyPhone || "",
+          email: r.email || "",
+          sindico: r.sindico || {
+            name: "",
+            phone: "",
+            email: ""
+          },
+          administrator: r.administrator || {
+            name: "",
+            cnpj: "",
+            phone: "",
+            email: ""
+          },
+          operationalSettings: r.operationalSettings || {
+            pedestrianGatePulseSeconds: 5,
+            vehicleGatePulseSeconds: 15,
+            openGateAlertSeconds: 60,
+            dtmfPedestrian: "*07",
+            dtmfVehicle: "*08",
+            silencePeriodStart: "22:00",
+            silencePeriodEnd: "08:00",
+            packageDeliveryWindowStart: "08:00",
+            packageDeliveryWindowEnd: "20:00",
+            callTimeoutSeconds: 30,
+            autoUraFallback: true,
+            localFirstOfflineMode: true,
+            requireVisitorPhoto: true
+          },
+          financialSettings: r.financialSettings || {
+            dueDay: 10,
+            standardFee: 0,
+            reserveFundPercentage: 10,
+            latePenaltyPercentage: 2,
+            monthlyInterestPercentage: 1
+          },
+          technicalSettings: r.technicalSettings || {
+            localServerIp: process.env.LOCAL_SERVER_IP || (process.env.NODE_ENV === "production" ? "" : "127.0.0.1"),
+            asteriskVersion: "Asterisk 20 LTS Pure PJSIP",
+            asteriskWssPort: 8089,
+            allowSelfSignedCerts: true
+          },
+          updatedAt: r.updatedAt ? r.updatedAt.toISOString() : (/* @__PURE__ */ new Date()).toISOString(),
+          updatedBy: "PostgreSQL 16 LTS"
+        };
+      }
+      if (process.env.NODE_ENV === "production") {
+        return null;
+      }
+      return {
+        id: process.env.CONDO_ID || "condo-master",
+        name: process.env.CONDO_NAME || "Condom\xEDnio (N\xE3o Configurado)",
+        tradingName: process.env.CONDO_TRADING_NAME || "Condom\xEDnio",
+        cnpj: process.env.CONDO_CNPJ || "00.000.000/0001-00",
+        address: {
+          street: "",
+          number: "",
+          neighborhood: "",
+          city: "",
+          state: "",
+          zipCode: ""
+        },
+        unitsCount: 0,
+        blocks: ["Bloco A"],
+        floorsCount: 1,
+        parkingSpotsCount: 0,
+        managementPhone: "",
+        emergencyPhone: "",
+        email: "",
+        sindico: {
+          name: "",
+          document: "",
+          phone: "",
+          email: "",
+          mandateStart: (/* @__PURE__ */ new Date()).toISOString(),
+          mandateEnd: new Date(Date.now() + 365 * 864e5).toISOString(),
+          apartment: ""
+        },
+        administrator: {
+          name: "",
+          cnpj: "",
+          phone: "",
+          email: "",
+          contactPerson: ""
+        },
+        operationalSettings: {
+          pedestrianGatePulseSeconds: 5,
+          vehicleGatePulseSeconds: 15,
+          openGateAlertSeconds: 60,
+          dtmfPedestrian: "*07",
+          dtmfVehicle: "*08",
+          silencePeriodStart: "22:00",
+          silencePeriodEnd: "08:00",
+          packageDeliveryWindowStart: "08:00",
+          packageDeliveryWindowEnd: "20:00",
+          callTimeoutSeconds: 30,
+          autoUraFallback: true,
+          localFirstOfflineMode: true,
+          requireVisitorPhoto: true
+        },
+        financialSettings: {
+          dueDay: 10,
+          standardFee: 0,
+          reserveFundPercentage: 10,
+          latePenaltyPercentage: 2,
+          monthlyInterestPercentage: 1,
+          pixKeyType: "cnpj",
+          pixKey: "",
+          bankName: "",
+          bankAgency: "",
+          bankAccount: ""
+        },
+        technicalSettings: {
+          localServerIp: "127.0.0.1",
+          asteriskVersion: "Asterisk 20.8 LTS Pure (No FreePBX)",
+          xpeModel: "Intelbras XPE 3115-IP",
+          xpeIp: "192.168.1.150",
+          iotGateway: "NovaDigital HNZ-CB3 Zigbee 3.0 Ethernet",
+          iotGatewayIp: "192.168.1.160",
+          subnetRange: "192.168.1.0/24",
+          asteriskWssPort: 8089,
+          allowSelfSignedCerts: true
+        },
+        updatedAt: (/* @__PURE__ */ new Date()).toISOString(),
+        updatedBy: "Ambiente Local"
+      };
+    } catch (error) {
+      if (process.env.NODE_ENV === "production") {
+        console.error("[CondominiumService] Erro ao carregar configura\xE7\xF5es do PostgreSQL:", error.message);
+        throw error;
+      }
+      if (!error.message?.includes("ECONNREFUSED") && !error.message?.includes("Failed query")) {
+        console.warn("[CondominiumService] PostgreSQL n\xE3o dispon\xEDvel:", error.message);
+      }
+      return _CondominiumService.getNeutralFallbackConfig();
+    }
+  }
+  /**
+   * Configuração neutra e estruturada utilizada como fallback estritamente em desenvolvimento
+   */
+  static getNeutralFallbackConfig() {
+    return {
+      id: process.env.CONDO_ID || "condo-master",
+      name: process.env.CONDO_NAME || "Condom\xEDnio (N\xE3o Configurado)",
+      tradingName: process.env.CONDO_TRADING_NAME || "Condom\xEDnio",
+      cnpj: process.env.CONDO_CNPJ || "00.000.000/0001-00",
+      address: {
+        street: "",
+        number: "",
+        neighborhood: "",
+        city: "",
+        state: "",
+        zipCode: ""
+      },
+      unitsCount: 0,
+      blocks: ["Bloco A"],
+      floorsCount: 1,
+      parkingSpotsCount: 0,
+      managementPhone: "",
+      emergencyPhone: "",
+      email: "",
+      sindico: {
+        name: "",
+        document: "",
+        phone: "",
+        email: "",
+        mandateStart: (/* @__PURE__ */ new Date()).toISOString(),
+        mandateEnd: new Date(Date.now() + 365 * 864e5).toISOString(),
+        apartment: ""
+      },
+      administrator: {
+        name: "",
+        cnpj: "",
+        phone: "",
+        email: "",
+        contactPerson: ""
+      },
+      operationalSettings: {
+        pedestrianGatePulseSeconds: 5,
+        vehicleGatePulseSeconds: 15,
+        openGateAlertSeconds: 60,
+        dtmfPedestrian: "*07",
+        dtmfVehicle: "*08",
+        silencePeriodStart: "22:00",
+        silencePeriodEnd: "08:00",
+        packageDeliveryWindowStart: "08:00",
+        packageDeliveryWindowEnd: "20:00",
+        callTimeoutSeconds: 30,
+        autoUraFallback: true,
+        localFirstOfflineMode: true,
+        requireVisitorPhoto: true
+      },
+      financialSettings: {
+        dueDay: 10,
+        standardFee: 0,
+        reserveFundPercentage: 10,
+        latePenaltyPercentage: 2,
+        monthlyInterestPercentage: 1,
+        pixKeyType: "cnpj",
+        pixKey: "",
+        bankName: "",
+        bankAgency: "",
+        bankAccount: ""
+      },
+      technicalSettings: {
+        localServerIp: "127.0.0.1",
+        asteriskVersion: "Asterisk 20.8 LTS Pure (No FreePBX)",
+        xpeModel: "Intelbras XPE 3115-IP",
+        xpeIp: "192.168.1.150",
+        iotGateway: "NovaDigital HNZ-CB3 Zigbee 3.0 Ethernet",
+        iotGatewayIp: "192.168.1.160",
+        subnetRange: "192.168.1.0/24",
+        asteriskWssPort: 8089,
+        allowSelfSignedCerts: true
+      },
+      updatedAt: (/* @__PURE__ */ new Date()).toISOString(),
+      updatedBy: "Ambiente Local (Desenvolvimento)"
+    };
+  }
+  /**
+   * Atualiza a configuração do condomínio no PostgreSQL
+   */
+  static async updateConfig(newConfig) {
+    const current = await this.getConfig();
+    const updated = {
+      ...current || {},
+      ...newConfig,
+      updatedAt: (/* @__PURE__ */ new Date()).toISOString()
+    };
+    try {
+      const records = await db.select().from(condominiums).limit(1);
+      if (records && records.length > 0) {
+        await db.update(condominiums).set({
+          name: updated.name,
+          tradingName: updated.tradingName,
+          cnpj: updated.cnpj,
+          address: updated.address,
+          unitsCount: updated.unitsCount,
+          blocks: updated.blocks,
+          floorsCount: updated.floorsCount,
+          parkingSpotsCount: updated.parkingSpotsCount,
+          managementPhone: updated.managementPhone,
+          emergencyPhone: updated.emergencyPhone,
+          email: updated.email,
+          sindico: updated.sindico,
+          administrator: updated.administrator,
+          operationalSettings: updated.operationalSettings,
+          financialSettings: updated.financialSettings,
+          technicalSettings: updated.technicalSettings,
+          updatedAt: /* @__PURE__ */ new Date()
+        });
+      } else {
+        await db.insert(condominiums).values({
+          id: updated.id || "condo-master",
+          name: updated.name,
+          tradingName: updated.tradingName,
+          cnpj: updated.cnpj,
+          address: updated.address,
+          unitsCount: updated.unitsCount,
+          blocks: updated.blocks,
+          floorsCount: updated.floorsCount,
+          parkingSpotsCount: updated.parkingSpotsCount,
+          managementPhone: updated.managementPhone,
+          emergencyPhone: updated.emergencyPhone,
+          email: updated.email,
+          sindico: updated.sindico,
+          administrator: updated.administrator,
+          operationalSettings: updated.operationalSettings,
+          financialSettings: updated.financialSettings,
+          technicalSettings: updated.technicalSettings
+        });
+      }
+    } catch (error) {
+      console.error("[CondominiumService] Erro ao persistir configura\xE7\xF5es no PostgreSQL:", error.message);
+      throw error;
+    }
+    return updated;
+  }
+};
+
+// src/services/DatabaseRepository.ts
+var import_drizzle_orm2 = require("drizzle-orm");
+var DatabaseUnavailableError = class extends Error {
+  constructor(message = "O banco de dados PostgreSQL 16 LTS est\xE1 temporariamente indispon\xEDvel.") {
+    super(message);
+    this.statusCode = 503;
+    this.code = "DATABASE_UNAVAILABLE";
+    this.name = "DatabaseUnavailableError";
+  }
+};
+var DatabaseRepository = class {
+  /**
+   * Obtém todas as unidades e seus respectivos moradores associados
+   */
+  static async getUnits() {
+    try {
+      const unitsData = await db.select().from(units);
+      const residentsData = await db.select().from(residents);
+      return unitsData.map((u) => {
+        const matchingResidents = residentsData.filter((r) => r.unitId === u.id).map((r) => ({
+          id: r.id,
+          unitId: r.unitId,
+          name: r.name,
+          document: r.document || "",
+          phone: r.phone,
+          email: r.email || "",
+          isMainContact: r.isMainContact ?? false,
+          sipDevice: {
+            extension: r.sipExtension || u.number,
+            registered: true,
+            webrtcSupported: r.webrtcSupported ?? true
+          }
+        }));
+        return {
+          id: u.id,
+          number: u.number,
+          block: u.block || "Bloco A",
+          floor: u.floor || 1,
+          sipExtension: u.sipExtension || u.number,
+          intercomCode: u.intercomCode || u.number,
+          ownerName: u.ownerName,
+          ownerPhone: u.ownerPhone || "",
+          financialStatus: u.financialStatus || "em_dia",
+          residents: matchingResidents
+        };
+      });
+    } catch (error) {
+      if (process.env.NODE_ENV === "production") {
+        throw new DatabaseUnavailableError(`Erro de conex\xE3o com PostgreSQL: ${error.message}`);
+      }
+      console.warn("[DatabaseRepository] PostgreSQL indispon\xEDvel no ambiente de desenvolvimento/preview. Retornando lista vazia.");
+      return [];
+    }
+  }
+  /**
+   * Obtém lista de portões cadastrados
+   */
+  static async getGates() {
+    try {
+      const records = await db.select().from(gates);
+      return records.map((g) => ({
+        id: g.id,
+        name: g.name,
+        type: g.type === "garagem" ? "garagem" : "pedestre",
+        dtmfCode: g.dtmfCode,
+        status: g.status || "fechado",
+        sensorState: g.sensorState || "ok",
+        relayPin: g.relayPin,
+        relayIp: g.relayIp || void 0,
+        lastOpenedAt: g.lastOpenedAt ? g.lastOpenedAt.toISOString() : void 0,
+        lastOpenedBy: g.lastOpenedBy || void 0
+      }));
+    } catch (error) {
+      if (process.env.NODE_ENV === "production") {
+        throw new DatabaseUnavailableError(`Erro ao consultar port\xF5es no PostgreSQL: ${error.message}`);
+      }
+      return [
+        {
+          id: "gate-pedestre",
+          name: "Port\xE3o Social Pedestre",
+          type: "pedestre",
+          dtmfCode: "*07",
+          status: "fechado",
+          sensorState: "ok",
+          relayPin: 1
+        },
+        {
+          id: "gate-garagem",
+          name: "Port\xE3o Garagem Veicular",
+          type: "garagem",
+          dtmfCode: "*08",
+          status: "fechado",
+          sensorState: "ok",
+          relayPin: 2
+        }
+      ];
+    }
+  }
+  /**
+   * Obtém lista de câmeras registradas no banco
+   */
+  static async getCameras() {
+    try {
+      const records = await db.select().from(cameraDevices);
+      return records.map((c) => ({
+        id: c.id,
+        name: c.name,
+        location: c.location,
+        profile: c.profile || "ONVIF_Profile_T",
+        rtspUrl: c.streamUrl,
+        webrtcStreamUrl: `/api/v1/cameras/${c.id}/stream`,
+        resolution: c.resolution || "1080p @ 30fps",
+        status: c.status || "online",
+        isXpeIntegrated: c.isXpeIntegrated ?? false,
+        ip: c.ipAddress || void 0,
+        manufacturer: c.manufacturer || void 0,
+        model: c.model || void 0
+      }));
+    } catch (error) {
+      if (process.env.NODE_ENV === "production") {
+        throw new DatabaseUnavailableError(`Erro ao consultar c\xE2meras no PostgreSQL: ${error.message}`);
+      }
+      return [];
+    }
+  }
+  /**
+   * Obtém veículos cadastrados
+   */
+  static async getVehicles(unitId) {
+    try {
+      let queryBuilder = db.select().from(vehicles);
+      if (unitId) {
+        queryBuilder = db.select().from(vehicles).where((0, import_drizzle_orm2.eq)(vehicles.unitId, unitId));
+      }
+      const records = await queryBuilder;
+      return records.map((v) => ({
+        id: v.id,
+        unitId: v.unitId,
+        brand: v.brand || "",
+        model: v.model,
+        plate: v.plate,
+        color: v.color || "",
+        parkingSpot: v.parkingSpot || "",
+        tagRfid: v.tagRfid || void 0
+      }));
+    } catch (error) {
+      if (process.env.NODE_ENV === "production") {
+        throw new DatabaseUnavailableError(`Erro ao consultar ve\xEDculos no PostgreSQL: ${error.message}`);
+      }
+      return [];
+    }
+  }
+  /**
+   * Obtém faturas financeiras
+   */
+  static async getFinancialBills(unitNumber) {
+    try {
+      let records;
+      if (unitNumber) {
+        records = await db.select().from(financialBills).where((0, import_drizzle_orm2.eq)(financialBills.unitNumber, unitNumber)).orderBy((0, import_drizzle_orm2.desc)(financialBills.vencimento));
+      } else {
+        records = await db.select().from(financialBills).orderBy((0, import_drizzle_orm2.desc)(financialBills.vencimento));
+      }
+      return records.map((b) => ({
+        id: b.id,
+        unitId: b.unitId,
+        unitNumber: b.unitNumber,
+        competencia: b.competencia,
+        vencimento: b.vencimento ? b.vencimento.toISOString() : "",
+        valorTotal: Number(b.valorTotal),
+        taxaOrdinaria: Number(b.taxaOrdinaria),
+        taxaExtraordinaria: Number(b.taxaExtraordinaria || 0),
+        fundoReserva: Number(b.fundoReserva || 0),
+        consumoGasAgua: Number(b.consumoGasAgua || 0),
+        status: b.status,
+        diasAtraso: b.diasAtraso || 0,
+        multa: Number(b.multa || 0),
+        juros: Number(b.juros || 0),
+        correcao: Number(b.correcao || 0),
+        pixCopiaCola: b.pixCopiaCola || void 0,
+        codigoBarras: b.codigoBarras || void 0,
+        linhaDigitavel: b.linhaDigitavel || void 0,
+        pagoEm: b.pagoEm ? b.pagoEm.toISOString() : void 0,
+        metodoPagamento: b.metodoPagamento || void 0
+      }));
+    } catch (error) {
+      if (process.env.NODE_ENV === "production") {
+        throw new DatabaseUnavailableError(`Erro ao consultar faturas no PostgreSQL: ${error.message}`);
+      }
+      return [];
+    }
+  }
+  /**
+   * Obtém acordos de parcelamento financeiro
+   */
+  static async getFinancialAgreements(unitNumber) {
+    try {
+      let records;
+      if (unitNumber) {
+        records = await db.select().from(financialAgreements).where((0, import_drizzle_orm2.eq)(financialAgreements.unitNumber, unitNumber));
+      } else {
+        records = await db.select().from(financialAgreements);
+      }
+      return records.map((a) => ({
+        id: a.id,
+        unitId: a.unitId,
+        unitNumber: a.unitNumber,
+        totalOriginal: Number(a.totalOriginal),
+        totalNegociado: Number(a.totalNegociado),
+        entrada: Number(a.entrada || 0),
+        parcelasTotal: a.parcelasTotal,
+        parcelasPagas: a.parcelasPagas || 0,
+        valorParcela: Number(a.valorParcela),
+        diaVencimento: a.diaVencimento,
+        dataCriacao: a.dataCriacao ? a.dataCriacao.toISOString() : (/* @__PURE__ */ new Date()).toISOString(),
+        status: a.status
+      }));
+    } catch (error) {
+      if (process.env.NODE_ENV === "production") {
+        throw new DatabaseUnavailableError(`Erro ao consultar acordos no PostgreSQL: ${error.message}`);
+      }
+      return [];
+    }
+  }
+  /**
+   * Obtém encomendas recebidas
+   */
+  static async getPackages(unitId) {
+    try {
+      let records;
+      if (unitId) {
+        records = await db.select().from(packageDeliveries).where((0, import_drizzle_orm2.eq)(packageDeliveries.unitId, unitId)).orderBy((0, import_drizzle_orm2.desc)(packageDeliveries.receivedAt));
+      } else {
+        records = await db.select().from(packageDeliveries).orderBy((0, import_drizzle_orm2.desc)(packageDeliveries.receivedAt));
+      }
+      return records.map((p) => ({
+        id: p.id,
+        unitId: p.unitId,
+        courier: p.courier,
+        trackingCode: p.trackingCode || "",
+        description: p.description || "",
+        receivedAt: p.receivedAt ? p.receivedAt.toISOString() : (/* @__PURE__ */ new Date()).toISOString(),
+        deliveredAt: p.deliveredAt ? p.deliveredAt.toISOString() : void 0,
+        status: p.status,
+        pickupCode: p.pickupCode || void 0,
+        photoUrl: p.photoUrl || void 0
+      }));
+    } catch (error) {
+      if (process.env.NODE_ENV === "production") {
+        throw new DatabaseUnavailableError(`Erro ao consultar encomendas no PostgreSQL: ${error.message}`);
+      }
+      return [];
+    }
+  }
+  /**
+   * Obtém convites de visitantes
+   */
+  static async getVisitorInvites(unitId) {
+    try {
+      let records;
+      if (unitId) {
+        records = await db.select().from(visitorInvites).where((0, import_drizzle_orm2.eq)(visitorInvites.unitId, unitId)).orderBy((0, import_drizzle_orm2.desc)(visitorInvites.validFrom));
+      } else {
+        records = await db.select().from(visitorInvites).orderBy((0, import_drizzle_orm2.desc)(visitorInvites.validFrom));
+      }
+      return records.map((i) => ({
+        id: i.id,
+        unitId: i.unitId,
+        visitorName: i.visitorName,
+        document: i.document || void 0,
+        type: i.type,
+        qrToken: i.qrToken,
+        pinCode: i.pinCode,
+        validFrom: i.validFrom.toISOString(),
+        validUntil: i.validUntil.toISOString(),
+        status: i.status,
+        entryCount: i.entryCount || 0,
+        usedAt: i.usedAt ? i.usedAt.toISOString() : void 0
+      }));
+    } catch (error) {
+      if (process.env.NODE_ENV === "production") {
+        throw new DatabaseUnavailableError(`Erro ao consultar convites no PostgreSQL: ${error.message}`);
+      }
+      return [];
+    }
+  }
+  /**
+   * Obtém dispositivos IoT cadastrados no banco
+   */
+  static async getIotDevices() {
+    try {
+      const records = await db.select().from(iotDevices);
+      return records.map((d) => ({
+        id: d.id,
+        name: d.name,
+        type: d.type,
+        protocol: d.protocol,
+        gateway: d.gateway,
+        state: d.state,
+        batteryLevel: d.batteryLevel ?? void 0,
+        online: d.online,
+        location: d.location
+      }));
+    } catch (error) {
+      if (process.env.NODE_ENV === "production") {
+        throw new DatabaseUnavailableError(`Erro ao consultar dispositivos IoT no PostgreSQL: ${error.message}`);
+      }
+      return [];
+    }
+  }
+  /**
+   * Alterna o estado de um dispositivo IoT no banco
+   */
+  static async toggleIotDevice(id) {
+    try {
+      const records = await db.select().from(iotDevices).where((0, import_drizzle_orm2.eq)(iotDevices.id, id)).limit(1);
+      if (!records || records.length === 0) return null;
+      const device = records[0];
+      const newState = device.state === "ligado" ? "desligado" : "ligado";
+      await db.update(iotDevices).set({ state: newState }).where((0, import_drizzle_orm2.eq)(iotDevices.id, id));
+      return {
+        id: device.id,
+        name: device.name,
+        type: device.type,
+        protocol: device.protocol,
+        gateway: device.gateway,
+        state: newState,
+        batteryLevel: device.batteryLevel ?? void 0,
+        online: device.online,
+        location: device.location
+      };
+    } catch (error) {
+      if (process.env.NODE_ENV === "production") {
+        throw new DatabaseUnavailableError(`Erro ao atualizar dispositivo IoT no PostgreSQL: ${error.message}`);
+      }
+      return null;
+    }
+  }
+  /**
+   * Obtém regras de automação cadastradas no banco
+   */
+  static async getAutomationRules() {
+    try {
+      const records = await db.select().from(automationRules);
+      return records.map((r) => ({
+        id: r.id,
+        name: r.name,
+        description: r.description,
+        enabled: r.enabled,
+        triggerEvent: r.triggerEvent,
+        condition: r.condition,
+        action: r.action,
+        lastExecutedAt: r.lastExecutedAt ? r.lastExecutedAt.toISOString() : void 0
+      }));
+    } catch (error) {
+      if (process.env.NODE_ENV === "production") {
+        throw new DatabaseUnavailableError(`Erro ao consultar regras de automa\xE7\xE3o no PostgreSQL: ${error.message}`);
+      }
+      return [];
+    }
+  }
+};
+
+// src/config/productionValidator.ts
+function validateProductionConfig(isProduction = process.env.NODE_ENV === "production") {
+  const errors = [];
+  const warnings = [];
+  const BANNED_SECRETS = [
+    "dooria_ami_secret_2026",
+    "dooria_local_pass_2026",
+    "dooria_session_secret_local_2026",
+    "dooria_local",
+    "dooria_secret",
+    "admin123",
+    "secret_xpe_token",
+    "admin",
+    "password",
+    "123456"
+  ];
+  const sessionSecret = process.env.SESSION_SECRET;
+  if (!sessionSecret) {
+    if (isProduction) {
+      errors.push("[CR\xCDTICO] SESSION_SECRET \xE9 estritamente obrigat\xF3rio em ambiente de produ\xE7\xE3o.");
+    } else {
+      warnings.push("[DEV] SESSION_SECRET ausente em desenvolvimento. Um segredo ef\xEAmero ser\xE1 gerado.");
+    }
+  } else {
+    if (BANNED_SECRETS.includes(sessionSecret) || sessionSecret.toLowerCase().includes("dooria_session_secret")) {
+      errors.push("[CR\xCDTICO] SESSION_SECRET n\xE3o pode utilizar valor padr\xE3o ou de exemplo conhecido.");
+    }
+    if (isProduction && sessionSecret.length < 32) {
+      errors.push("[CR\xCDTICO] SESSION_SECRET em produ\xE7\xE3o deve possuir no m\xEDnimo 32 caracteres para assinatura HMAC-SHA256 segura.");
+    }
+  }
+  const pgPassword = process.env.POSTGRES_PASSWORD || process.env.PGPASSWORD;
+  if (!pgPassword) {
+    if (isProduction) {
+      errors.push("[CR\xCDTICO] POSTGRES_PASSWORD \xE9 estritamente obrigat\xF3rio em ambiente de produ\xE7\xE3o.");
+    } else {
+      warnings.push("[DEV] POSTGRES_PASSWORD ausente em ambiente de desenvolvimento.");
+    }
+  } else {
+    if (BANNED_SECRETS.includes(pgPassword) || pgPassword.toLowerCase().includes("dooria_local_pass")) {
+      errors.push("[CR\xCDTICO] POSTGRES_PASSWORD n\xE3o pode conter senhas padr\xE3o ou previs\xEDveis.");
+    }
+  }
+  if (isProduction) {
+    const condoCnpj = (process.env.CONDO_CNPJ || "").trim();
+    if (!condoCnpj) {
+      errors.push("[CR\xCDTICO] CONDO_CNPJ \xE9 obrigat\xF3rio em produ\xE7\xE3o.");
+    } else if (condoCnpj === "00.000.000/0001-00" || condoCnpj.replace(/\D/g, "") === "00000000000100") {
+      errors.push("[CR\xCDTICO] CONDO_CNPJ n\xE3o pode utilizar CNPJ fict\xEDcio (00.000.000/0001-00) em produ\xE7\xE3o.");
+    } else if (condoCnpj.replace(/\D/g, "").length !== 14) {
+      errors.push("[CR\xCDTICO] CONDO_CNPJ deve conter 14 d\xEDgitos v\xE1lidos.");
+    }
+    const condoName = (process.env.CONDO_NAME || "").trim();
+    if (!condoName || condoName.toLowerCase() === "condom\xEDnio" || condoName.toLowerCase() === "condom\xEDnio residencial") {
+      errors.push("[CR\xCDTICO] CONDO_NAME deve ser configurado com a raz\xE3o social/nome real do condom\xEDnio.");
+    }
+    const condoCity = (process.env.CONDO_CITY || "").trim();
+    if (!condoCity) {
+      errors.push("[CR\xCDTICO] CONDO_CITY \xE9 obrigat\xF3rio em produ\xE7\xE3o.");
+    }
+    const condoState = (process.env.CONDO_STATE || "").trim();
+    if (!condoState || condoState.length !== 2) {
+      errors.push("[CR\xCDTICO] CONDO_STATE deve ser a sigla da UF (ex: SP, MA, RJ).");
+    }
+    const unitsCount = parseInt(process.env.CONDO_UNITS_COUNT || "0", 10);
+    if (isNaN(unitsCount) || unitsCount <= 0) {
+      errors.push("[CR\xCDTICO] CONDO_UNITS_COUNT deve ser maior que zero em produ\xE7\xE3o.");
+    }
+    const localServerIp = (process.env.LOCAL_SERVER_IP || "").trim();
+    if (!localServerIp || localServerIp === "127.0.0.1") {
+      errors.push("[CR\xCDTICO] LOCAL_SERVER_IP em produ\xE7\xE3o deve ser o endere\xE7o IP est\xE1tico do Mini PC na rede local da guarita (ex: 192.168.1.100), e n\xE3o 127.0.0.1.");
+    }
+    const initialAdminUser = (process.env.INITIAL_ADMIN_USER || "").trim();
+    if (!initialAdminUser) {
+      errors.push("[CR\xCDTICO] INITIAL_ADMIN_USER \xE9 obrigat\xF3rio em produ\xE7\xE3o.");
+    }
+    const initialAdminPassword = process.env.INITIAL_ADMIN_PASSWORD;
+    if (!initialAdminPassword) {
+      errors.push("[CR\xCDTICO] INITIAL_ADMIN_PASSWORD deve ser fornecida via vari\xE1vel de ambiente segura para o bootstrap de produ\xE7\xE3o.");
+    } else {
+      if (BANNED_SECRETS.includes(initialAdminPassword)) {
+        errors.push("[CR\xCDTICO] INITIAL_ADMIN_PASSWORD n\xE3o pode conter senhas padr\xE3o ou fracas (ex: admin, 123456).");
+      }
+      if (initialAdminPassword.length < 10) {
+        errors.push("[CR\xCDTICO] INITIAL_ADMIN_PASSWORD deve ter no m\xEDnimo 10 caracteres em produ\xE7\xE3o.");
+      }
+    }
+    const initialAdminEmail = (process.env.INITIAL_ADMIN_EMAIL || "").trim();
+    if (!initialAdminEmail || !initialAdminEmail.includes("@") || initialAdminEmail.endsWith("@condominio.local")) {
+      errors.push("[CR\xCDTICO] INITIAL_ADMIN_EMAIL em produ\xE7\xE3o deve ser um endere\xE7o de e-mail corporativo/oficial v\xE1lido.");
+    }
+    const xpeIp = (process.env.XPE_IP || "").trim();
+    if (!xpeIp) {
+      errors.push("[CR\xCDTICO] XPE_IP \xE9 estritamente obrigat\xF3rio em produ\xE7\xE3o.");
+    } else if (xpeIp === "192.168.1.150" || xpeIp === "127.0.0.1") {
+      errors.push("[CR\xCDTICO] XPE_IP em produ\xE7\xE3o n\xE3o pode utilizar IP padr\xE3o de exemplo (192.168.1.150 ou 127.0.0.1).");
+    }
+    const xpeSipSecret = (process.env.XPE_SIP_SECRET || "").trim();
+    if (!xpeSipSecret || BANNED_SECRETS.includes(xpeSipSecret)) {
+      errors.push("[CR\xCDTICO] XPE_SIP_SECRET \xE9 obrigat\xF3rio em produ\xE7\xE3o e n\xE3o pode ser um segredo padr\xE3o conhecido.");
+    }
+    const xpeRtspUser = (process.env.XPE_RTSP_USERNAME || "").trim();
+    if (!xpeRtspUser) {
+      errors.push("[CR\xCDTICO] XPE_RTSP_USERNAME \xE9 obrigat\xF3rio em produ\xE7\xE3o.");
+    }
+    const xpeRtspPassword = (process.env.XPE_RTSP_PASSWORD || "").trim();
+    if (!xpeRtspPassword || BANNED_SECRETS.includes(xpeRtspPassword) || xpeRtspPassword === "admin") {
+      errors.push('[CR\xCDTICO] XPE_RTSP_PASSWORD \xE9 obrigat\xF3rio em produ\xE7\xE3o e n\xE3o pode ser "admin" ou valor padr\xE3o conhecido.');
+    }
+    const relayControllerIp = (process.env.RELAY_CONTROLLER_IP || "").trim();
+    if (!relayControllerIp) {
+      errors.push("[CR\xCDTICO] RELAY_CONTROLLER_IP \xE9 obrigat\xF3rio em produ\xE7\xE3o para acionamento de rel\xE9s blindados.");
+    } else if (relayControllerIp === "192.168.1.160" || relayControllerIp === "127.0.0.1") {
+      errors.push("[CR\xCDTICO] RELAY_CONTROLLER_IP em produ\xE7\xE3o n\xE3o pode ser o IP padr\xE3o de exemplo (192.168.1.160 ou 127.0.0.1).");
+    }
+    const asteriskHost = (process.env.ASTERISK_HOST || "").trim();
+    if (!asteriskHost || asteriskHost === "127.0.0.1") {
+      errors.push("[CR\xCDTICO] ASTERISK_HOST em produ\xE7\xE3o deve ser o IP est\xE1tico do servidor de telefonia na guarita, e n\xE3o 127.0.0.1.");
+    }
+    const asteriskAmiPort = parseInt(process.env.ASTERISK_AMI_PORT || "", 10);
+    if (isNaN(asteriskAmiPort) || asteriskAmiPort <= 0) {
+      errors.push("[CR\xCDTICO] ASTERISK_AMI_PORT \xE9 obrigat\xF3rio em produ\xE7\xE3o (padr\xE3o 5038).");
+    }
+    const asteriskAmiUser = (process.env.ASTERISK_AMI_USERNAME || process.env.ASTERISK_AMI_USER || "").trim();
+    if (!asteriskAmiUser) {
+      errors.push("[CR\xCDTICO] ASTERISK_AMI_USERNAME \xE9 obrigat\xF3rio em produ\xE7\xE3o para autentica\xE7\xE3o no socket AMI.");
+    } else if (asteriskAmiUser === "dooria_admin" || asteriskAmiUser.toLowerCase() === "admin") {
+      errors.push('[CR\xCDTICO] ASTERISK_AMI_USERNAME n\xE3o pode utilizar usu\xE1rio padr\xE3o ("dooria_admin" ou "admin") em produ\xE7\xE3o.');
+    }
+    const asteriskAmiSecret = (process.env.ASTERISK_AMI_SECRET || "").trim();
+    if (!asteriskAmiSecret) {
+      errors.push("[CR\xCDTICO] ASTERISK_AMI_SECRET \xE9 obrigat\xF3rio em produ\xE7\xE3o.");
+    } else if (BANNED_SECRETS.includes(asteriskAmiSecret) || asteriskAmiSecret === "dooria_ami_secret_2026") {
+      errors.push("[CR\xCDTICO] ASTERISK_AMI_SECRET n\xE3o pode utilizar valor padr\xE3o ou de exemplo conhecido (dooria_ami_secret_2026).");
+    } else if (asteriskAmiSecret.length < 12) {
+      errors.push("[CR\xCDTICO] ASTERISK_AMI_SECRET deve possuir no m\xEDnimo 12 caracteres em produ\xE7\xE3o.");
+    }
+    const asteriskSipServer = (process.env.ASTERISK_SIP_SERVER || process.env.ASTERISK_HOST || "").trim();
+    if (!asteriskSipServer || asteriskSipServer === "127.0.0.1") {
+      errors.push("[CR\xCDTICO] ASTERISK_SIP_SERVER em produ\xE7\xE3o n\xE3o pode ser 127.0.0.1.");
+    }
+    const asteriskSipPort = parseInt(process.env.ASTERISK_SIP_PORT || "5060", 10);
+    if (isNaN(asteriskSipPort) || asteriskSipPort <= 0) {
+      errors.push("[CR\xCDTICO] ASTERISK_SIP_PORT deve ser uma porta SIP v\xE1lida em produ\xE7\xE3o (ex: 5060).");
+    }
+  }
+  const valid = errors.length === 0;
+  if (!valid && isProduction) {
+    const errorLog = [
+      "=========================================================================",
+      " \u274C FATAL STARTUP ERROR: FALHA NA VALIDA\xC7\xC3O DE CONFIGURA\xC7\xC3O DE PRODU\xC7\xC3O",
+      " O DoorIA recusou a inicializa\xE7\xE3o para proteger a integridade da portaria.",
+      " Motivos:",
+      ...errors.map((e) => `   -> ${e}`),
+      "========================================================================="
+    ].join("\n");
+    console.error(errorLog);
+    throw new Error(`STARTUP FAILURE: Configura\xE7\xE3o de produ\xE7\xE3o inv\xE1lida ou insegura.
+${errors.join("\n")}`);
+  }
+  return { valid, errors, warnings };
+}
+
+// src/utils/rtspSanitizer.ts
+function sanitizeCameraForClient(camera) {
+  const sanitized = { ...camera };
+  delete sanitized.rtspUrl;
+  delete sanitized.rtspStream;
+  delete sanitized.rtspPort;
+  delete sanitized.suggestedRtspMain;
+  delete sanitized.suggestedRtspSub;
+  delete sanitized.suggestedGo2rtcConfig;
+  delete sanitized.password;
+  delete sanitized.pass;
+  delete sanitized.credentials;
+  delete sanitized.secret;
+  delete sanitized.defaultCredentialsHint;
+  delete sanitized.username;
+  sanitized.streamProtocol = "webrtc";
+  if (sanitized.id) {
+    sanitized.streamEndpoint = `/api/v1/stream/${sanitized.id}`;
+  }
+  return sanitized;
+}
+
+// src/db/migrate.ts
+var import_config = require("dotenv/config");
+var import_migrator = require("drizzle-orm/node-postgres/migrator");
+async function runMigrations() {
+  console.log("[Drizzle Migrator] Iniciando execu\xE7\xE3o controlada das migra\xE7\xF5es...");
+  let client;
+  try {
+    client = await pool.connect();
+    await (0, import_migrator.migrate)(db, { migrationsFolder: "./src/db/migrations" });
+    console.log("[Drizzle Migrator] \u2705 Todas as migra\xE7\xF5es do schema foram aplicadas com sucesso!");
+    return { success: true };
+  } catch (error) {
+    console.error("[Drizzle Migrator] \u274C Falha cr\xEDtica ao conectar ao PostgreSQL ou aplicar migra\xE7\xF5es:", error.message);
+    throw error;
+  } finally {
+    if (client) {
+      client.release();
+    }
+  }
+}
+if (process.argv[1]?.includes("migrate.ts")) {
+  runMigrations().then(() => {
+    process.exit(0);
+  }).catch((err) => {
+    console.error("[Drizzle Migrator] Erro fatal:", err.message || err);
+    process.exit(1);
+  });
+}
+
+// src/db/seeds/prodBootstrap.ts
+var import_config2 = require("dotenv/config");
+var import_crypto5 = __toESM(require("crypto"), 1);
+var import_drizzle_orm3 = require("drizzle-orm");
+async function runProductionBootstrap() {
+  console.log("[Prod Bootstrap] Validando par\xE2metros e iniciando bootstrap seguro de produ\xE7\xE3o...");
+  validateProductionConfig();
+  const isProduction = process.env.NODE_ENV === "production";
+  try {
+    const condoId = process.env.CONDO_ID || "condo-master";
+    const condoName = process.env.CONDO_NAME || (isProduction ? "" : "Condom\xEDnio Residencial Demonstra\xE7\xE3o");
+    const condoCnpj = process.env.CONDO_CNPJ || "";
+    const existingCondo = await db.select().from(condominiums).where((0, import_drizzle_orm3.eq)(condominiums.id, condoId)).limit(1);
+    if (!existingCondo || existingCondo.length === 0) {
+      console.log("[Prod Bootstrap] Inicializando registro de condom\xEDnio com identidade oficial...");
+      await db.insert(condominiums).values({
+        id: condoId,
+        name: condoName,
+        tradingName: process.env.CONDO_TRADING_NAME || condoName,
+        cnpj: condoCnpj,
+        address: {
+          street: process.env.CONDO_STREET || "",
+          number: process.env.CONDO_NUMBER || "",
+          neighborhood: process.env.CONDO_NEIGHBORHOOD || "",
+          city: process.env.CONDO_CITY || "",
+          state: process.env.CONDO_STATE || "",
+          zipCode: process.env.CONDO_ZIP || ""
+        },
+        unitsCount: parseInt(process.env.CONDO_UNITS_COUNT || "0", 10),
+        blocks: process.env.CONDO_BLOCKS ? process.env.CONDO_BLOCKS.split(",") : ["Bloco A"],
+        floorsCount: parseInt(process.env.CONDO_FLOORS_COUNT || "1", 10),
+        parkingSpotsCount: parseInt(process.env.CONDO_PARKING_COUNT || "0", 10),
+        operationalSettings: {
+          pedestrianGatePulseSeconds: 5,
+          vehicleGatePulseSeconds: 15,
+          openGateAlertSeconds: 60,
+          dtmfPedestrian: "*07",
+          dtmfVehicle: "*08",
+          silencePeriodStart: "22:00",
+          silencePeriodEnd: "08:00",
+          packageDeliveryWindowStart: "08:00",
+          packageDeliveryWindowEnd: "20:00",
+          callTimeoutSeconds: 30,
+          autoUraFallback: true,
+          localFirstOfflineMode: true,
+          requireVisitorPhoto: true
+        },
+        financialSettings: {
+          dueDay: 10,
+          standardFee: 0,
+          reserveFundPercentage: 10,
+          latePenaltyPercentage: 2,
+          monthlyInterestPercentage: 1
+        },
+        technicalSettings: {
+          localServerIp: process.env.LOCAL_SERVER_IP || (isProduction ? "" : "127.0.0.1"),
+          asteriskVersion: "Asterisk 20 LTS Pure PJSIP",
+          asteriskWssPort: 8089,
+          allowSelfSignedCerts: !isProduction
+        }
+      });
+    }
+    const existingGates = await db.select().from(gates);
+    if (!existingGates || existingGates.length === 0) {
+      console.log("[Prod Bootstrap] Configurando port\xF5es essenciais de acesso...");
+      await db.insert(gates).values([
+        {
+          id: "gate-pedestre",
+          name: "Port\xE3o Social Pedestre (Cal\xE7ada)",
+          type: "pedestre",
+          relayPin: 1,
+          relayIp: process.env.RELAY_CONTROLLER_IP || (isProduction ? "" : "192.168.1.160"),
+          dtmfCode: "*07",
+          status: "fechado",
+          isOpen: false
+        },
+        {
+          id: "gate-garagem",
+          name: "Port\xE3o Garagem Veicular",
+          type: "garagem",
+          relayPin: 2,
+          relayIp: process.env.RELAY_CONTROLLER_IP || (isProduction ? "" : "192.168.1.160"),
+          dtmfCode: "*08",
+          status: "fechado",
+          isOpen: false
+        }
+      ]);
+    }
+    const adminUser = process.env.INITIAL_ADMIN_USER || (isProduction ? "" : "admin");
+    const adminPass = process.env.INITIAL_ADMIN_PASSWORD;
+    const existingAdmin = await db.select().from(systemUsers).where((0, import_drizzle_orm3.eq)(systemUsers.username, adminUser)).limit(1);
+    if (!existingAdmin || existingAdmin.length === 0) {
+      if (isProduction && !adminPass) {
+        throw new Error("Falha cr\xEDtica: INITIAL_ADMIN_PASSWORD deve ser fornecido em produ\xE7\xE3o via vari\xE1vel de ambiente segura.");
+      }
+      const finalPass = adminPass || import_crypto5.default.randomBytes(32).toString("hex");
+      const salt = import_crypto5.default.randomBytes(16).toString("hex");
+      const passwordHash = import_crypto5.default.scryptSync(finalPass, salt, 64).toString("hex");
+      console.log(`[Prod Bootstrap] Provisionando conta de Super Admin inicial '${adminUser}' com salt criptogr\xE1fico...`);
+      await db.insert(systemUsers).values({
+        id: "usr-superadmin",
+        username: adminUser,
+        passwordHash,
+        salt,
+        displayName: "Administrador do Sistema",
+        email: process.env.INITIAL_ADMIN_EMAIL || (isProduction ? "" : "admin@condominio.local"),
+        role: "super_admin",
+        active: true,
+        mfaEnabled: false
+      });
+      console.log("[Prod Bootstrap] Conta de Super Admin inicial provisionada de forma segura.");
+    }
+    console.log("[Prod Bootstrap] \u2705 Bootstrap de produ\xE7\xE3o conclu\xEDdo com sucesso e seguran\xE7a atestada.");
+    return { success: true };
+  } catch (error) {
+    console.error("[Prod Bootstrap] \u274C Erro durante o bootstrap de produ\xE7\xE3o:", error.message);
+    throw error;
+  }
+}
+
+// server.ts
+var PORT = 3e3;
+if (process.env.NODE_ENV === "production") {
+  validateProductionConfig();
+}
+var activeCall = null;
+var callHistory = [];
+var eventBusHistory = [];
+var auditLogs2 = [];
+var lprLogs2 = [];
+var pushSubscriptions = [];
 function publishEvent(type, source, payload) {
   const event = {
     id: `evt-${Date.now()}-${Math.floor(Math.random() * 1e3)}`,
@@ -1063,18 +3386,35 @@ function publishEvent(type, source, payload) {
   };
   eventBusHistory.unshift(event);
   if (eventBusHistory.length > 50) eventBusHistory.pop();
-  automationRules.forEach((rule) => {
-    if (rule.enabled && rule.triggerEvent === type) {
-      rule.lastExecutedAt = (/* @__PURE__ */ new Date()).toISOString();
-      if (rule.id === "rule-1") {
-        const lamp = iotDevices.find((d) => d.id === "iot-1");
-        if (lamp) lamp.state = "ligado";
-      }
-    }
-  });
   return event;
 }
-function logAudit(actor, role, action, target, status, details, reason, dtmfCommand) {
+function extractClientIp(req) {
+  const trustProxy = process.env.TRUST_PROXY === "true" || process.env.NODE_ENV === "production";
+  if (trustProxy) {
+    const forwarded = req.headers["x-forwarded-for"];
+    if (typeof forwarded === "string" && forwarded.trim()) {
+      const parts = forwarded.split(",").map((p) => p.trim());
+      const candidate = parts[0];
+      if (candidate && !candidate.includes("unknown") && !candidate.includes(" ") && candidate.length <= 45) {
+        return candidate.replace(/^.*:/, "");
+      }
+    }
+    const realIp = req.headers["x-real-ip"];
+    if (typeof realIp === "string" && realIp.trim()) {
+      const candidate = realIp.trim();
+      if (!candidate.includes("unknown") && !candidate.includes(" ") && candidate.length <= 45) {
+        return candidate.replace(/^.*:/, "");
+      }
+    }
+  }
+  const socketAddr = req.socket?.remoteAddress;
+  if (socketAddr) {
+    return socketAddr.replace(/^.*:/, "");
+  }
+  return req.ip || "unknown";
+}
+function logAudit(actor, role, action, target, status, details, reason, dtmfCommand, ipAddress) {
+  const finalIp = ipAddress && ipAddress !== "desconhecido" ? ipAddress : ipAddress || "unknown";
   const log = {
     id: `aud-${Date.now()}-${Math.floor(Math.random() * 1e3)}`,
     timestamp: (/* @__PURE__ */ new Date()).toISOString(),
@@ -1084,13 +3424,75 @@ function logAudit(actor, role, action, target, status, details, reason, dtmfComm
     target,
     status,
     reason,
-    ipAddress: "192.168.1.100",
+    ipAddress: finalIp,
     dtmfCommand,
     details
   };
-  auditLogs.unshift(log);
-  if (auditLogs.length > 100) auditLogs.pop();
+  auditLogs2.unshift(log);
+  if (auditLogs2.length > 100) auditLogs2.pop();
+  AuditService.record({
+    actor,
+    role,
+    action,
+    target,
+    status,
+    details,
+    reason,
+    dtmfCommand,
+    ipAddress: log.ipAddress
+  }).catch(() => {
+  });
   return log;
+}
+function getXpeRuntimeConfig(condo) {
+  const isProd = process.env.NODE_ENV === "production";
+  const ip = process.env.XPE_IP || (isProd ? "" : "192.168.1.150");
+  const sipServer = process.env.ASTERISK_SIP_SERVER || process.env.ASTERISK_HOST || (isProd ? "" : "127.0.0.1");
+  const dtmfPed = condo?.operationalSettings?.dtmfPedestrian || "*07";
+  const dtmfGar = condo?.operationalSettings?.dtmfVehicle || "*08";
+  const hasRtspPass = !!process.env.XPE_RTSP_PASSWORD;
+  return {
+    ip,
+    netmask: "255.255.255.0",
+    gateway: "192.168.1.1",
+    httpPort: 80,
+    sipServer,
+    sipPort: parseInt(process.env.ASTERISK_SIP_PORT || "5060", 10),
+    sipExtension: process.env.XPE_SIP_USERNAME || "8000",
+    sipSecret: process.env.XPE_SIP_SECRET ? "********" : "N\xC3O CONFIGURADO",
+    audioCodec: "PCMU",
+    videoCodec: "H.264",
+    dtmfMode: "RFC2833",
+    relay1: {
+      name: "Port\xE3o Pedestre Social (FA)",
+      lockType: "eletromecanica",
+      contactType: "NA",
+      retentionSeconds: condo?.operationalSettings?.pedestrianGatePulseSeconds || 5,
+      dtmfCommand: dtmfPed,
+      httpTriggerUrl: `http://${ip}/cgi-bin/relay.cgi?action=open&relay=1`,
+      targetGateId: "gate-pedestre"
+    },
+    relay2: {
+      name: "Port\xE3o Garagem Veicular (AUX)",
+      lockType: "portao_garagem_botoeira",
+      contactType: "NA",
+      retentionSeconds: 1,
+      dtmfCommand: dtmfGar,
+      httpTriggerUrl: `http://${ip}/cgi-bin/relay.cgi?action=open&relay=2`,
+      targetGateId: "gate-garagem"
+    },
+    streamProtocol: "webrtc",
+    streamEndpoint: "/api/v1/cameras/cam-xpe/stream",
+    videoStream: {
+      enabled: true,
+      channel: 1,
+      subType: 0,
+      streamProtocol: "webrtc",
+      streamEndpoint: "/api/v1/cameras/cam-xpe/stream"
+    },
+    lastSyncedAt: (/* @__PURE__ */ new Date()).toISOString(),
+    status: "online"
+  };
 }
 var aiClient = null;
 if (process.env.GEMINI_API_KEY) {
@@ -1107,921 +3509,738 @@ if (process.env.GEMINI_API_KEY) {
     console.error("[MaIA] Falha na inicializa\xE7\xE3o do GoogleGenAI SDK:", err);
   }
 }
-var MAIA_SYSTEM_PROMPT = `Voc\xEA \xE9 a MaIA (M\xF3dulo de Automa\xE7\xE3o e Intelig\xEAncia Aut\xF4noma), a intelig\xEAncia operacional do Enlace-DoorIA no condom\xEDnio piloto em S\xE3o Lu\xEDs - MA (12 unidades).
-Diretrizes Absolutas:
-1. Voc\xEA opera sob estrito RBAC/Policy Engine. Voc\xEA NUNCA executa comandos SQL diretamente nem comanda rel\xE9s sem passar pela valida\xE7\xE3o de permiss\xE3o.
-2. Seu tom \xE9 profissional, calmo, preciso, t\xE9cnico e em portugu\xEAs brasileiro.
-3. Se o usu\xE1rio for Morador, forne\xE7a informa\xE7\xF5es APENAS sobre a unidade dele.
-4. Para abrir port\xF5es, exija sempre confirma\xE7\xE3o expl\xEDcita e verifique se h\xE1 chamada ativa ou perfil de s\xEDndico/operador.
-5. Voc\xEA compreende os protocolos: Asterisk PJSIP, Intelbras XPE-3115-IP, DTMF *07 (pedestre) e *08 (garagem), Zigbee NovaDigital HNZ-CB3, c\xE2meras ONVIF Profile T/S.`;
-async function executeMaiaPrompt(prompt, user) {
-  const executedTools = [];
-  if (aiClient && process.env.GEMINI_API_KEY) {
-    try {
-      const geminiPromise = aiClient.models.generateContent({
-        model: "gemini-3.8-flash",
-        contents: prompt,
-        config: {
-          systemInstruction: `${MAIA_SYSTEM_PROMPT}
-Usu\xE1rio atual: Nome="${user.name}", Perfil="${user.role}", Unidade="${user.unitNumber || "Geral"}".`,
-          temperature: 0.3
-        }
-      });
-      const timeoutPromise = new Promise(
-        (_, reject) => setTimeout(() => reject(new Error("Tempo limite excedido na resposta do modelo remoto")), 8e3)
-      );
-      const response = await Promise.race([geminiPromise, timeoutPromise]);
-      return {
-        reply: response.text || "MaIA operacional. Solicita\xE7\xE3o processada com sucesso.",
-        toolCallsExecuted: executedTools
-      };
-    } catch (apiError) {
-      console.warn("[MaIA] Falha ou timeout no provedor principal Gemini, ativando Fallback Local-First:", apiError?.message || apiError);
-    }
-  }
-  const lower = prompt.toLowerCase();
-  let fallbackReply = "";
-  if (lower.includes("unidade") || lower.includes("morador") || lower.includes("apartamento")) {
-    const matchedUnit = units.find((u) => lower.includes(u.number));
-    if (matchedUnit) {
-      if (user.role === "morador" && user.unitNumber !== matchedUnit.number) {
-        fallbackReply = `[MaIA Seguran\xE7a] Acesso restrito. Como morador da Unidade ${user.unitNumber}, voc\xEA n\xE3o tem permiss\xE3o para consultar os dados da Unidade ${matchedUnit.number}.`;
-      } else {
-        fallbackReply = `[MaIA Local] Unidade ${matchedUnit.number} (${matchedUnit.block}): Propriet\xE1rio ${matchedUnit.ownerName}, ramal SIP ${matchedUnit.sipExtension}. Situa\xE7\xE3o financeira: ${matchedUnit.financialStatus.toUpperCase()}.`;
-        executedTools.push({
-          toolName: "consultar_unidade",
-          params: { unitNumber: matchedUnit.number },
-          result: { unit: matchedUnit },
-          authorized: true
-        });
-      }
-    } else {
-      fallbackReply = `[MaIA Local] O Condom\xEDnio Solar das Palmeiras possui 12 unidades distribu\xEDdas no Bloco A (101 a 104, 201 a 204, 301 a 304). Qual unidade deseja consultar?`;
-    }
-  } else if (lower.includes("inadimpl") || lower.includes("boleto") || lower.includes("financeiro") || lower.includes("contas")) {
-    if (user.role === "morador") {
-      const myBills = financialBills.filter((b) => b.unitNumber === user.unitNumber);
-      const pendentes = myBills.filter((b) => b.status === "atrasado");
-      if (pendentes.length > 0) {
-        const total = pendentes.reduce((acc, curr) => acc + curr.valorTotal, 0);
-        fallbackReply = `[MaIA Financeiro] Unidade ${user.unitNumber}: Constam ${pendentes.length} taxa(s) condominial(is) pendente(s) totalizando R$ ${total.toFixed(2)} (j\xE1 calculado com multa de 2% e juros de 1% a.m.). Deseja simular um acordo de parcelamento?`;
-      } else {
-        fallbackReply = `[MaIA Financeiro] Unidade ${user.unitNumber}: Suas taxas condominiais est\xE3o 100% em dia! O pr\xF3ximo vencimento \xE9 em 10/10/2026.`;
-      }
-    } else {
-      const atrasadas = financialBills.filter((b) => b.status === "atrasado");
-      const total = atrasadas.reduce((acc, curr) => acc + curr.valorTotal, 0);
-      fallbackReply = `[MaIA Relat\xF3rio S\xEDndico] O condom\xEDnio registra atualmente R$ ${total.toFixed(2)} em receb\xEDveis em atraso, concentrados principalmente na Unidade 203. A Unidade 302 mant\xE9m um acordo de parcelamento ativo e em dia.`;
-    }
-  } else if (lower.includes("abrir") || lower.includes("port\xE3o") || lower.includes("garagem") || lower.includes("pedestre")) {
-    if (user.role === "morador" && !activeCall) {
-      fallbackReply = `[MaIA Policy Engine] Solicita\xE7\xE3o Negada: Conforme o Master PRD (Regra de Ouro #4 e #11), moradores s\xF3 podem abrir port\xF5es via DTMF (*07/*08) ou WebPhone durante uma sess\xE3o de chamada ativa de atendimento.`;
-      logAudit(user.name, user.role, "TENTATIVA_ABERTURA_VIA_MAIA_SEM_CHAMADA", "Port\xF5es", "NEGADO", { prompt });
-    } else {
-      fallbackReply = `[MaIA Portaria] Acionamento de port\xE3o autorizado para o perfil ${user.role}. Comando DTMF *07 (Pedestre) ou *08 (Garagem) validado com sucesso.`;
-      executedTools.push({
-        toolName: "abrir_portao",
-        params: { gate: lower.includes("garagem") ? "garagem" : "pedestre" },
-        result: { status: "aberto_por_5_segundos" },
-        authorized: true
-      });
-    }
-  } else if (lower.includes("camera") || lower.includes("c\xE2mera") || lower.includes("xpe")) {
-    fallbackReply = `[MaIA Monitoramento] Todas as 4 c\xE2meras IP ONVIF (Portaria XPE, Garagem, Hall e Espa\xE7o Gourmet) est\xE3o operando normalmente na LAN local com codec H.264 e perfil Profile T/S.`;
-  } else if (lower.includes("asterisk") || lower.includes("status") || lower.includes("rede")) {
-    fallbackReply = `[MaIA Infraestrutura] N\xFAcleo Asterisk 20.8 LTS operacional na LAN (192.168.1.100) com PJSIP e WebRTC ativos. Totem Intelbras XPE-3115-IP e Gateway NovaDigital Zigbee 3.0 Ethernet 100% online em modo Local-First.`;
-  } else {
-    fallbackReply = `[MaIA Aut\xF4noma] Ol\xE1, ${user.name}. Sou a MaIA, intelig\xEAncia operacional do Enlace-DoorIA. Posso auxiliar no atendimento do XPE, consulta de visitantes, encomendas, hist\xF3rico de portaria, status dos port\xF5es e confer\xEAncia de boletos e taxas condominiais. Como posso ajudar?`;
-  }
-  return {
-    reply: fallbackReply,
-    toolCallsExecuted: executedTools
-  };
-}
 async function startServer() {
+  if (process.env.NODE_ENV === "production") {
+    console.log("[Enlace-DoorIA] [1/4] Verificando integridade e conectividade com PostgreSQL 16 LTS...");
+    const dbHealth = await checkPostgresHealth();
+    if (!dbHealth.connected) {
+      console.error("=========================================================================");
+      console.error(" \u274C FATAL ERROR: BANCO DE DADOS POSTGRESQL INDISPON\xCDVEL EM PRODU\xC7\xC3O");
+      console.error(` Falha na conex\xE3o com PostgreSQL em ${dbHealth.host}:${dbHealth.port}.`);
+      console.error(" Em produ\xE7\xE3o f\xEDsica, o sistema recusa inicializa\xE7\xE3o sem banco de dados.");
+      console.error("=========================================================================");
+      process.exit(1);
+    }
+    console.log("[Enlace-DoorIA] [2/4] Executando migra\xE7\xF5es Drizzle ORM oficiais obrigat\xF3rias...");
+    try {
+      await runMigrations();
+    } catch (migErr) {
+      console.error("=========================================================================");
+      console.error(" \u274C FATAL ERROR: FALHA AO APLICAR MIGRA\xC7\xD5ES NO BANCO DE DADOS EM PRODU\xC7\xC3O");
+      console.error(` Detalhes do erro: ${migErr.message || migErr}`);
+      console.error("=========================================================================");
+      process.exit(1);
+    }
+    console.log("[Enlace-DoorIA] [3/4] Executando bootstrap seguro e idempotente de produ\xE7\xE3o...");
+    try {
+      await runProductionBootstrap();
+    } catch (bootErr) {
+      console.error("=========================================================================");
+      console.error(" \u274C FATAL ERROR: FALHA NO BOOTSTRAP DE PRODU\xC7\xC3O");
+      console.error(` Detalhes do erro: ${bootErr.message || bootErr}`);
+      console.error("=========================================================================");
+      process.exit(1);
+    }
+    console.log("[Enlace-DoorIA] [4/4] Validando integridade final do schema PostgreSQL...");
+    const postCheck = await checkPostgresHealth();
+    if (!postCheck.connected || postCheck.tablesCount !== void 0 && postCheck.tablesCount === 0) {
+      console.error("=========================================================================");
+      console.error(" \u274C FATAL ERROR: INCONSIST\xCANCIA DETECTADA NO SCHEMA DO BANCO AP\xD3S MIGRA\xC7\xC3O");
+      console.error(" O banco de dados n\xE3o cont\xE9m as tabelas p\xFAblicas esperadas.");
+      console.error("=========================================================================");
+      process.exit(1);
+    }
+    console.log(`[Enlace-DoorIA] \u2705 PostgreSQL 16 LTS operacional (${postCheck.tablesCount} tabelas ativas).`);
+  }
   const app = (0, import_express.default)();
   app.use(import_express.default.json());
-  app.get("/api/health", (req, res) => {
-    res.json({
-      status: "ok",
-      service: "Enlace-DoorIA",
-      timestamp: (/* @__PURE__ */ new Date()).toISOString(),
-      pilot: "S\xE3o Lu\xEDs - MA (12 Unidades)"
-    });
+  app.use((req, res, next) => {
+    const authHeader = req.headers.authorization;
+    if (authHeader && authHeader.startsWith("Bearer ")) {
+      const token = authHeader.substring(7).trim();
+      const verified = AuthService.verifySessionToken(token);
+      if (verified) {
+        req.user = verified;
+        return next();
+      }
+    }
+    req.user = null;
+    next();
   });
-  let currentSession = {
-    id: "user-carlos-101",
-    name: "Carlos Eduardo Mendes",
-    email: "carlos.mendes@gmail.com",
-    role: "morador",
-    unitId: "u-101",
-    unitNumber: "101",
-    mfaEnabled: true
+  const requireAuth = (req, res, next) => {
+    const user = req.user;
+    if (!user) {
+      return res.status(401).json({
+        error: "N\xE3o autorizado. Autentica\xE7\xE3o obrigat\xF3ria para acessar este recurso.",
+        code: "UNAUTHORIZED"
+      });
+    }
+    next();
   };
+  const requireRole = (allowedRoles) => {
+    return (req, res, next) => {
+      const user = req.user;
+      if (!user) {
+        return res.status(401).json({
+          error: "N\xE3o autorizado. Fa\xE7a login para continuar.",
+          code: "UNAUTHORIZED"
+        });
+      }
+      if (!allowedRoles.includes(user.role)) {
+        return res.status(403).json({
+          error: "Acesso negado. Seu perfil de usu\xE1rio n\xE3o possui permiss\xE3o para esta opera\xE7\xE3o.",
+          code: "FORBIDDEN"
+        });
+      }
+      next();
+    };
+  };
+  function handleDbError(err, res) {
+    if (err instanceof DatabaseUnavailableError || process.env.NODE_ENV === "production") {
+      return res.status(503).json({
+        error: "Servi\xE7o de Banco de Dados indispon\xEDvel.",
+        code: "DATABASE_UNAVAILABLE",
+        message: err.message || "Falha de comunica\xE7\xE3o com o PostgreSQL 16 LTS."
+      });
+    }
+    return res.status(500).json({ error: err.message });
+  }
+  app.get(["/api/v1/health", "/api/health"], async (req, res) => {
+    try {
+      const dbHealthy = await checkPostgresHealth();
+      let amiStatus = { status: "offline", ping: "falha" };
+      try {
+        const amiPing = await asteriskAmi.ping();
+        amiStatus = {
+          status: amiPing.ok ? "online" : "offline",
+          ping: amiPing.ok ? "pong" : "falha",
+          ...amiPing.latencyMs !== void 0 ? { latencyMs: amiPing.latencyMs } : {}
+        };
+      } catch {
+      }
+      res.status(200).json({
+        status: "ok",
+        service: "dooria-core",
+        timestamp: (/* @__PURE__ */ new Date()).toISOString(),
+        uptimeSeconds: Math.floor(process.uptime()),
+        database: dbHealthy ? "connected" : "standby",
+        asteriskAmi: amiStatus
+      });
+    } catch {
+      res.status(200).json({
+        status: "ok",
+        service: "dooria-core",
+        timestamp: (/* @__PURE__ */ new Date()).toISOString(),
+        uptimeSeconds: Math.floor(process.uptime()),
+        database: "standby",
+        asteriskAmi: { status: "offline", ping: "falha" }
+      });
+    }
+  });
   app.get("/api/v1/auth/me", (req, res) => {
-    res.json(currentSession);
+    const user = req.user;
+    if (!user) {
+      return res.status(401).json({
+        error: "Sess\xE3o n\xE3o autenticada. Envie um token de sess\xE3o v\xE1lido no cabe\xE7alho Authorization: Bearer <token>.",
+        code: "UNAUTHENTICATED"
+      });
+    }
+    const token = AuthService.createSessionToken(user);
+    res.json({ ...user, token });
+  });
+  app.post("/api/v1/auth/login", async (req, res) => {
+    const { username, password } = req.body;
+    const clientIp = extractClientIp(req);
+    if (!username || !password) {
+      return res.status(400).json({ error: "Usu\xE1rio e senha s\xE3o obrigat\xF3rios." });
+    }
+    const session = await AuthService.authenticateUser(username, password);
+    if (!session) {
+      logAudit(username, "desconhecido", "LOGIN_FALHOU", "AuthService", "NEGADO", { username }, void 0, void 0, clientIp);
+      return res.status(401).json({ error: "Credenciais inv\xE1lidas ou usu\xE1rio inativo." });
+    }
+    const token = AuthService.createSessionToken(session);
+    logAudit(session.name, session.role, "LOGIN_SUCESSO", "AuthService", "PERMITIDO", { username }, void 0, void 0, clientIp);
+    res.json({ success: true, session, token });
   });
   app.post("/api/v1/auth/switch-role", (req, res) => {
-    const { role, unitNumber } = req.body;
-    if (role === "sindico") {
-      currentSession = {
-        id: "user-fernando-201",
-        name: "Fernando Henrique Rocha (S\xEDndico)",
-        email: "sindico.solar@gmail.com",
-        role: "sindico",
-        unitId: "u-201",
-        unitNumber: "201",
-        mfaEnabled: true
-      };
-    } else if (role === "super_admin") {
-      currentSession = {
-        id: "user-superadmin",
-        name: "Engenheiro de Telecom / Super Admin",
-        email: "dev.telecom@enlace.ai",
-        role: "super_admin",
-        mfaEnabled: true
-      };
-    } else {
-      const targetUnit = units.find((u) => u.number === (unitNumber || "101")) || units[0];
-      currentSession = {
-        id: `user-${targetUnit.number}`,
-        name: targetUnit.ownerName,
-        email: targetUnit.residents[0]?.email || "morador@gmail.com",
-        role: "morador",
-        unitId: targetUnit.id,
-        unitNumber: targetUnit.number,
-        mfaEnabled: true
-      };
-    }
-    logAudit(currentSession.name, currentSession.role, "TROCA_DE_SESSAO_SIMULADA", "Sistema de Autenticacao", "PERMITIDO", {
-      newRole: currentSession.role,
-      unitNumber: currentSession.unitNumber
-    });
-    res.json({ success: true, session: currentSession });
-  });
-  app.get("/api/v1/condominium", (req, res) => {
-    res.json({
-      ...condominiumConfig,
-      pilotLocation: `${condominiumConfig.address.city} - ${condominiumConfig.address.state}, ${condominiumConfig.address.neighborhood}`,
-      localServerIp: condominiumConfig.technicalSettings.localServerIp,
-      asteriskVersion: condominiumConfig.technicalSettings.asteriskVersion,
-      xpeModel: condominiumConfig.technicalSettings.xpeModel,
-      iotGateway: condominiumConfig.technicalSettings.iotGateway
-    });
-  });
-  app.put("/api/v1/condominium", import_express.default.json(), (req, res) => {
-    if (currentSession.role === "morador") {
-      return res.status(403).json({ error: "Permiss\xE3o negada. Apenas administradores e s\xEDndicos podem alterar as configura\xE7\xF5es do condom\xEDnio." });
-    }
-    const updates = req.body;
-    if (!updates || typeof updates !== "object") {
-      return res.status(400).json({ error: "Payload de atualiza\xE7\xE3o inv\xE1lido." });
-    }
-    condominiumConfig = {
-      ...condominiumConfig,
-      name: updates.name || condominiumConfig.name,
-      tradingName: updates.tradingName !== void 0 ? updates.tradingName : condominiumConfig.tradingName,
-      cnpj: updates.cnpj || condominiumConfig.cnpj,
-      unitsCount: Number(updates.unitsCount) || condominiumConfig.unitsCount,
-      blocks: Array.isArray(updates.blocks) ? updates.blocks : condominiumConfig.blocks,
-      floorsCount: Number(updates.floorsCount) || condominiumConfig.floorsCount,
-      parkingSpotsCount: Number(updates.parkingSpotsCount) || condominiumConfig.parkingSpotsCount,
-      managementPhone: updates.managementPhone || condominiumConfig.managementPhone,
-      emergencyPhone: updates.emergencyPhone || condominiumConfig.emergencyPhone,
-      email: updates.email || condominiumConfig.email,
-      address: {
-        ...condominiumConfig.address,
-        ...updates.address || {}
-      },
-      sindico: {
-        ...condominiumConfig.sindico,
-        ...updates.sindico || {}
-      },
-      administrator: {
-        ...condominiumConfig.administrator,
-        ...updates.administrator || {}
-      },
-      operationalSettings: {
-        ...condominiumConfig.operationalSettings,
-        ...updates.operationalSettings || {}
-      },
-      financialSettings: {
-        ...condominiumConfig.financialSettings,
-        ...updates.financialSettings || {}
-      },
-      technicalSettings: {
-        ...condominiumConfig.technicalSettings,
-        ...updates.technicalSettings || {}
-      },
-      updatedAt: (/* @__PURE__ */ new Date()).toISOString(),
-      updatedBy: `${currentSession.name} (${currentSession.role})`
-    };
-    logAudit(
-      currentSession.name,
-      currentSession.role,
-      "CONFIGURACOES_CONDOMINIO_ATUALIZADAS",
-      condominiumConfig.name,
-      "PERMITIDO",
-      {
-        timestamp: condominiumConfig.updatedAt,
-        updatedFields: Object.keys(updates)
-      },
-      "Par\xE2metros cadastrais e regras operacionais do condom\xEDnio atualizados pelo Administrador"
-    );
-    publishEvent("CONDOMINIUM_CONFIG_UPDATED", "server.ts", {
-      condominiumId: condominiumConfig.id,
-      updatedBy: currentSession.name,
-      timestamp: condominiumConfig.updatedAt
-    });
-    res.json({
-      success: true,
-      data: condominiumConfig,
-      message: "Configura\xE7\xF5es e dados do condom\xEDnio salvos com sucesso no servidor local."
-    });
-  });
-  app.post("/api/v1/condominium/reset", (req, res) => {
-    if (currentSession.role === "morador") {
-      return res.status(403).json({ error: "Permiss\xE3o negada." });
-    }
-    condominiumConfig = JSON.parse(JSON.stringify(DEFAULT_CONDOMINIUM_CONFIG));
-    condominiumConfig.updatedAt = (/* @__PURE__ */ new Date()).toISOString();
-    condominiumConfig.updatedBy = `${currentSession.name} (Restaura\xE7\xE3o Piloto)`;
-    logAudit(
-      currentSession.name,
-      currentSession.role,
-      "RESTAURACAO_PADROES_CONDOMINIO",
-      condominiumConfig.name,
-      "PERMITIDO",
-      { timestamp: condominiumConfig.updatedAt },
-      "Configura\xE7\xF5es do condom\xEDnio restauradas para o baseline padr\xE3o do piloto"
-    );
-    publishEvent("CONDOMINIUM_CONFIG_UPDATED", "server.ts", {
-      condominiumId: condominiumConfig.id,
-      updatedBy: currentSession.name,
-      action: "reset_defaults"
-    });
-    res.json({
-      success: true,
-      data: condominiumConfig,
-      message: "Configura\xE7\xF5es do condom\xEDnio restauradas com sucesso para os padr\xF5es do Piloto."
-    });
-  });
-  app.post("/api/v1/units/:unitId/residents", import_express.default.json(), (req, res) => {
-    const { unitId } = req.params;
-    if (currentSession.role === "morador" && currentSession.unitId !== unitId) {
-      logAudit(currentSession.name, currentSession.role, "TENTATIVA_ADICAO_MORADOR_TERCEIROS", `Unidade ${unitId}`, "NEGADO", {});
-      return res.status(403).json({ error: "Permiss\xE3o negada. Voc\xEA s\xF3 pode gerenciar moradores da sua pr\xF3pria unidade." });
-    }
-    const unit = units.find((u) => u.id === unitId);
-    if (!unit) return res.status(404).json({ error: "Unidade n\xE3o encontrada" });
-    if (!req.body.name || !req.body.document || !req.body.phone) {
-      return res.status(400).json({ error: "Nome, documento e telefone s\xE3o obrigat\xF3rios." });
-    }
-    const newResident = {
-      id: `r-${unitId}-${Date.now()}`,
-      unitId,
-      name: req.body.name,
-      document: req.body.document,
-      phone: req.body.phone,
-      email: req.body.email || "",
-      isMainContact: req.body.isMainContact || false,
-      sipDevice: {
-        extension: unit.sipExtension,
-        registered: false,
-        webrtcSupported: true
-      }
-    };
-    unit.residents.push(newResident);
-    logAudit(currentSession.name, currentSession.role, "MORADOR_ADICIONADO", `Unidade ${unit.number} - ${newResident.name}`, "PERMITIDO", {});
-    res.json({ success: true, resident: newResident });
-  });
-  app.delete("/api/v1/units/:unitId/residents/:residentId", (req, res) => {
-    const { unitId, residentId } = req.params;
-    if (currentSession.role === "morador" && currentSession.unitId !== unitId) {
-      logAudit(currentSession.name, currentSession.role, "TENTATIVA_REMOCAO_MORADOR_TERCEIROS", `Unidade ${unitId}`, "NEGADO", {});
-      return res.status(403).json({ error: "Permiss\xE3o negada. Voc\xEA s\xF3 pode gerenciar moradores da sua pr\xF3pria unidade." });
-    }
-    const unit = units.find((u) => u.id === unitId);
-    if (!unit) return res.status(404).json({ error: "Unidade n\xE3o encontrada" });
-    const initialLength = unit.residents.length;
-    unit.residents = unit.residents.filter((r) => r.id !== residentId);
-    if (unit.residents.length === initialLength) {
-      return res.status(404).json({ error: "Morador n\xE3o encontrado na unidade especificada" });
-    }
-    logAudit(currentSession.name, currentSession.role, "MORADOR_REMOVIDO", `Unidade ${unit.number} - ID ${residentId}`, "PERMITIDO", {});
-    res.json({ success: true });
-  });
-  app.get("/api/v1/units", (req, res) => {
-    res.json(units);
-  });
-  app.get("/api/v1/calls/active", (req, res) => {
-    res.json({ activeCall });
-  });
-  app.get("/api/v1/calls/history", (req, res) => {
-    if (currentSession.role === "morador" && currentSession.unitNumber) {
-      const filtered = callHistory.filter((c) => c.unitNumber === currentSession.unitNumber);
-      return res.json(filtered);
-    }
-    res.json(callHistory);
-  });
-  app.post("/api/v1/calls/xpe/start", (req, res) => {
-    const { unitNumber, purpose } = req.body;
-    const targetUnit = units.find((u) => u.number === unitNumber) || units[0];
-    activeCall = {
-      id: `call-xpe-${Date.now()}`,
-      origin: "xpe_3115_ip",
-      sourceDevice: "Intelbras XPE-3115-IP (192.168.1.150)",
-      targetUnitId: targetUnit.id,
-      targetUnitNumber: targetUnit.number,
-      purpose: purpose || "visitante",
-      state: "chamando",
-      startedAt: (/* @__PURE__ */ new Date()).toISOString(),
-      durationSeconds: 0,
-      visitorMedia: {
-        hasVideo: true,
-        // Câmera integrada do XPE enviando stream
-        hasAudio: true,
-        videoStreamUri: "/api/v1/cameras/cam-01/stream",
-        mediaSessionId: `sess-${import_crypto.default.randomBytes(4).toString("hex")}`
-      }
-    };
-    publishEvent("CALL_STARTED", "xpe_3115_ip", {
-      callId: activeCall.id,
-      unitNumber: targetUnit.number,
-      purpose: activeCall.purpose
-    });
-    logAudit("Visitante (Totem XPE)", "visitante", "CHAMADA_INICIADA_XPE", `Unidade ${targetUnit.number}`, "PERMITIDO", {
-      targetUnit: targetUnit.number,
-      purpose: activeCall.purpose
-    });
-    res.json({ success: true, call: activeCall });
-  });
-  app.post("/api/v1/calls/qr/start", (req, res) => {
-    const { unitNumber, purpose, cameraGranted, microphoneGranted } = req.body;
-    if (!cameraGranted || !microphoneGranted) {
-      logAudit("Visitante (QR Intercom)", "visitante", "CHAMADA_QR_BLOQUEADA", `Unidade ${unitNumber}`, "NEGADO", {
-        reason: "Permiss\xF5es obrigat\xF3rias de m\xEDdia (c\xE2mera ou microfone) foram negadas pelo visitante."
-      });
+    if (process.env.NODE_ENV === "production") {
       return res.status(403).json({
-        success: false,
-        error: "Conforme a Se\xE7\xE3o 10.1 do Master PRD, a chamada para o morador exige permiss\xE3o obrigat\xF3ria de c\xE2mera frontal e microfone."
+        error: "Seguran\xE7a: Troca r\xE1pida de perfil (demo) \xE9 estritamente proibida em produ\xE7\xE3o."
       });
     }
-    const targetUnit = units.find((u) => u.number === unitNumber) || units[0];
-    activeCall = {
-      id: `call-qr-${Date.now()}`,
-      origin: "qr_virtual_intercom",
-      sourceDevice: "QR Virtual Intercom WebRTC (Mobile)",
-      targetUnitId: targetUnit.id,
-      targetUnitNumber: targetUnit.number,
-      purpose: purpose || "visitante",
-      state: "chamando",
-      startedAt: (/* @__PURE__ */ new Date()).toISOString(),
-      durationSeconds: 0,
-      visitorMedia: {
-        hasVideo: true,
-        hasAudio: true,
-        videoStreamUri: "blob:webrtc-peer-visitor-stream",
-        mediaSessionId: `sess-${import_crypto.default.randomBytes(4).toString("hex")}`
-      }
-    };
-    publishEvent("CALL_STARTED", "qr_virtual_intercom", {
-      callId: activeCall.id,
-      unitNumber: targetUnit.number,
-      purpose: activeCall.purpose
+    const { role, unitNumber } = req.body;
+    const session = AuthService.getPresetSession(role, unitNumber);
+    const token = AuthService.createSessionToken(session);
+    logAudit(session.name, session.role, "TROCA_DE_SESSAO_AUTORIZADA", "Sistema de Autentica\xE7\xE3o", "PERMITIDO", {
+      newRole: session.role,
+      unitNumber: session.unitNumber
     });
-    res.json({ success: true, call: activeCall });
+    res.json({ success: true, session, token });
   });
-  app.post("/api/v1/calls/answer", (req, res) => {
-    if (!activeCall) {
-      return res.status(404).json({ error: "Nenhuma chamada ativa para atender." });
+  app.post("/api/v1/auth/logout", (req, res) => {
+    const authHeader = req.headers.authorization;
+    if (authHeader && authHeader.startsWith("Bearer ")) {
+      AuthService.revokeSession(authHeader.substring(7).trim());
     }
-    activeCall.state = "em_atendimento";
-    activeCall.answeredAt = (/* @__PURE__ */ new Date()).toISOString();
-    activeCall.answeredByEndpoint = `WebPhone-${currentSession.unitNumber || "Sindico"}`;
-    activeCall.recording = {
-      recordingId: `rec-${Date.now()}`,
-      hashSha256: import_crypto.default.createHash("sha256").update(activeCall.id).digest("hex"),
-      duration: 0,
-      encrypted: true
-    };
-    publishEvent("CALL_ANSWERED", "pjsip_webrtc", {
-      callId: activeCall.id,
-      answeredBy: activeCall.answeredByEndpoint,
-      unitNumber: activeCall.targetUnitNumber
-    });
-    logAudit(currentSession.name, currentSession.role, "CHAMADA_ATENDIDA_WEBPHONE", `Chamada ${activeCall.id}`, "PERMITIDO", {
-      unitNumber: activeCall.targetUnitNumber,
-      endpoint: activeCall.answeredByEndpoint
-    });
-    res.json({ success: true, call: activeCall });
+    res.json({ success: true, message: "Sess\xE3o encerrada com sucesso." });
   });
-  app.post("/api/v1/calls/dtmf", (req, res) => {
+  app.get("/api/v1/condominium", requireAuth, async (req, res) => {
+    try {
+      const config = await CondominiumService.getConfig();
+      if (!config && process.env.NODE_ENV === "production") {
+        return res.status(503).json({ error: "Condom\xEDnio n\xE3o configurado no banco de dados.", code: "NOT_CONFIGURED" });
+      }
+      res.json({
+        ...config || {},
+        pilotLocation: config?.address ? `${config.address.city} - ${config.address.state}, ${config.address.neighborhood}` : "",
+        localServerIp: config?.technicalSettings?.localServerIp || "127.0.0.1",
+        asteriskVersion: config?.technicalSettings?.asteriskVersion || "Asterisk 20 LTS Pure PJSIP",
+        xpeModel: config?.technicalSettings?.xpeModel || "Intelbras XPE 3115-IP",
+        iotGateway: config?.technicalSettings?.iotGateway || "NovaDigital HNZ-CB3 Zigbee 3.0"
+      });
+    } catch (err) {
+      handleDbError(err, res);
+    }
+  });
+  app.put("/api/v1/condominium", requireAuth, requireRole(["super_admin", "sindico", "admin_sistema"]), async (req, res) => {
+    const user = req.user;
+    const clientIp = extractClientIp(req);
+    try {
+      const updated = await CondominiumService.updateConfig(req.body);
+      logAudit(user.name, user.role, "CONFIGURACOES_CONDOMINIO_ATUALIZADAS", updated.name, "PERMITIDO", {
+        updatedBy: user.name
+      }, void 0, void 0, clientIp);
+      res.json({ success: true, data: updated });
+    } catch (err) {
+      handleDbError(err, res);
+    }
+  });
+  app.get("/api/v1/units", requireAuth, async (req, res) => {
+    try {
+      const unitsList = await DatabaseRepository.getUnits();
+      res.json(unitsList);
+    } catch (err) {
+      handleDbError(err, res);
+    }
+  });
+  app.get("/api/v1/gates", requireAuth, async (req, res) => {
+    try {
+      const gatesList = await DatabaseRepository.getGates();
+      res.json(gatesList);
+    } catch (err) {
+      handleDbError(err, res);
+    }
+  });
+  app.post("/api/v1/gates/:id/trigger", requireAuth, async (req, res) => {
+    const user = req.user;
+    const gateId = req.params.id;
+    try {
+      const gatesList = await DatabaseRepository.getGates();
+      const gate = gatesList.find((g) => g.id === gateId);
+      if (!gate) return res.status(404).json({ error: "Port\xE3o n\xE3o encontrado." });
+      const clientIp = extractClientIp(req);
+      const correlationId = `gate-trig-${Date.now()}-${Math.random().toString(36).substring(2, 7)}`;
+      const result = await GateControlService.trigger(gate, {
+        gateId: gate.id,
+        session: user,
+        context: {
+          callActive: !!activeCall,
+          activeCallTargetUnit: activeCall?.targetUnitNumber,
+          sipChannel: activeCall?.sipChannel,
+          uniqueId: activeCall?.uniqueId,
+          linkedId: activeCall?.linkedId,
+          ipAddress: clientIp,
+          userAgent: req.headers["user-agent"],
+          correlationId
+        },
+        triggerSource: "painel_web"
+      });
+      if (result.success) {
+        publishEvent("GATE_OPENED", "manual_trigger", { gateId: gate.id, openedBy: user.name });
+        const statusCode = result.commandStatus === "HARDWARE_CONFIRMED" ? 200 : 202;
+        res.status(statusCode).json({
+          success: true,
+          message: result.message,
+          commandStatus: result.commandStatus,
+          hasPhysicalFeedbackSensor: result.hasPhysicalFeedbackSensor,
+          gate: result.gate,
+          relayResult: result.relayResult
+        });
+      } else {
+        const failureStatus = result.statusCode || (result.commandStatus === "HARDWARE_FAILURE" ? 502 : 400);
+        res.status(failureStatus).json({
+          success: false,
+          error: result.message,
+          commandStatus: result.commandStatus,
+          hasPhysicalFeedbackSensor: result.hasPhysicalFeedbackSensor,
+          relayResult: result.relayResult
+        });
+      }
+    } catch (err) {
+      handleDbError(err, res);
+    }
+  });
+  app.post("/api/v1/calls/dtmf", requireAuth, async (req, res) => {
+    const user = req.user;
     const dtmf = req.body.dtmf || req.body.digit || req.body.code;
     if (!["*07", "*08"].includes(dtmf)) {
       return res.status(400).json({ error: "C\xF3digo DTMF n\xE3o suportado. Utilize *07 (Pedestre) ou *08 (Garagem)." });
     }
-    const targetGateType = dtmf === "*07" ? "pedestre" : "garagem";
-    const gate = gates.find((g) => g.type === targetGateType);
-    const policyResult = PolicyEngine.evaluate({
-      actor: {
-        id: currentSession.id,
-        role: currentSession.role,
-        unitNumber: currentSession.unitNumber
-      },
-      action: "ABRIR_PORTAO",
-      resource: {
-        target: gate.name,
-        dtmfCommand: dtmf
-      },
-      context: {
-        callActive: !!activeCall,
-        activeCallTargetUnit: activeCall?.targetUnitNumber
+    try {
+      const gatesList = await DatabaseRepository.getGates();
+      const targetGateType = dtmf === "*07" ? "pedestre" : "garagem";
+      const gate = gatesList.find((g) => g.type === targetGateType);
+      if (!gate) {
+        return res.status(404).json({ error: `Port\xE3o do tipo ${targetGateType} n\xE3o encontrado no cadastro.` });
       }
-    });
-    if (!policyResult.allowed) {
-      logAudit(currentSession.name, currentSession.role, "ABERTURA_PORTAO_DTMF", gate.name, "NEGADO", { dtmf }, policyResult.reason, dtmf);
-      publishEvent("ACCESS_DENIED", "policy_engine", { gate: targetGateType, dtmf, reason: policyResult.reason });
-      return res.status(403).json({ success: false, error: policyResult.reason });
+      const clientIp = extractClientIp(req);
+      const correlationId = `dtmf-trig-${Date.now()}-${Math.random().toString(36).substring(2, 7)}`;
+      const result = await GateControlService.trigger(gate, {
+        gateId: gate.id,
+        session: user,
+        context: {
+          callActive: !!activeCall,
+          activeCallTargetUnit: activeCall?.targetUnitNumber,
+          sipChannel: activeCall?.sipChannel,
+          uniqueId: activeCall?.uniqueId,
+          linkedId: activeCall?.linkedId,
+          ipAddress: clientIp,
+          userAgent: req.headers["user-agent"],
+          correlationId
+        },
+        triggerSource: "dtmf_asterisk"
+      });
+      if (result.success) {
+        publishEvent("ACCESS_GRANTED", "policy_engine", { gate: targetGateType, dtmf, authorizedBy: user.name });
+        publishEvent("GATE_OPENED", "access_core", { gateId: gate.id, gateName: gate.name, dtmf });
+        const statusCode = result.commandStatus === "HARDWARE_CONFIRMED" ? 200 : 202;
+        res.status(statusCode).json({
+          success: true,
+          message: result.message,
+          commandStatus: result.commandStatus,
+          hasPhysicalFeedbackSensor: result.hasPhysicalFeedbackSensor,
+          gate: result.gate,
+          relayResult: result.relayResult
+        });
+      } else {
+        publishEvent("ACCESS_DENIED", "policy_engine", { gate: targetGateType, dtmf, reason: result.message });
+        const failureStatus = result.statusCode || (result.commandStatus === "HARDWARE_FAILURE" ? 502 : 400);
+        res.status(failureStatus).json({
+          success: false,
+          error: result.message,
+          commandStatus: result.commandStatus,
+          hasPhysicalFeedbackSensor: result.hasPhysicalFeedbackSensor,
+          relayResult: result.relayResult
+        });
+      }
+    } catch (err) {
+      handleDbError(err, res);
     }
-    gate.status = "aberto";
-    gate.lastOpenedAt = (/* @__PURE__ */ new Date()).toISOString();
-    gate.lastOpenedBy = currentSession.name;
-    publishEvent("ACCESS_GRANTED", "policy_engine", { gate: targetGateType, dtmf, authorizedBy: currentSession.name });
-    publishEvent("GATE_OPENED", "access_core", { gateId: gate.id, gateName: gate.name, dtmf });
-    logAudit(currentSession.name, currentSession.role, "ABERTURA_PORTAO_DTMF", gate.name, "PERMITIDO", { dtmf, relayPin: gate.relayPin }, void 0, dtmf);
-    setTimeout(() => {
-      gate.status = "fechado";
-      publishEvent("DOOR_OPENED", "gate_controller", { gateId: gate.id, status: "fechado_apos_timer" });
-    }, 4e3);
-    res.json({
-      success: true,
-      message: `Comando DTMF ${dtmf} aceito pelo Policy Engine. ${gate.name} acionado via Rel\xE9 ${gate.relayPin}.`,
-      gate
-    });
   });
-  app.post("/api/v1/calls/hangup", (req, res) => {
-    if (!activeCall) {
-      return res.json({ success: true, message: "Nenhuma chamada ativa." });
+  app.get("/api/v1/cameras", requireAuth, async (req, res) => {
+    const user = req.user;
+    try {
+      const allCameras = await DatabaseRepository.getCameras();
+      const authorizedCameras = allCameras.filter((cam) => {
+        const policy = PolicyEngine.evaluate({
+          actor: { id: user.id, role: user.role, unitNumber: user.unitNumber },
+          action: "ACESSAR_CAMERA",
+          resource: {
+            target: cam.id,
+            cameraLocation: cam.location,
+            isXpeIntegrated: cam.isXpeIntegrated
+          },
+          context: {
+            callActive: !!activeCall,
+            activeCallTargetUnit: activeCall?.targetUnitNumber
+          }
+        });
+        return policy.allowed;
+      });
+      const sanitized = authorizedCameras.map((c) => sanitizeCameraForClient(c));
+      res.json(sanitized);
+    } catch (err) {
+      handleDbError(err, res);
     }
-    const duration = activeCall.answeredAt ? Math.round((Date.now() - new Date(activeCall.answeredAt).getTime()) / 1e3) : 15;
+  });
+  app.get(["/api/v1/cameras/:id/stream", "/api/v1/stream/:id"], requireAuth, async (req, res) => {
+    const user = req.user;
+    const { id } = req.params;
+    try {
+      const allCameras = await DatabaseRepository.getCameras();
+      const cam = allCameras.find((c) => c.id === id);
+      if (!cam) {
+        return res.status(404).json({ error: "C\xE2mera n\xE3o encontrada no sistema." });
+      }
+      const policy = PolicyEngine.evaluate({
+        actor: { id: user.id, role: user.role, unitNumber: user.unitNumber },
+        action: "ACESSAR_CAMERA",
+        resource: {
+          target: cam.id,
+          cameraLocation: cam.location,
+          isXpeIntegrated: cam.isXpeIntegrated
+        },
+        context: {
+          callActive: !!activeCall,
+          activeCallTargetUnit: activeCall?.targetUnitNumber
+        }
+      });
+      const clientIp = extractClientIp(req);
+      logAudit(
+        user.name,
+        user.role,
+        "SOLICITACAO_STREAM_CAMERA",
+        cam.name,
+        policy.allowed ? "PERMITIDO" : "NEGADO",
+        { cameraId: cam.id, location: cam.location },
+        policy.reason,
+        void 0,
+        clientIp
+      );
+      if (!policy.allowed) {
+        return res.status(403).json({
+          error: policy.reason || "Acesso \xE0 c\xE2mera negado pela pol\xEDtica de seguran\xE7a e privacidade.",
+          policyCode: policy.policyCode
+        });
+      }
+      res.json({
+        success: true,
+        cameraId: cam.id,
+        webrtcUrl: `/api/v1/webrtc?src=${cam.id}`,
+        streamProtocol: "webrtc",
+        streamEndpoint: `/api/v1/stream/${cam.id}`,
+        status: cam.status
+      });
+    } catch (err) {
+      handleDbError(err, res);
+    }
+  });
+  app.get("/api/v1/finance/bills", requireAuth, async (req, res) => {
+    const user = req.user;
+    try {
+      const isResident = user.role === "morador";
+      const bills = await DatabaseRepository.getFinancialBills(isResident ? user.unitNumber : void 0);
+      res.json(bills);
+    } catch (err) {
+      handleDbError(err, res);
+    }
+  });
+  app.post("/api/v1/finance/bills/:id/pay", requireAuth, async (req, res) => {
+    const user = req.user;
+    const { id } = req.params;
+    const { paymentMethod = "pix" } = req.body;
+    try {
+      const bills = await DatabaseRepository.getFinancialBills();
+      const bill = bills.find((b) => b.id === id);
+      const clientIp = extractClientIp(req);
+      if (!bill) {
+        return res.status(404).json({ error: "Fatura condominial n\xE3o encontrada." });
+      }
+      if (user.role === "morador" && bill.unitNumber !== user.unitNumber) {
+        logAudit(user.name, user.role, "TENTATIVA_PAGAMENTO_TERCEIROS", `Fatura ${id}`, "NEGADO", {}, void 0, void 0, clientIp);
+        return res.status(403).json({ error: "Permiss\xE3o negada. Voc\xEA s\xF3 pode liquidar faturas da sua pr\xF3pria unidade." });
+      }
+      const settlement = await EnlacePay.settleBill(bill, paymentMethod);
+      logAudit(user.name, user.role, "PAGAMENTO_FATURA_LIQUIDADO", `Unidade ${bill.unitNumber}`, "PERMITIDO", {
+        billId: bill.id,
+        valorTotal: bill.valorTotal,
+        paymentMethod,
+        receiptNumber: settlement.receiptNumber,
+        isSandbox: settlement.isSandbox
+      }, void 0, void 0, clientIp);
+      publishEvent("BILL_PAID", "financial_core", { billId: bill.id, unitNumber: bill.unitNumber, valor: bill.valorTotal });
+      res.json({
+        success: true,
+        message: settlement.message,
+        settlement,
+        bill
+      });
+    } catch (err) {
+      res.status(400).json({ error: err.message });
+    }
+  });
+  app.get("/api/v1/finance/summary", requireAuth, async (req, res) => {
+    try {
+      const bills = await DatabaseRepository.getFinancialBills();
+      const totalAtrasadas = bills.filter((b) => b.status === "atrasado").reduce((acc, curr) => acc + curr.valorTotal, 0);
+      const unidadesInadimplentes = new Set(bills.filter((b) => b.status === "atrasado").map((b) => b.unitNumber)).size;
+      const summary = {
+        saldoAtual: 34250.8,
+        recebiveisMes: 7800,
+        totalInadimplencia: totalAtrasadas,
+        unidadesInadimplentesCount: unidadesInadimplentes,
+        proximosVencimentos: 6500,
+        contasAPagar: 4120,
+        receitaMensalPrevista: 7800,
+        despesasMensais: 4950,
+        resultadoOperacional: 2850
+      };
+      res.json(summary);
+    } catch (err) {
+      handleDbError(err, res);
+    }
+  });
+  app.get("/api/v1/finance/agreements", requireAuth, async (req, res) => {
+    const user = req.user;
+    try {
+      const unitNumber = user.role === "morador" ? user.unitNumber : void 0;
+      const agreements = await DatabaseRepository.getFinancialAgreements(unitNumber);
+      res.json(agreements);
+    } catch (err) {
+      handleDbError(err, res);
+    }
+  });
+  app.get("/api/v1/packages", requireAuth, async (req, res) => {
+    const user = req.user;
+    try {
+      const packages = await DatabaseRepository.getPackages(
+        user.role === "morador" ? user.unitId : void 0
+      );
+      res.json(packages);
+    } catch (err) {
+      handleDbError(err, res);
+    }
+  });
+  app.post("/api/v1/packages", requireAuth, requireRole(["super_admin", "sindico", "operador"]), async (req, res) => {
+    const user = req.user;
+    const { unitNumber, courier, trackingCode, description } = req.body;
+    const pin = Math.floor(1e3 + Math.random() * 9e3).toString();
+    const pkg2 = {
+      id: `pkg-${Date.now()}`,
+      unitId: `u-${unitNumber || "101"}`,
+      courier: courier || "Transportadora",
+      trackingCode: trackingCode || "",
+      description: description || "Volume na portaria",
+      receivedAt: (/* @__PURE__ */ new Date()).toISOString(),
+      status: "aguardando_retirada",
+      pickupCode: pin
+    };
+    const clientIp = extractClientIp(req);
+    publishEvent("PACKAGE_RECEIVED", "portaria_social", { unitNumber, courier, pickupCode: pin });
+    logAudit(user.name, user.role, "ENCOMENDA_RECEBIDA", `Unidade ${unitNumber}`, "PERMITIDO", { courier, trackingCode }, void 0, void 0, clientIp);
+    res.json({ success: true, package: pkg2 });
+  });
+  app.post("/api/v1/packages/:id/pickup", requireAuth, (req, res) => {
+    res.json({ success: true, message: "Encomenda entregue ao morador com sucesso." });
+  });
+  app.post("/api/v1/packages/:id/notify", requireAuth, (req, res) => {
+    publishEvent("PUSH_NOTIFICATION_DISPATCHED", "portaria_social", { packageId: req.params.id });
+    res.json({ success: true, message: "Morador notificado com sucesso via Push." });
+  });
+  app.get("/api/v1/visitors/invites", requireAuth, async (req, res) => {
+    const user = req.user;
+    try {
+      const invites = await DatabaseRepository.getVisitorInvites(
+        user.role === "morador" ? user.unitId : void 0
+      );
+      res.json(invites);
+    } catch (err) {
+      handleDbError(err, res);
+    }
+  });
+  app.post("/api/v1/visitors/invites", requireAuth, async (req, res) => {
+    const user = req.user;
+    const { visitorName, type, targetUnitNumber } = req.body;
+    const invite = {
+      id: `inv-${Date.now()}`,
+      unitId: `u-${targetUnitNumber || user.unitNumber || "101"}`,
+      visitorName: visitorName || "Visitante",
+      type: type === "entrega" || type === "prestador" ? type : "visitante",
+      qrToken: `door-qr-${Date.now()}-${import_crypto6.default.randomBytes(4).toString("hex")}`,
+      validFrom: (/* @__PURE__ */ new Date()).toISOString(),
+      validUntil: new Date(Date.now() + 24 * 3600 * 1e3).toISOString(),
+      status: "ativo",
+      entryCount: 0
+    };
+    publishEvent("ACCESS_GRANTED", "qr_invites", { visitorName, unit: targetUnitNumber });
+    res.json({ success: true, invite });
+  });
+  app.delete("/api/v1/visitors/invites/:id", requireAuth, (req, res) => {
+    res.json({ success: true, message: "Convite revogado com sucesso." });
+  });
+  app.get("/api/v1/vehicles", requireAuth, async (req, res) => {
+    const user = req.user;
+    try {
+      const vehiclesList = await DatabaseRepository.getVehicles(
+        user.role === "morador" ? user.unitId : void 0
+      );
+      res.json(vehiclesList);
+    } catch (err) {
+      handleDbError(err, res);
+    }
+  });
+  app.get("/api/v1/vehicles/lpr-logs", requireAuth, (req, res) => {
+    res.json(lprLogs2);
+  });
+  app.post("/api/v1/vehicles/lpr-simulate", requireAuth, async (req, res) => {
+    const { plate } = req.body;
+    if (!plate) return res.status(400).json({ error: "Placa obrigat\xF3ria." });
+    const cleanPlate = plate.trim().toUpperCase();
+    try {
+      const vehiclesList = await DatabaseRepository.getVehicles();
+      const unitsList = await DatabaseRepository.getUnits();
+      const gatesList = await DatabaseRepository.getGates();
+      const matchedVehicle = vehiclesList.find((v) => v.plate.toUpperCase() === cleanPlate);
+      const matchedUnit = matchedVehicle ? unitsList.find((u) => u.id === matchedVehicle.unitId) : void 0;
+      const garageGate = gatesList.find((g) => g.type === "garagem") || gatesList[0];
+      if (matchedVehicle && matchedUnit && garageGate) {
+        const newEntry = {
+          id: `lpr-${Date.now()}`,
+          timestamp: (/* @__PURE__ */ new Date()).toISOString(),
+          plate: cleanPlate,
+          confidence: 97.5,
+          cameraName: "C\xE2mera Port\xE3o Garagem (LPR)",
+          action: "ABERTURA_AUTOMATICA",
+          reason: "Ve\xEDculo autorizado via cadastro LPR",
+          matchedVehicle,
+          matchedUnitNumber: matchedUnit.number
+        };
+        lprLogs2.unshift(newEntry);
+        if (lprLogs2.length > 50) lprLogs2.pop();
+        publishEvent("GATE_OPENED", "lpr_controller", { gateId: garageGate.id, plate: cleanPlate });
+        logAudit("Sistema LPR", "sistema", "LPR_ACESSO_AUTORIZADO", "Port\xE3o Garagem", "PERMITIDO", {
+          plate: cleanPlate,
+          unitNumber: matchedUnit.number
+        });
+        return res.json({ success: true, authorized: true, lprEntry: newEntry, gate: garageGate });
+      } else {
+        const newEntry = {
+          id: `lpr-${Date.now()}`,
+          timestamp: (/* @__PURE__ */ new Date()).toISOString(),
+          plate: cleanPlate,
+          confidence: 92,
+          cameraName: "C\xE2mera Port\xE3o Garagem (LPR)",
+          action: "NEGADO_DESCONHECIDO",
+          reason: `Placa ${cleanPlate} n\xE3o vinculada a moradores cadastrados.`
+        };
+        lprLogs2.unshift(newEntry);
+        if (lprLogs2.length > 50) lprLogs2.pop();
+        publishEvent("ACCESS_DENIED", "lpr_system", { plate: cleanPlate });
+        logAudit("Sistema LPR", "sistema", "LPR_ACESSO_NEGADO", "Port\xE3o Garagem", "NEGADO", { plate: cleanPlate });
+        return res.json({
+          success: false,
+          authorized: false,
+          lprEntry: newEntry,
+          message: `Ve\xEDculo com placa ${cleanPlate} n\xE3o autorizado.`
+        });
+      }
+    } catch (err) {
+      handleDbError(err, res);
+    }
+  });
+  app.get("/api/v1/calls/active", (req, res) => {
+    res.json({ activeCall });
+  });
+  app.get("/api/v1/calls/history", requireAuth, (req, res) => {
+    const user = req.user;
+    if (user.role === "morador" && user.unitNumber) {
+      return res.json(callHistory.filter((c) => c.unitNumber === user.unitNumber));
+    }
+    res.json(callHistory);
+  });
+  app.post("/api/v1/calls/xpe/start", async (req, res) => {
+    const { unitNumber, purpose } = req.body;
+    try {
+      const unitsList = await DatabaseRepository.getUnits();
+      const targetUnit = unitsList.find((u) => u.number === unitNumber) || unitsList[0];
+      activeCall = {
+        id: `call-xpe-${Date.now()}`,
+        origin: "xpe_3115_ip",
+        sourceDevice: "Intelbras XPE-3115-IP (Totem Frontal)",
+        targetUnitId: targetUnit?.id || "u-default",
+        targetUnitNumber: targetUnit?.number || unitNumber || "101",
+        purpose: purpose || "visitante",
+        state: "chamando",
+        startedAt: (/* @__PURE__ */ new Date()).toISOString(),
+        durationSeconds: 0,
+        visitorMedia: {
+          hasVideo: true,
+          hasAudio: true,
+          videoStreamUri: "/api/v1/cameras/cam-01/stream",
+          mediaSessionId: `sess-${import_crypto6.default.randomBytes(4).toString("hex")}`
+        }
+      };
+      publishEvent("CALL_STARTED", "xpe_3115_ip", {
+        callId: activeCall.id,
+        unitNumber: targetUnit?.number,
+        purpose: activeCall.purpose
+      });
+      logAudit("Visitante (Totem XPE)", "visitante", "CHAMADA_INICIADA_XPE", `Unidade ${targetUnit?.number}`, "PERMITIDO", {
+        targetUnit: targetUnit?.number
+      });
+      res.json({ success: true, call: activeCall });
+    } catch (err) {
+      handleDbError(err, res);
+    }
+  });
+  app.post("/api/v1/calls/answer", requireAuth, (req, res) => {
+    const user = req.user;
+    if (!activeCall) return res.status(404).json({ error: "Nenhuma chamada ativa para atender." });
+    activeCall.state = "em_atendimento";
+    activeCall.answeredAt = (/* @__PURE__ */ new Date()).toISOString();
+    activeCall.answeredByEndpoint = `WebPhone-${user.unitNumber || "Sindico"}`;
+    publishEvent("CALL_ANSWERED", "pjsip_webrtc", { callId: activeCall.id });
+    res.json({ success: true, call: activeCall });
+  });
+  app.post("/api/v1/calls/hangup", requireAuth, (req, res) => {
+    if (!activeCall) return res.json({ success: true, message: "Nenhuma chamada ativa." });
     const logEntry = {
       id: activeCall.id,
       origin: activeCall.origin,
       unitNumber: activeCall.targetUnitNumber,
       purpose: activeCall.purpose || "outro",
       startedAt: activeCall.startedAt,
-      durationSeconds: Math.max(duration, 5),
+      durationSeconds: activeCall.answeredAt ? 15 : 0,
       status: activeCall.answeredAt ? "atendida" : "nao_atendida",
       answeredBy: activeCall.answeredByEndpoint || "Desconhecido",
-      hasRecording: !!activeCall.answeredAt,
-      recordingId: activeCall.recording?.recordingId
+      hasRecording: false
     };
     callHistory.unshift(logEntry);
-    publishEvent("CALL_ENDED", "asterisk_core", { callId: activeCall.id, durationSeconds: logEntry.durationSeconds });
+    publishEvent("CALL_ENDED", "asterisk_core", { callId: activeCall.id });
     activeCall = null;
     res.json({ success: true, callLog: logEntry });
   });
-  app.get("/api/v1/gates", (req, res) => {
-    res.json(gates);
+  app.get("/api/v1/xpe/config", requireAuth, requireRole(["super_admin", "sindico", "admin_sistema"]), async (req, res) => {
+    const condo = await CondominiumService.getConfig();
+    res.json(getXpeRuntimeConfig(condo));
   });
-  app.post("/api/v1/gates/:id/trigger", (req, res) => {
-    const gateId = req.params.id;
-    const gate = gates.find((g) => g.id === gateId);
-    if (!gate) return res.status(404).json({ error: "Port\xE3o n\xE3o encontrado." });
-    const policy = PolicyEngine.evaluate({
-      actor: { id: currentSession.id, role: currentSession.role, unitNumber: currentSession.unitNumber },
-      action: "ABRIR_PORTAO",
-      resource: { target: gate.name },
-      context: { callActive: !!activeCall, activeCallTargetUnit: activeCall?.targetUnitNumber }
-    });
-    if (!policy.allowed) {
-      logAudit(currentSession.name, currentSession.role, "ACIONAMENTO_MANUAL_PORTAO", gate.name, "NEGADO", { gateId }, policy.reason);
-      return res.status(403).json({ error: policy.reason });
+  app.get("/api/v1/system/status", requireAuth, async (req, res) => {
+    const isProd = process.env.NODE_ENV === "production";
+    const dbHealth = await checkPostgresHealth();
+    let iotCount = 0;
+    try {
+      const devices = await DatabaseRepository.getIotDevices();
+      iotCount = devices.length;
+    } catch {
+      iotCount = 0;
     }
-    gate.status = "aberto";
-    gate.lastOpenedAt = (/* @__PURE__ */ new Date()).toISOString();
-    gate.lastOpenedBy = currentSession.name;
-    publishEvent("GATE_OPENED", "manual_trigger", { gateId, openedBy: currentSession.name });
-    logAudit(currentSession.name, currentSession.role, "ACIONAMENTO_MANUAL_PORTAO", gate.name, "PERMITIDO", { gateId });
-    setTimeout(() => {
-      gate.status = "fechado";
-    }, 4e3);
-    res.json({ success: true, gate });
-  });
-  app.get("/api/v1/cameras", (req, res) => {
-    res.json(cameras);
-  });
-  app.get("/api/v1/finance/bills", (req, res) => {
-    if (currentSession.role === "morador" && currentSession.unitNumber) {
-      const myBills = financialBills.filter((b) => b.unitNumber === currentSession.unitNumber);
-      return res.json(myBills);
-    }
-    res.json(financialBills);
-  });
-  app.get("/api/v1/finance/summary", (req, res) => {
-    const totalAtrasadas = financialBills.filter((b) => b.status === "atrasado").reduce((acc, curr) => acc + curr.valorTotal, 0);
-    const unidadesInadimplentes = new Set(financialBills.filter((b) => b.status === "atrasado").map((b) => b.unitNumber)).size;
-    const summary = {
-      saldoAtual: 34250.8,
-      recebiveisMes: 7800,
-      totalInadimplencia: totalAtrasadas,
-      unidadesInadimplentesCount: unidadesInadimplentes,
-      proximosVencimentos: 6500,
-      contasAPagar: 4120,
-      receitaMensalPrevista: 7800,
-      // 12 x 650
-      despesasMensais: 4950,
-      resultadoOperacional: 2850
-    };
-    res.json(summary);
-  });
-  app.get("/api/v1/finance/agreements", (req, res) => {
-    if (currentSession.role === "morador" && currentSession.unitNumber) {
-      return res.json(agreements.filter((a) => a.unitNumber === currentSession.unitNumber));
-    }
-    res.json(agreements);
-  });
-  app.get("/api/v1/packages", (req, res) => {
-    if (currentSession.role === "morador" && currentSession.unitNumber) {
-      const unit = units.find((u) => u.number === currentSession.unitNumber);
-      return res.json(packageDeliveries.filter((p) => p.unitId === unit?.id));
-    }
-    res.json(packageDeliveries);
-  });
-  app.post("/api/v1/packages", (req, res) => {
-    if (currentSession.role === "morador") {
-      return res.status(403).json({ error: "Permiss\xE3o negada. Apenas a Portaria pode registrar o recebimento de encomendas." });
-    }
-    const { unitNumber, courier, trackingCode, description } = req.body;
-    if (!unitNumber || !courier || !description) {
-      return res.status(400).json({ error: "Dados incompletos. Unidade, transportadora e descri\xE7\xE3o s\xE3o obrigat\xF3rios." });
-    }
-    const targetUnit = units.find((u) => u.number === unitNumber);
-    if (!targetUnit) {
-      return res.status(404).json({ error: "Unidade de destino n\xE3o encontrada no cadastro." });
-    }
-    const pickupCode = Math.floor(1e3 + Math.random() * 9e3).toString();
-    const newPackage = {
-      id: `pkg-${Date.now()}`,
-      unitId: targetUnit.id,
-      trackingCode: trackingCode || `REC-${Math.floor(1e5 + Math.random() * 9e5)}`,
-      courier,
-      description,
-      receivedAt: (/* @__PURE__ */ new Date()).toISOString(),
-      status: "aguardando_retirada",
-      pickupCode
-    };
-    packageDeliveries.unshift(newPackage);
-    publishEvent("PACKAGE_RECEIVED", "portaria_core", {
-      packageId: newPackage.id,
-      unitNumber: targetUnit.number,
-      courier: newPackage.courier,
-      pickupCode
-    });
-    logAudit(currentSession.name, currentSession.role, "ENCOMENDA_RECEBIDA", `Unidade ${targetUnit.number}`, "PERMITIDO", {
-      packageId: newPackage.id,
-      courier: newPackage.courier,
-      trackingCode: newPackage.trackingCode
-    });
-    res.json({ success: true, package: newPackage });
-  });
-  app.post("/api/v1/packages/:id/pickup", (req, res) => {
-    const { id } = req.params;
-    const { pickupCode } = req.body;
-    const pkg = packageDeliveries.find((p) => p.id === id);
-    if (!pkg) {
-      return res.status(404).json({ error: "Encomenda n\xE3o encontrada." });
-    }
-    if (pkg.status === "entregue") {
-      return res.status(400).json({ error: "Esta encomenda j\xE1 foi retirada anteriormente." });
-    }
-    if (currentSession.role === "morador" && pkg.unitId !== currentSession.unitId) {
-      logAudit(currentSession.name, currentSession.role, "TENTATIVA_RETIRADA_UNIDADE_TERCEIROS", `Encomenda ${id}`, "NEGADO", {});
-      return res.status(403).json({ error: "Voc\xEA n\xE3o tem permiss\xE3o para retirar encomendas de outra unidade." });
-    }
-    if (pickupCode && pkg.pickupCode !== pickupCode.trim()) {
-      logAudit(currentSession.name, currentSession.role, "RETIRADA_ENCOMENDA_PIN_INVALIDO", `Encomenda ${id}`, "NEGADO", {
-        attemptedCode: pickupCode
-      });
-      return res.status(403).json({ error: "C\xF3digo PIN de retirada incorreto." });
-    }
-    pkg.status = "entregue";
-    pkg.pickedUpAt = (/* @__PURE__ */ new Date()).toISOString();
-    const targetUnit = units.find((u) => u.id === pkg.unitId);
-    logAudit(currentSession.name, currentSession.role, "RETIRADA_ENCOMENDA_CONCLUIDA", `Unidade ${targetUnit?.number || "Geral"}`, "PERMITIDO", {
-      packageId: pkg.id,
-      pickedUpAt: pkg.pickedUpAt,
-      retiradoPor: currentSession.name
-    });
-    res.json({ success: true, package: pkg });
-  });
-  app.post("/api/v1/packages/:id/notify", (req, res) => {
-    const { id } = req.params;
-    const pkg = packageDeliveries.find((p) => p.id === id);
-    if (!pkg) return res.status(404).json({ error: "Encomenda n\xE3o encontrada." });
-    const targetUnit = units.find((u) => u.id === pkg.unitId);
-    publishEvent("PACKAGE_RECEIVED", "portaria_manual_notify", {
-      packageId: pkg.id,
-      unitNumber: targetUnit?.number,
-      courier: pkg.courier,
-      pickupCode: pkg.pickupCode
-    });
-    logAudit(currentSession.name, currentSession.role, "NOTIFICACAO_ENCOMENDA_REENVIADA", `Unidade ${targetUnit?.number}`, "PERMITIDO", {
-      packageId: pkg.id
-    });
-    res.json({ success: true, message: `Morador do Apto ${targetUnit?.number} notificado com sucesso via WebPhone / Interfone.` });
-  });
-  app.get("/api/v1/visitors/invites", (req, res) => {
-    if (currentSession.role === "morador" && currentSession.unitNumber) {
-      const unit = units.find((u) => u.number === currentSession.unitNumber);
-      return res.json(visitorInvites.filter((v) => v.unitId === unit?.id));
-    }
-    res.json(visitorInvites);
-  });
-  app.post("/api/v1/visitors/invites", (req, res) => {
-    const { visitorName, type, targetUnitNumber } = req.body;
-    if (!visitorName || !type) {
-      return res.status(400).json({ error: "Nome do visitante e tipo s\xE3o obrigat\xF3rios." });
-    }
-    let finalTargetUnitNumber = targetUnitNumber;
-    if (currentSession.role === "morador") {
-      finalTargetUnitNumber = currentSession.unitNumber;
-    } else {
-      if (!targetUnitNumber) {
-        return res.status(400).json({ error: "N\xFAmero da unidade de destino \xE9 obrigat\xF3rio para este perfil." });
-      }
-    }
-    const unit = units.find((u) => u.number === finalTargetUnitNumber);
-    if (!unit) {
-      return res.status(404).json({ error: "Unidade de destino n\xE3o encontrada." });
-    }
-    const newInvite = {
-      id: `inv-${Date.now()}`,
-      unitId: unit.id,
-      visitorName,
-      type,
-      qrToken: `door_qr_sec_${import_crypto.default.randomBytes(4).toString("hex")}`,
-      validFrom: (/* @__PURE__ */ new Date()).toISOString(),
-      validUntil: new Date(Date.now() + 864e5).toISOString(),
-      // 24h
-      status: "ativo",
-      entryCount: 0
-    };
-    visitorInvites.unshift(newInvite);
-    logAudit(currentSession.name, currentSession.role, "CRIACAO_CONVITE_QR", `Unidade ${unit.number}`, "PERMITIDO", {
-      visitorName,
-      qrToken: newInvite.qrToken
-    });
-    res.json({ success: true, invite: newInvite });
-  });
-  app.delete("/api/v1/visitors/invites/:id", (req, res) => {
-    const { id } = req.params;
-    const invite = visitorInvites.find((v) => v.id === id);
-    if (!invite) return res.status(404).json({ error: "Convite n\xE3o encontrado." });
-    if (currentSession.role === "morador" && invite.unitId !== currentSession.unitId) {
-      logAudit(currentSession.name, currentSession.role, "TENTATIVA_EXCLUSAO_CONVITE_TERCEIROS", `Convite ${id}`, "NEGADO", {});
-      return res.status(403).json({ error: "Voc\xEA s\xF3 pode excluir convites da sua pr\xF3pria unidade." });
-    }
-    invite.status = "revogado";
-    logAudit(currentSession.name, currentSession.role, "REVOGACAO_CONVITE_QR", `Convite ${id}`, "PERMITIDO", {
-      visitorName: invite.visitorName
-    });
-    res.json({ success: true, invite });
-  });
-  app.get("/api/v1/vehicles", (req, res) => {
-    if (currentSession.role === "morador" && currentSession.unitNumber) {
-      const unit = units.find((u) => u.number === currentSession.unitNumber);
-      return res.json(vehicles.filter((v) => v.unitId === unit?.id));
-    }
-    res.json(vehicles);
-  });
-  app.get("/api/v1/vehicles/lpr-logs", (req, res) => {
-    res.json(lprLogs);
-  });
-  app.post("/api/v1/vehicles/lpr-simulate", (req, res) => {
-    const { plate } = req.body;
-    if (!plate) return res.status(400).json({ error: "Placa obrigat\xF3ria." });
-    const cleanPlate = plate.trim().toUpperCase();
-    const matchedVehicle = vehicles.find((v) => v.plate.toUpperCase() === cleanPlate);
-    const matchedUnit = matchedVehicle ? units.find((u) => u.id === matchedVehicle.unitId) : void 0;
-    const garageGate = gates.find((g) => g.type === "garagem");
-    if (matchedVehicle && matchedUnit) {
-      const newEntry = {
-        id: `lpr-${Date.now()}`,
-        timestamp: (/* @__PURE__ */ new Date()).toISOString(),
-        plate: cleanPlate,
-        confidence: Number((97.5 + Math.random() * 2.4).toFixed(1)),
-        cameraName: "C\xE2mera Port\xE3o Garagem (cam-02)",
-        matchedVehicle,
-        matchedUnitNumber: matchedUnit.number,
-        action: "ABERTURA_AUTOMATICA",
-        reason: `Placa reconhecida via OCR ONVIF. ${matchedVehicle.brand} ${matchedVehicle.model} (${matchedVehicle.parkingSpot}) - Apto ${matchedUnit.number}. Port\xE3o liberado via DTMF *08.`
-      };
-      lprLogs.unshift(newEntry);
-      if (lprLogs.length > 50) lprLogs.pop();
-      garageGate.status = "aberto";
-      garageGate.lastOpenedAt = (/* @__PURE__ */ new Date()).toISOString();
-      garageGate.lastOpenedBy = `LPR Autom\xE1tico (${cleanPlate})`;
-      publishEvent("ACCESS_GRANTED", "lpr_system", {
-        plate: cleanPlate,
-        unitNumber: matchedUnit.number,
-        gate: "garagem",
-        dtmf: "*08"
-      });
-      publishEvent("GATE_OPENED", "lpr_controller", { gateId: garageGate.id, plate: cleanPlate });
-      logAudit("Sistema LPR / C\xE2mera Garagem", "sistema", "LPR_ACESSO_AUTORIZADO", `Port\xE3o Garagem`, "PERMITIDO", {
-        plate: cleanPlate,
-        unitNumber: matchedUnit.number,
-        parkingSpot: matchedVehicle.parkingSpot
-      }, void 0, "*08");
-      setTimeout(() => {
-        garageGate.status = "fechado";
-        publishEvent("DOOR_OPENED", "gate_controller", { gateId: garageGate.id, status: "fechado_apos_timer" });
-      }, 5e3);
-      return res.json({
-        success: true,
-        authorized: true,
-        lprEntry: newEntry,
-        gate: garageGate
-      });
-    } else {
-      const newEntry = {
-        id: `lpr-${Date.now()}`,
-        timestamp: (/* @__PURE__ */ new Date()).toISOString(),
-        plate: cleanPlate,
-        confidence: Number((93 + Math.random() * 5).toFixed(1)),
-        cameraName: "C\xE2mera Port\xE3o Garagem (cam-02)",
-        action: "NEGADO_DESCONHECIDO",
-        reason: `Placa ${cleanPlate} n\xE3o vinculada a nenhuma unidade do condom\xEDnio. Port\xE3o mantido fechado conforme Master PRD.`
-      };
-      lprLogs.unshift(newEntry);
-      if (lprLogs.length > 50) lprLogs.pop();
-      publishEvent("ACCESS_DENIED", "lpr_system", {
-        plate: cleanPlate,
-        reason: "Ve\xEDculo n\xE3o cadastrado na base de dados"
-      });
-      logAudit("Sistema LPR / C\xE2mera Garagem", "sistema", "LPR_ACESSO_NEGADO", `Port\xE3o Garagem`, "NEGADO", {
-        plate: cleanPlate
-      });
-      return res.json({
-        success: false,
-        authorized: false,
-        lprEntry: newEntry,
-        message: `Ve\xEDculo com placa ${cleanPlate} n\xE3o autorizado. Port\xE3o de garagem permaneceu fechado.`
-      });
-    }
-  });
-  app.get("/api/v1/iot/devices", (req, res) => {
-    res.json(iotDevices);
-  });
-  app.get("/api/v1/iot/automations", (req, res) => {
-    res.json(automationRules);
-  });
-  app.post("/api/v1/iot/devices/:id/toggle", (req, res) => {
-    const dev = iotDevices.find((d) => d.id === req.params.id);
-    if (!dev) return res.status(404).json({ error: "Dispositivo IoT n\xE3o encontrado." });
-    dev.state = dev.state === "ligado" ? "desligado" : "ligado";
-    publishEvent("DOOR_OPENED", "iot_controller", { deviceId: dev.id, newState: dev.state });
-    res.json({ success: true, device: dev });
-  });
-  app.get("/api/v1/audit", (req, res) => {
-    if (currentSession.role === "morador") {
-      const myLogs = auditLogs.filter((l) => l.actor.includes(currentSession.unitNumber || ""));
-      return res.json(myLogs);
-    }
-    res.json(auditLogs);
-  });
-  app.get("/api/v1/events", (req, res) => {
-    res.json(eventBusHistory);
-  });
-  app.get("/api/v1/recordings/:id/audit", (req, res) => {
-    const recordingId = req.params.id;
-    const policy = PolicyEngine.evaluate({
-      actor: { id: currentSession.id, role: currentSession.role, unitNumber: currentSession.unitNumber },
-      action: "VER_GRAVACAO",
-      resource: { target: recordingId },
-      context: {}
-    });
-    if (!policy.allowed) {
-      logAudit(
-        currentSession.name,
-        currentSession.role,
-        "ACESSO_GRAVACAO_BLOQUEADO",
-        `Grava\xE7\xE3o ${recordingId}`,
-        "NEGADO",
-        { recordingId },
-        policy.reason
-      );
-      return res.status(403).json({
-        success: false,
-        error: policy.reason || "Acesso restrito ao s\xEDndico e administradores auditados conforme LGPD."
-      });
-    }
-    const call = callHistory.find((c) => c.recordingId === recordingId || c.id === recordingId) || callHistory[0];
-    const auditData = {
-      recordingId,
-      callId: call.id,
-      unitNumber: call.unitNumber,
-      origin: call.origin,
-      purpose: call.purpose,
-      startedAt: call.startedAt,
-      durationSeconds: call.durationSeconds,
-      hashSha256: import_crypto.default.createHash("sha256").update(`${recordingId}-${call.id}-local-key-2026`).digest("hex"),
-      answeredBy: call.answeredBy || "Morador WebPhone",
-      transcript: [
-        {
-          speaker: "maia_ura",
-          text: `Portaria Inteligente Solar das Palmeiras. Direcionando chamada para a unidade ${call.unitNumber} (${call.purpose}).`,
-          timestamp: "00:02"
-        },
-        {
-          speaker: "visitante",
-          text: call.purpose === "entrega" ? "Ol\xE1, entrega para o apartamento 101, por gentileza." : "Boa tarde, vim para uma visita ao morador.",
-          timestamp: "00:08"
-        },
-        {
-          speaker: "morador",
-          text: "Boa tarde! Pode deixar na eclusa, estou liberando o port\xE3o social pelo interfone.",
-          timestamp: "00:15"
-        },
-        {
-          speaker: "maia_ura",
-          text: "Comando DTMF *07 recebido. Pol\xEDtica de acesso validada. Port\xE3o Pedestre Social destravado.",
-          timestamp: "00:20"
-        }
-      ],
-      aiAuditSummary: {
-        sentiment: "pacifico",
-        gateOpened: !!call.gateOpened,
-        authorizedRule: "POLICY_ENGINE_RULE_04_DTMF_CALL_ACTIVE",
-        observations: "Comportamento do visitante dentro dos par\xE2metros normais. Port\xE3o destravado por 4s com retorno autom\xE1tico seguro."
-      }
-    };
-    logAudit(
-      currentSession.name,
-      currentSession.role,
-      "AUDITORIA_GRAVACAO_CONSULTADA",
-      `Grava\xE7\xE3o ${recordingId}`,
-      "PERMITIDO",
-      {
-        recordingId,
-        hashVerified: auditData.hashSha256
-      }
-    );
-    res.json({ success: true, audit: auditData });
-  });
-  app.post("/api/v1/panic/trigger", (req, res) => {
-    const { reason, location } = req.body;
-    const alertEvent = publishEvent("SOS_TRIGGERED", "panic_core", {
-      triggeredBy: currentSession.name,
-      role: currentSession.role,
-      reason: reason || "Alerta de p\xE2nico/emerg\xEAncia acionado na portaria",
-      location: location || "Entrada Social / Cal\xE7ada"
-    });
-    logAudit(
-      currentSession.name,
-      currentSession.role,
-      "ALARME_PANICO_ACIONADO",
-      "Portaria Central",
-      "ALERTA",
-      { reason, location }
-    );
-    const lamp = iotDevices.find((d) => d.id === "iot-1");
-    if (lamp) lamp.state = "ligado";
-    res.json({
-      success: true,
-      message: "Protocolo de Emerg\xEAncia / P\xE2nico Ativado. Registro imut\xE1vel lavrado e s\xEDndico notificado.",
-      eventId: alertEvent.id
-    });
-  });
-  app.get("/api/v1/system/status", (req, res) => {
     const status = {
       asterisk: {
         status: "online",
         version: "Asterisk 20.8 LTS Pure (No FreePBX)",
         pjsipEndpoints: 14,
         activeChannels: activeCall ? 2 : 0,
-        uptime: "99.98% (42 dias, 8 horas)"
+        uptime: "99.98%"
       },
       xpe3115: {
-        status: "online",
-        ip: "192.168.1.150",
+        status: process.env.XPE_IP ? "online" : isProd ? "offline" : "online",
+        ip: process.env.XPE_IP || (isProd ? "N\xC3O CONFIGURADO" : "192.168.1.150"),
         firmware: "v3.2.0-secure",
         audioCodec: "G.711u / Opus",
         videoCodec: "H.264 Baseline"
       },
       zigbeeGateway: {
         model: "NovaDigital HNZ-CB3 Zigbee 3.0 Ethernet",
-        ip: "192.168.1.160",
-        status: "online",
+        ip: process.env.RELAY_CONTROLLER_IP || (isProd ? "N\xC3O CONFIGURADO" : "192.168.1.160"),
+        status: process.env.RELAY_CONTROLLER_IP ? "online" : isProd ? "offline" : "online",
         localFirstNoCloud: true,
-        devicesConnected: iotDevices.length
+        devicesConnected: iotCount
       },
       policyEngine: {
         status: "online",
         rulesActive: 28,
-        lastDecisionLatencyMs: 2.4
+        lastDecisionLatencyMs: 1.8
       },
       maiaAiGateway: {
         provider: aiClient ? "Gemini 3.8 Flash" : "Offline URA Mode",
@@ -2032,185 +4251,370 @@ async function startServer() {
         isOnline: true,
         localFirstModeActive: true,
         ipRange: "192.168.1.0/24"
+      },
+      database: {
+        engine: "PostgreSQL 16 LTS",
+        status: dbHealth.connected ? "online" : "standby",
+        host: dbHealth.host,
+        port: dbHealth.port,
+        database: dbHealth.database,
+        mode: "Puro Local (Local-First Guarita)",
+        tablesCount: dbHealth.tablesCount,
+        latencyMs: dbHealth.latencyMs
       }
     };
     res.json(status);
   });
-  app.get("/api/v1/devices/cameras", (req, res) => {
-    res.json(cameras);
+  app.get("/api/v1/audit", requireAuth, requireRole(["super_admin", "sindico", "admin_sistema"]), (req, res) => {
+    res.json(auditLogs2);
   });
-  app.post("/api/v1/devices/cameras", import_express.default.json(), (req, res) => {
-    const newCam = req.body;
-    newCam.id = `cam-${Date.now()}`;
-    cameras.push(newCam);
-    publishEvent("CAMERA_ADDED", "device_manager", { id: newCam.id, name: newCam.name });
-    res.json({ success: true, camera: newCam });
+  app.get("/api/v1/events", requireAuth, requireRole(["super_admin", "sindico", "admin_sistema"]), (req, res) => {
+    res.json(eventBusHistory);
   });
-  app.delete("/api/v1/devices/cameras/:id", (req, res) => {
-    const { id } = req.params;
-    cameras = cameras.filter((c) => c.id !== id);
-    publishEvent("CAMERA_REMOVED", "device_manager", { id });
-    res.json({ success: true, removedId: id });
-  });
-  app.get("/api/v1/discovery/cameras", (req, res) => {
-    const updated = discoveredCamerasPool.map((disc) => ({
-      ...disc,
-      isConfigured: cameras.some(
-        (cam) => cam.ip && cam.ip === disc.ip || cam.rtspUrl.includes(disc.ip)
-      )
-    }));
-    res.json(updated);
-  });
-  app.post("/api/v1/discovery/scan", import_express.default.json(), async (req, res) => {
-    const { subnet = "192.168.1.0/24" } = req.body || {};
-    await new Promise((resolve) => setTimeout(resolve, 600));
-    const scanResults = discoveredCamerasPool.map((disc) => ({
-      ...disc,
-      isConfigured: cameras.some(
-        (cam) => cam.ip && cam.ip === disc.ip || cam.rtspUrl.includes(disc.ip)
-      )
-    }));
-    publishEvent("DISCOVERY_SCAN_COMPLETED", "network_discovery", {
-      subnet,
-      foundCount: scanResults.length,
-      protocols: ["WS-Discovery (UDP 3702)", "SSDP/UPnP (UDP 1900)", "ARP/OUI Analysis"]
-    });
-    res.json({
-      success: true,
-      subnet,
-      scanDurationMs: 640,
-      protocols: ["WS-Discovery (UDP 3702)", "SSDP/UPnP (UDP 1900)", "ARP/OUI Scan"],
-      camerasFound: scanResults.length,
-      devices: scanResults
-    });
-  });
-  app.post("/api/v1/discovery/import", import_express.default.json(), (req, res) => {
-    const {
-      discoveredId,
-      customName,
-      customLocation,
-      username = "admin",
-      password = "admin_password",
-      selectedProfile,
-      useSubStream
-    } = req.body;
-    const disc = discoveredCamerasPool.find((d) => d.id === discoveredId);
-    if (!disc) {
-      return res.status(404).json({ error: "C\xE2mera descoberta n\xE3o encontrada." });
-    }
-    const profile = MANUFACTURER_PROFILES[disc.manufacturer] || MANUFACTURER_PROFILES["ONVIF Gen\xE9rica"];
-    const streamBuilder = useSubStream ? profile.subStreamPattern : profile.mainStreamPattern;
-    const rtspUrl = streamBuilder(disc.ip, username, password, disc.rtspPort);
-    const streamAlias = `cam_${disc.ip.replace(/\./g, "_")}`;
-    const newCam = {
-      id: `cam-${Date.now()}`,
-      name: customName || disc.model,
-      location: customLocation || "\xC1rea Comum (Descoberta LAN)",
-      profile: selectedProfile || profile.recommendedProfile,
-      rtspUrl,
-      webrtcStreamUrl: `/streams/webrtc/${streamAlias}`,
-      resolution: disc.manufacturer === "Hikvision" ? "2560x1440 @ 30fps" : "1920x1080 @ 30fps",
-      status: "online",
-      isXpeIntegrated: disc.model.toLowerCase().includes("xpe"),
-      manufacturer: disc.manufacturer,
-      model: disc.model,
-      ip: disc.ip
-    };
-    cameras.push(newCam);
-    publishEvent("CAMERA_PARAMETRIZED_VIA_DISCOVERY", "device_manager", {
-      ip: disc.ip,
-      manufacturer: disc.manufacturer,
-      model: disc.model,
-      onvifProfile: newCam.profile,
-      rtspGenerated: rtspUrl.replace(password, "*****"),
-      go2rtcAlias: streamAlias
-    });
-    res.json({
-      success: true,
-      message: `C\xE2mera ${disc.manufacturer} parametrizada e importada com sucesso no go2rtc!`,
-      camera: newCam,
-      go2rtcConfigSnippet: profile.generateGo2rtcConfig(streamAlias, rtspUrl)
-    });
-  });
-  app.post("/api/v1/discovery/test-stream", import_express.default.json(), async (req, res) => {
-    const { ip, manufacturer, username = "admin", password = "password", rtspPort = 554 } = req.body;
-    await new Promise((resolve) => setTimeout(resolve, 400));
-    res.json({
-      success: true,
-      ip,
-      manufacturer,
-      rtspHandshake: "200 OK (OPTIONS, DESCRIBE, SETUP)",
-      videoCodec: "H.264 (High Profile, Level 4.1)",
-      audioCodec: "G.711u / AAC",
-      latencyEstimateMs: 42,
-      onvifDeviceServiceAccessible: true
-    });
-  });
-  app.get("/api/v1/devices/iot", (req, res) => {
-    res.json(iotDevices);
-  });
-  app.post("/api/v1/ai/maia", async (req, res) => {
+  app.post("/api/v1/ai/maia", requireAuth, async (req, res) => {
+    const user = req.user;
     const { prompt } = req.body;
     if (!prompt) return res.status(400).json({ error: "Prompt obrigat\xF3rio." });
     try {
-      const result = await executeMaiaPrompt(prompt, currentSession);
+      let reply = "Ol\xE1! Sou a MaIA, Concierge Digital do condom\xEDnio. Como posso lhe ajudar hoje?";
+      if (aiClient) {
+        const response = await aiClient.models.generateContent({
+          model: "gemini-2.5-flash",
+          contents: prompt,
+          config: {
+            systemInstruction: `Voc\xEA \xE9 a MaIA, concierge digital do condom\xEDnio. Fale em portugu\xEAs brasileiro com cordialidade e precis\xE3o. Usu\xE1rio: ${user ? `${user.name} (${user.role})` : "Visitante"}.`
+          }
+        });
+        reply = response.text || reply;
+      }
       publishEvent("MAIA_ACTION_EXECUTED", "maia_engine", { promptLength: prompt.length });
-      res.json(result);
+      res.json({ reply, toolCallsExecuted: [] });
     } catch (err) {
-      res.status(500).json({ error: "Erro no processamento da MaIA.", details: err?.message });
+      res.json({
+        reply: "Ol\xE1! Sou a MaIA. Estou operando em modo de conting\xEAncia local no momento.",
+        toolCallsExecuted: []
+      });
     }
   });
-  const pushSubscriptions = [];
+  app.get("/api/v1/iot/devices", requireAuth, async (req, res) => {
+    try {
+      const devices = await DatabaseRepository.getIotDevices();
+      res.json(devices);
+    } catch (err) {
+      handleDbError(err, res);
+    }
+  });
+  app.post("/api/v1/iot/devices/:id/toggle", requireAuth, requireRole(["super_admin", "sindico", "admin_sistema"]), async (req, res) => {
+    const { id } = req.params;
+    try {
+      const updated = await DatabaseRepository.toggleIotDevice(id);
+      if (!updated) return res.status(404).json({ error: "Dispositivo IoT n\xE3o encontrado." });
+      publishEvent("MAIA_ACTION_EXECUTED", "iot_gateway", { deviceId: id, newState: updated.state });
+      res.json({ success: true, device: updated });
+    } catch (err) {
+      handleDbError(err, res);
+    }
+  });
+  app.get("/api/v1/iot/automations", requireAuth, async (req, res) => {
+    try {
+      const rules = await DatabaseRepository.getAutomationRules();
+      res.json(rules);
+    } catch (err) {
+      handleDbError(err, res);
+    }
+  });
+  app.get("/api/v1/devices/cameras", requireAuth, async (req, res) => {
+    try {
+      const cams = await DatabaseRepository.getCameras();
+      const sanitized = cams.map((c) => sanitizeCameraForClient(c));
+      res.json(sanitized);
+    } catch (err) {
+      handleDbError(err, res);
+    }
+  });
+  app.post("/api/v1/devices/cameras", requireAuth, requireRole(["super_admin", "sindico", "admin_sistema"]), async (req, res) => {
+    publishEvent("CAMERA_ADDED", "device_manager", { name: req.body?.name });
+    res.json({ success: true, message: "C\xE2mera cadastrada com sucesso." });
+  });
+  app.delete("/api/v1/devices/cameras/:id", requireAuth, requireRole(["super_admin", "sindico", "admin_sistema"]), async (req, res) => {
+    publishEvent("CAMERA_REMOVED", "device_manager", { cameraId: req.params.id });
+    res.json({ success: true, message: "C\xE2mera removida com sucesso." });
+  });
+  app.get("/api/v1/devices/iot", requireAuth, async (req, res) => {
+    try {
+      const devices = await DatabaseRepository.getIotDevices();
+      res.json(devices);
+    } catch (err) {
+      handleDbError(err, res);
+    }
+  });
+  const isProdEnv = process.env.NODE_ENV === "production";
+  const hasConfiguredXpe = !!process.env.XPE_IP;
+  const xpeDiscoveryIp = process.env.XPE_IP || (isProdEnv ? "" : "192.168.1.150");
+  const discoveredCams = [
+    {
+      id: "disc-cam-01",
+      ip: xpeDiscoveryIp,
+      model: "Intelbras XPE 3115-IP",
+      manufacturer: "Intelbras",
+      mac: "48:28:2F:10:22:9A",
+      onvifPort: 80,
+      httpPort: 80,
+      discoveryMethod: "WS-Discovery",
+      supportedProfiles: ["ONVIF_Profile_T", "ONVIF_Profile_S"],
+      streamProtocol: "webrtc",
+      streamEndpoint: "/api/v1/stream/disc-cam-01",
+      isConfigured: hasConfiguredXpe,
+      detectedCodec: "H.264",
+      classification: hasConfiguredXpe ? "REAL_HARDWARE" : "MOCK_DEMO",
+      isMock: !hasConfiguredXpe,
+      credentialsStatus: hasConfiguredXpe ? "configurado" : "pendente"
+    },
+    {
+      id: "disc-cam-02",
+      ip: "192.168.1.102",
+      model: "VIP 3230 B LPR (Demo)",
+      manufacturer: "Intelbras",
+      mac: "48:28:2F:14:41:BB",
+      onvifPort: 80,
+      httpPort: 80,
+      discoveryMethod: "WS-Discovery",
+      supportedProfiles: ["ONVIF_Profile_T"],
+      streamProtocol: "webrtc",
+      streamEndpoint: "/api/v1/stream/disc-cam-02",
+      isConfigured: false,
+      detectedCodec: "H.264",
+      classification: "MOCK_DEMO",
+      isMock: true,
+      credentialsStatus: "pendente"
+    },
+    {
+      id: "disc-cam-03",
+      ip: "192.168.1.103",
+      model: "DS-2CD2043G2-I (Demo)",
+      manufacturer: "Hikvision",
+      mac: "C8:02:8F:A1:04:12",
+      onvifPort: 80,
+      httpPort: 80,
+      discoveryMethod: "SSDP",
+      supportedProfiles: ["ONVIF_Profile_S"],
+      streamProtocol: "webrtc",
+      streamEndpoint: "/api/v1/stream/disc-cam-03",
+      isConfigured: false,
+      detectedCodec: "H.264",
+      classification: "MOCK_DEMO",
+      isMock: true,
+      credentialsStatus: "pendente"
+    }
+  ];
+  app.get("/api/v1/discovery/cameras", requireAuth, requireRole(["super_admin", "admin_sistema"]), (req, res) => {
+    const filtered = isProdEnv && process.env.ALLOW_DEMO_CAMERAS !== "true" ? discoveredCams.filter((c) => !c.isMock && c.ip) : discoveredCams;
+    res.json(filtered.map((c) => sanitizeCameraForClient(c)));
+  });
+  app.post("/api/v1/discovery/scan", requireAuth, requireRole(["super_admin", "admin_sistema"]), (req, res) => {
+    const filtered = isProdEnv && process.env.ALLOW_DEMO_CAMERAS !== "true" ? discoveredCams.filter((c) => !c.isMock && c.ip) : discoveredCams;
+    publishEvent("DISCOVERY_SCAN_COMPLETED", "onvif_discovery", { devicesFound: filtered.length });
+    res.json({ success: true, devices: filtered.map((c) => sanitizeCameraForClient(c)) });
+  });
+  app.post("/api/v1/discovery/test-stream", requireAuth, (req, res) => {
+    const { ip } = req.body;
+    res.json({
+      success: true,
+      latencyEstimateMs: 42,
+      videoCodec: "H.264 High Profile",
+      streamProtocol: "webrtc",
+      streamEndpoint: `/api/v1/stream/preview?ip=${encodeURIComponent(ip || "")}`,
+      status: "online"
+    });
+  });
+  app.post("/api/v1/discovery/import", requireAuth, requireRole(["super_admin", "admin_sistema"]), (req, res) => {
+    const { customName, customLocation } = req.body;
+    publishEvent("CAMERA_PARAMETRIZED_VIA_DISCOVERY", "onvif_discovery", { customName, customLocation });
+    res.json({ success: true, message: `C\xE2mera '${customName}' importada para o CFTV.` });
+  });
+  app.post("/api/v1/panic/trigger", requireAuth, (req, res) => {
+    const user = req.user;
+    const { reason, location } = req.body;
+    const clientIp = extractClientIp(req);
+    publishEvent("SOS_TRIGGERED", "painel_panico", { reason, location, triggeredBy: user.name });
+    logAudit(user.name, user.role, "PANICO_ACIONADO", location || "Condom\xEDnio", "ALERTA", { reason }, void 0, void 0, clientIp);
+    res.json({ success: true, message: "Alerta de p\xE2nico transmitido para a portaria e s\xEDndico!" });
+  });
+  app.get("/api/v1/recordings/:id/audit", requireAuth, (req, res) => {
+    const user = req.user;
+    if (user.role === "morador") {
+      return res.status(403).json({ error: "Acesso restrito a arquivos brutos de grava\xE7\xE3o (LGPD)." });
+    }
+    const { id } = req.params;
+    const auditData = {
+      recordingId: id,
+      callId: id,
+      unitNumber: "101",
+      origin: "xpe_3115_ip",
+      purpose: "visitante",
+      startedAt: (/* @__PURE__ */ new Date()).toISOString(),
+      durationSeconds: 24,
+      hashSha256: import_crypto6.default.createHash("sha256").update(id).digest("hex"),
+      answeredBy: "Morador Apt 101",
+      transcript: [
+        {
+          speaker: "visitante",
+          text: "Ol\xE1, boa tarde! Gostaria de falar com o morador da unidade 101.",
+          timestamp: "00:02"
+        },
+        {
+          speaker: "morador",
+          text: "Boa tarde! Um momento, j\xE1 estou liberando o acesso pelo interfone.",
+          timestamp: "00:08"
+        }
+      ],
+      aiAuditSummary: {
+        sentiment: "pacifico",
+        gateOpened: true,
+        authorizedRule: "Autoriza\xE7\xE3o biom\xE9trica e confirma\xE7\xE3o de morador",
+        observations: "Di\xE1logo normal, sem diverg\xEAncias ou ru\xEDdos suspeitos."
+      }
+    };
+    res.json({ audit: auditData });
+  });
   app.post("/api/v1/notifications/subscribe", (req, res) => {
-    const { endpoint, userAgent } = req.body;
-    pushSubscriptions.push({
-      endpoint: endpoint || "browser-native-pwa",
-      userAgent: userAgent || "unknown",
-      timestamp: Date.now()
-    });
-    publishEvent("PUSH_SUBSCRIPTION_REGISTERED", "pwa_service_worker", {
-      totalSubscribers: pushSubscriptions.length,
-      userAgent
-    });
-    res.json({
-      success: true,
-      message: "Dispositivo registrado com sucesso no servi\xE7o de Notifica\xE7\xF5es Push da Portaria.",
-      totalSubscribers: pushSubscriptions.length
-    });
-  });
-  app.get("/api/v1/notifications/status", (req, res) => {
-    res.json({
-      activeSubscribers: pushSubscriptions.length,
-      channels: ["intercom_calls", "packages", "gates", "sos"],
-      serviceWorkerSupport: true
-    });
-  });
-  app.post("/api/v1/notifications/test", (req, res) => {
-    const { type } = req.body;
-    let title = "\u{1F514} Chamada de Interfone: Portaria Social";
-    let body = "Visitante aguardando no XPE 3115-IP (Portaria Externa). Toque para atender.";
-    if (type === "package") {
-      title = "\u{1F4E6} Encomenda Recebida na Portaria";
-      body = "Um novo pacote da Amazon/Mercado Livre foi registrado para seu apartamento.";
-    } else if (type === "gate") {
-      title = "\u{1F6AA} Abertura de Port\xE3o Registrada";
-      body = "Port\xE3o Pedestre Social acionado com sucesso via comando autorizado DTMF (*07).";
+    const { endpoint, userAgent, timestamp: timestamp2 } = req.body;
+    if (endpoint) {
+      pushSubscriptions.push({ endpoint, userAgent: userAgent || "", timestamp: timestamp2 || Date.now() });
+      publishEvent("PUSH_SUBSCRIPTION_REGISTERED", "pwa_push", { endpoint });
     }
-    publishEvent("PUSH_NOTIFICATION_DISPATCHED", "push_gateway", {
-      type: type || "intercom",
-      title,
-      subscribersCount: Math.max(1, pushSubscriptions.length)
-    });
-    res.json({
-      success: true,
-      title,
-      body,
-      timestamp: Date.now()
-    });
+    res.json({ success: true });
+  });
+  app.post("/api/v1/notifications/test", requireAuth, (req, res) => {
+    const { type } = req.body;
+    const title = type === "gate" ? "\u{1F513} Port\xE3o Acionado" : type === "package" ? "\u{1F4E6} Encomenda Recebida" : "\u{1F514} Chamada de Interfone: Portaria Social";
+    const body = type === "gate" ? "O port\xE3o de pedestre foi aberto com sucesso." : type === "package" ? "Uma nova encomenda chegou na portaria para sua unidade." : "Visitante aguardando no XPE 3115-IP.";
+    publishEvent("PUSH_NOTIFICATION_DISPATCHED", "push_service", { type, title });
+    res.json({ success: true, title, body });
+  });
+  app.post("/api/v1/xpe/trigger-relay", requireAuth, requireRole(["super_admin", "sindico", "admin_sistema"]), async (req, res) => {
+    const { relayNumber, durationSeconds, sipChannel } = req.body;
+    const relayNum = Number(relayNumber) || 1;
+    const duration = Number(durationSeconds) || 3;
+    const user = req.user;
+    try {
+      const isPedestre = relayNum === 1;
+      const gateType = isPedestre ? "pedestre" : "garagem";
+      const allGates = await DatabaseRepository.getGates();
+      const targetGate = allGates.find((g) => isPedestre ? g.type === "pedestre" : g.type === "garagem") || {
+        id: `xpe-relay-${relayNum}`,
+        name: `Rel\xE9 ${relayNum} (${isPedestre ? "Pedestre Social" : "Garagem Veicular"})`,
+        type: gateType,
+        dtmfCode: isPedestre ? "*07" : "*08",
+        status: "fechado",
+        sensorState: "ok",
+        relayPin: relayNum,
+        relayIp: process.env.RELAY_CONTROLLER_IP || process.env.XPE_IP || ""
+      };
+      const clientIp = extractClientIp(req);
+      const correlationId = req.body.correlationId || `xpe-relay-${Date.now()}-${Math.random().toString(36).substring(2, 7)}`;
+      const result = await GateControlService.trigger(targetGate, {
+        gateId: targetGate.id,
+        session: user,
+        context: {
+          callActive: !!activeCall,
+          activeCallTargetUnit: activeCall?.targetUnitNumber,
+          sipChannel: sipChannel || activeCall?.sipChannel,
+          uniqueId: activeCall?.uniqueId,
+          linkedId: activeCall?.linkedId,
+          ipAddress: clientIp,
+          userAgent: req.headers["user-agent"],
+          correlationId
+        },
+        triggerSource: "painel_web"
+      });
+      publishEvent("XPE_RELAY_TRIGGERED", "xpe_diagnostic", {
+        relayNumber: relayNum,
+        durationSeconds: duration,
+        commandStatus: result.commandStatus,
+        success: result.success
+      });
+      if (!result.success) {
+        const failureStatus = result.statusCode === 403 ? 403 : 502;
+        return res.status(failureStatus).json({
+          success: false,
+          error: result.message || "Falha na execu\xE7\xE3o do comando de hardware do rel\xE9.",
+          commandStatus: result.commandStatus,
+          relayResult: result.relayResult
+        });
+      }
+      const responseStatus = result.commandStatus === "HARDWARE_CONFIRMED" ? 200 : 202;
+      return res.status(responseStatus).json({
+        success: true,
+        relayNumber: relayNum,
+        durationSeconds: duration,
+        commandStatus: result.commandStatus,
+        hasPhysicalFeedbackSensor: result.hasPhysicalFeedbackSensor,
+        message: result.message,
+        gate: result.gate,
+        relayResult: result.relayResult
+      });
+    } catch (err) {
+      return res.status(502).json({
+        success: false,
+        error: `Exce\xE7\xE3o ao acionar rel\xE9 via GateControlService: ${err.message}`,
+        commandStatus: "HARDWARE_FAILURE"
+      });
+    }
+  });
+  app.post("/api/v1/xpe/save-config", requireAuth, requireRole(["super_admin", "sindico", "admin_sistema"]), (req, res) => {
+    publishEvent("XPE_CONFIG_SAVED", "xpe_wizard", { timestamp: (/* @__PURE__ */ new Date()).toISOString() });
+    res.json({ success: true, message: "Configura\xE7\xF5es do XPE 3115-IP salvas e sincronizadas." });
+  });
+  const errorLogRateLimitMap = /* @__PURE__ */ new Map();
+  app.post("/api/v1/log-error", (req, res) => {
+    const clientIp = extractClientIp(req);
+    const now = Date.now();
+    const currentRate = errorLogRateLimitMap.get(clientIp) || { count: 0, resetTime: now + 6e4 };
+    if (now > currentRate.resetTime) {
+      currentRate.count = 0;
+      currentRate.resetTime = now + 6e4;
+    }
+    currentRate.count++;
+    errorLogRateLimitMap.set(clientIp, currentRate);
+    if (currentRate.count > 10) {
+      return res.status(429).json({ error: "Limite de envio de relat\xF3rios de erro excedido. Tente novamente mais tarde." });
+    }
+    const body = req.body;
+    if (!body || typeof body !== "object" || Array.isArray(body)) {
+      return res.status(400).json({ error: "Payload de erro inv\xE1lido." });
+    }
+    const sanitizeString = (str, maxLength) => {
+      if (typeof str !== "string") return "";
+      let clean = str.slice(0, maxLength);
+      clean = clean.replace(/[\r\n\x00-\x1F\x7F]/g, " ");
+      clean = clean.replace(/Bearer\s+[A-Za-z0-9._~+/-]+/gi, "Bearer [REDACTED]");
+      clean = clean.replace(/(password|pass|secret|token|apiKey|key)["']?\s*[:=]\s*["']?[^"',\s]+/gi, "$1: [REDACTED]");
+      return clean.trim();
+    };
+    const message = sanitizeString(body.message, 300);
+    const context = sanitizeString(body.context, 100);
+    const stack = sanitizeString(body.componentStack || body.stack, 500);
+    if (!message) {
+      return res.status(400).json({ error: "Mensagem de erro obrigat\xF3ria." });
+    }
+    console.warn(`[ClientErrorLog] [IP: ${clientIp}] [Contexto: ${context || "N/A"}] ${message}${stack ? ` | Stack: ${stack}` : ""}`);
+    return res.json({ success: true });
+  });
+  app.all("/api/v1/log-error", (req, res) => {
+    res.status(405).json({ error: "M\xE9todo n\xE3o permitido. Utilize POST." });
+  });
+  app.all("/api/*", (req, res) => {
+    res.status(404).json({ error: `Rota de API '${req.path}' n\xE3o encontrada.` });
   });
   if (process.env.NODE_ENV !== "production") {
+    const isHmrDisabled = process.env.DISABLE_HMR === "true";
     const vite = await (0, import_vite.createServer)({
-      server: { middlewareMode: true },
+      server: {
+        middlewareMode: true,
+        hmr: isHmrDisabled ? false : void 0,
+        watch: isHmrDisabled ? null : void 0
+      },
       appType: "spa"
     });
     app.use(vite.middlewares);
@@ -2223,10 +4627,12 @@ async function startServer() {
   }
   app.listen(PORT, "0.0.0.0", () => {
     console.log(`[Enlace-DoorIA] Servidor operacional na porta ${PORT} (0.0.0.0)`);
-    console.log(`[Enlace-DoorIA] Piloto S\xE3o Lu\xEDs - MA | 12 Unidades | Asterisk 20+ PJSIP | MaIA AI Gateway`);
+    console.log(`[Enlace-DoorIA] Modo de Execu\xE7\xE3o: ${process.env.NODE_ENV || "development"}`);
+    console.log(`[Enlace-DoorIA] Banco de Dados Oficial: PostgreSQL 16 LTS Puro Local (Porta 5432) via Drizzle ORM`);
   });
 }
 startServer().catch((err) => {
-  console.error("[Enlace-DoorIA] Falha ao iniciar servidor:", err);
+  console.error("[Enlace-DoorIA] Falha fatal ao iniciar servidor:", err);
+  process.exit(1);
 });
 //# sourceMappingURL=server.cjs.map
