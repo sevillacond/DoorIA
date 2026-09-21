@@ -1062,6 +1062,19 @@ export async function runRegressionTests() {
       assert(err.message.includes('no mínimo 12 caracteres'), 'Cenário 4.5: Erro explícito de secret com menos de 12 caracteres');
     }
     assert(failedShortSecret, 'Cenário 4.5: Falha se ASTERISK_AMI_SECRET tiver menos de 12 caracteres em produção');
+
+    // 4.6 BLOQUEIO CRÍTICO DE BYPASS: DEPLOY_TARGET=physical_guarita + TRIGGER_METHOD=http_cgi -> STARTUP FAILURE
+    const envGuaritaHttpCgi = { ...baseValidProdEnv, DEPLOY_TARGET: 'physical_guarita', TRIGGER_METHOD: 'http_cgi' };
+    process.env = envGuaritaHttpCgi as any;
+    let failedGuaritaHttpCgi = false;
+    try {
+      validateProductionConfig(true);
+    } catch (err: any) {
+      failedGuaritaHttpCgi = true;
+      assert(err.message.includes('STARTUP FAILURE'), 'Cenário 4.6: Startup cancelado para physical_guarita + http_cgi');
+      assert(err.message.includes('TRIGGER_METHOD=http_cgi é estritamente proibido'), 'Cenário 4.6: Erro explícito de bloqueio do bypass HTTP CGI no modo físico');
+    }
+    assert(failedGuaritaHttpCgi, 'Cenário 4.6: Falha obrigatória se DEPLOY_TARGET=physical_guarita tentar usar TRIGGER_METHOD=http_cgi');
   } finally {
     process.env = backupProdEnv;
   }
@@ -1648,6 +1661,24 @@ export async function runRegressionTests() {
   assert(resF4.commandStatus === 'HARDWARE_FAILURE', 'Matriz Físico: Falha de leitura do sensor -> estritamente HARDWARE_FAILURE');
   assert(resF4.commandStatus !== 'HARDWARE_CONFIRMED', 'Matriz Físico: Falha de leitura do sensor -> NUNCA HARDWARE_CONFIRMED');
   assert(resF4.hasPhysicalFeedbackSensor === false, 'Matriz Físico: hasPhysicalFeedbackSensor é false em falha de leitura');
+
+  // F.5 Bloqueio estrito de bypass HTTP CGI no modo físico (DEPLOY_TARGET=physical_guarita + TRIGGER_METHOD=http_cgi)
+  const prevDeployTarget = process.env.DEPLOY_TARGET;
+  const prevTriggerMethod = process.env.TRIGGER_METHOD;
+  try {
+    process.env.DEPLOY_TARGET = 'physical_guarita';
+    process.env.TRIGGER_METHOD = 'http_cgi';
+
+    const adapterCgiBypass = new RealHardwareAdapter();
+    const resF5 = await adapterCgiBypass.triggerRelay(testGate, 1);
+    assert(resF5.success === false, 'Matriz Físico: Bypass HTTP CGI retorna success: false');
+    assert(resF5.commandStatus === 'HARDWARE_FAILURE', 'Matriz Físico: Bypass HTTP CGI resulta em HARDWARE_FAILURE');
+    assert(resF5.statusCode === 403, 'Matriz Físico: Código HTTP 403 Forbidden para bypass');
+    assert(resF5.failureDetails?.includes('TRIGGER_METHOD=http_cgi não é permitido no modo físico'), 'Matriz Físico: Mensagem explícita de recusa de bypass');
+  } finally {
+    process.env.DEPLOY_TARGET = prevDeployTarget;
+    process.env.TRIGGER_METHOD = prevTriggerMethod;
+  }
 
   console.log('\n===============================================================');
   console.log(`🎉 TODOS OS ${passedTests}/${totalTests} TESTES DE SEGURANÇA E HARDWARE PASSARAM COM SUCESSO!`);

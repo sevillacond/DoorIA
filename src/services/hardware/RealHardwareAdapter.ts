@@ -119,11 +119,38 @@ export class RealHardwareAdapter implements HardwareAdapter {
       let commandMethod = '';
       const failureReasons: string[] = [];
 
-      // 1. Acionamento via driver de relé HTTP CGI dedicado (quando configurado explicitamente)
+      // Bloqueio rigoroso de bypass HTTP CGI no modo físico da guarita (DEPLOY_TARGET=physical_guarita)
+      const deployTarget = (process.env.DEPLOY_TARGET || '').trim();
+      const isPhysicalGuarita = deployTarget === 'physical_guarita' || deployTarget === 'guarita';
+      const triggerMethod = (process.env.TRIGGER_METHOD || '').trim().toLowerCase();
+
+      if (isPhysicalGuarita && triggerMethod === 'http_cgi') {
+        const errDetail = `Bypass proibido: TRIGGER_METHOD=http_cgi não é permitido no modo físico da guarita (DEPLOY_TARGET=${deployTarget}). O acionamento físico exige obrigatoriamente correlação XPE/PJSIP/AMI (*07/*08).`;
+        console.warn(`[REAL_HARDWARE] [${correlationId || 'N/A'}] ❌ ${errDetail}`);
+        return {
+          success: false,
+          executed: false,
+          isSimulated: false,
+          hardwareMode: 'real_hardware',
+          commandStatus: 'HARDWARE_FAILURE',
+          message: `Falha de segurança: ${errDetail}`,
+          statusCode: 403,
+          relayPin: gate.relayPin,
+          relayIp: relayIp || '',
+          pulseDurationMs: 0,
+          timestamp,
+          hasPhysicalFeedbackSensor: false,
+          physicalSensorState: 'desconhecido',
+          correlationId,
+          failureDetails: errDetail,
+        };
+      }
+
+      // 1. Acionamento via driver de relé HTTP CGI dedicado (apenas quando NÃO for modo físico da guarita)
       // NOTA ARQUITETURAL: Para o piloto oficial DoorIA / XPE 3115-IP, o mecanismo padrão homologado é DTMF (*07/*08).
       // Uma resposta HTTP 200 de controladora externa representa apenas recebimento do comando elétrico (COMMAND_SENT),
       // e NUNCA confirmação física de abertura sem sensor de fim de curso (reed switch).
-      if (relayIp && relayIp !== '127.0.0.1' && process.env.TRIGGER_METHOD === 'http_cgi') {
+      if (!isPhysicalGuarita && relayIp && relayIp !== '127.0.0.1' && triggerMethod === 'http_cgi') {
         const cgiDriver = new HttpCgiRelayDriver({ host: relayIp });
         const cgiResult = await cgiDriver.pulseRelay(gate.relayPin, pulseDurationSeconds, correlationId);
         if (cgiResult.success) {

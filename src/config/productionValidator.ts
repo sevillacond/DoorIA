@@ -190,6 +190,17 @@ export function validateProductionConfig(isProduction = process.env.NODE_ENV ===
     if (isNaN(asteriskSipPort) || asteriskSipPort <= 0) {
       errors.push('[CRÍTICO] ASTERISK_SIP_PORT deve ser uma porta SIP válida em produção (ex: 5060).');
     }
+
+    // 7. BLOQUEIO DE BYPASS HTTP CGI NO MODO FÍSICO DA GUARITA
+    const deployTarget = (process.env.DEPLOY_TARGET || '').trim();
+    const isPhysicalGuarita = deployTarget === 'physical_guarita' || deployTarget === 'guarita';
+    const triggerMethod = (process.env.TRIGGER_METHOD || '').trim().toLowerCase();
+
+    if (isPhysicalGuarita && triggerMethod === 'http_cgi') {
+      errors.push(
+        `[CRÍTICO] TRIGGER_METHOD=http_cgi é estritamente proibido quando DEPLOY_TARGET=${deployTarget}. O modo físico da guarita exige obrigatoriamente o fluxo canônico oficial via XPE 3115-IP / PJSIP / Asterisk AMI PlayDTMF (*07/*08). Bypass HTTP CGI rejeitado.`
+      );
+    }
   }
 
   const valid = errors.length === 0;
