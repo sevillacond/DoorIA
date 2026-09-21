@@ -43,7 +43,8 @@ import { parametrizeDiscoveredCamera } from './src/services/CameraDiscovery.ts';
 import { validateProductionConfig } from './src/config/productionValidator.ts';
 import { sanitizeRtspUrl, sanitizeCameraForClient } from './src/utils/rtspSanitizer.ts';
 import { getHardwareAdapter } from './src/services/hardware/index.ts';
-import { asteriskAmi } from './src/services/AsteriskAMI.ts';
+import { asteriskAmi, AsteriskManager } from './src/services/AsteriskAMI.ts';
+import { CameraValidationService } from './src/services/CameraValidator.ts';
 import { runMigrations } from './src/db/migrate.ts';
 import { runProductionBootstrap } from './src/db/seeds/prodBootstrap.ts';
 
@@ -72,7 +73,7 @@ const callHistory: CallLog[] = [];
 const eventBusHistory: EventBusMessage[] = [];
 const auditLogs: AuditLogEntry[] = [];
 const lprLogs: LprLogEntry[] = [];
-const pushSubscriptions: Array<{ endpoint: string; userAgent: string; timestamp: number }> = [];
+const pushSubscriptions: Array<{ endpoint: string; userAgent: string; timestamp: number; userId?: string }> = [];
 
 // Barramento de Eventos
 function publishEvent(type: EventBusMessage['type'], source: string, payload: Record<string, unknown>) {
@@ -407,15 +408,15 @@ async function startServer() {
   });
 
   // 2. Readiness Probe: só indica pronto quando componentes obrigatórios estão disponíveis
-  // Para physical_guarita e produção: PostgreSQL conectado + AMI autenticado + Config de produção válida
-  // REGRA DE OURO: JAMAIS executa PlayDTMF ou qualquer acionamento físico durante o readiness!
+  // Para physical_guarita e produção: PostgreSQL conectado + Asterisk + AMI autenticado + Config de produção válida
+  // REGRA DE OURO: JAMAIS executa PlayDTMF, injectDtmf, triggerRelay ou qualquer acionamento físico durante o readiness!
   app.get(['/health/ready', '/api/v1/health/ready'], async (req, res) => {
     const deployTarget = (process.env.DEPLOY_TARGET || '').trim();
     const isPhysicalGuarita = deployTarget === 'physical_guarita' || deployTarget === 'guarita';
     const isProduction = process.env.NODE_ENV === 'production';
     const isStrict = isPhysicalGuarita || isProduction || process.env.STRICT_PRODUCTION_AUDIT === 'true';
 
-    // Checagem de Banco de Dados PostgreSQL 16 LTS
+    // 1. Checagem de Banco de Dados PostgreSQL 16 LTS (Conexão real)
     let dbConnected = false;
     let dbDetails: any = null;
     try {
@@ -432,12 +433,16 @@ async function startServer() {
       dbDetails = { error: err.message || 'Falha ao consultar PostgreSQL' };
     }
 
-    // Checagem de Asterisk AMI (Ping seguro sem acionamento)
+    // 2. Checagem de Asterisk AMI (Ping seguro sem acionamento físico)
     let amiAuthenticated = false;
     let amiDetails: any = null;
+    let asteriskReachable = false;
     try {
       const pingRes = await asteriskAmi.ping();
       amiAuthenticated = pingRes.ok === true && asteriskAmi.isAuthenticated();
+      if (amiAuthenticated) {
+        asteriskReachable = true;
+      }
       amiDetails = {
         authenticated: asteriskAmi.isAuthenticated(),
         latencyMs: pingRes.latencyMs,
@@ -447,11 +452,25 @@ async function startServer() {
       amiDetails = { error: 'Asterisk AMI inalcançável ou rejeitado' };
     }
 
-    // Validação de Configuração de Produção
+    // Se o socket persistente não estiver ativo, tenta teste seguro de caminho Core -> AMI
+    if (!amiAuthenticated) {
+      try {
+        const diag = await AsteriskManager.testCoreToAmiPath({ timeoutMs: 1500 });
+        if (diag.success) {
+          amiAuthenticated = true;
+          asteriskReachable = true;
+          amiDetails = { authenticated: true, latencyMs: diag.latencyMs, note: 'Validado via handshake seguro' };
+        }
+      } catch {
+        // AMI continua não autenticado
+      }
+    }
+
+    // 3. Validação de Configuração Crítica de Produção
     let configValid = true;
     let configErrors: string[] = [];
     try {
-      const val = validateProductionConfig(isProduction);
+      const val = validateProductionConfig(isStrict);
       configValid = val.valid;
       configErrors = val.errors;
     } catch (err: any) {
@@ -459,19 +478,28 @@ async function startServer() {
       configErrors = [err.message];
     }
 
+    const dependencies = {
+      postgresql: dbConnected ? 'ok' : 'failed',
+      asterisk: (amiAuthenticated || asteriskReachable) ? 'ok' : 'failed',
+      ami: amiAuthenticated ? 'ok' : 'failed',
+      configuration: configValid ? 'ok' : 'failed',
+    };
+
     const allReady = dbConnected && amiAuthenticated && configValid;
 
     if (isStrict && !allReady) {
       const failureReasons: string[] = [];
       if (!dbConnected) failureReasons.push('PostgreSQL local desconectado ou inalcançável.');
+      if (!asteriskReachable) failureReasons.push('Servidor Asterisk inalcançável.');
       if (!amiAuthenticated) failureReasons.push('Asterisk AMI não autenticado ou indisponível.');
       if (!configValid) failureReasons.push(`Configuração de produção inválida: ${configErrors.join('; ')}`);
 
       return res.status(503).json({
-        ready: false,
         status: 'not_ready',
+        ready: false,
         service: 'dooria-core',
         deployTarget: deployTarget || 'production',
+        dependencies,
         database: dbConnected ? 'connected' : 'unavailable',
         asteriskAmi: amiAuthenticated ? 'authenticated' : 'unavailable',
         productionConfig: configValid ? 'valid' : 'invalid',
@@ -479,19 +507,26 @@ async function startServer() {
         details: {
           database: dbDetails,
           asteriskAmi: amiDetails,
+          configuration: { valid: configValid, errors: configErrors },
         },
         timestamp: new Date().toISOString(),
       });
     }
 
     return res.status(200).json({
-      ready: true,
       status: 'ready',
+      ready: true,
       service: 'dooria-core',
       deployTarget: deployTarget || (isProduction ? 'production' : 'development'),
+      dependencies,
       database: dbConnected ? 'connected' : 'standby',
       asteriskAmi: amiAuthenticated ? 'authenticated' : 'offline',
       productionConfig: configValid ? 'valid' : 'warning',
+      details: {
+        database: dbDetails,
+        asteriskAmi: amiDetails,
+        configuration: { valid: true },
+      },
       timestamp: new Date().toISOString(),
     });
   });
@@ -1051,7 +1086,20 @@ async function startServer() {
     res.json(lprLogs);
   });
 
-  app.post('/api/v1/vehicles/lpr-simulate', requireAuth, async (req, res) => {
+  const handleLprSimulate = async (req: express.Request, res: express.Response) => {
+    const deployTargetEnv = (process.env.DEPLOY_TARGET || '').trim();
+    const isStrictGuarita = deployTargetEnv === 'physical_guarita' || deployTargetEnv === 'guarita' || process.env.STRICT_PRODUCTION_AUDIT === 'true';
+
+    // 1. Bloqueio estrito em produção física / guarita
+    if (isStrictGuarita) {
+      return res.status(403).json({
+        success: false,
+        error: 'Simulação LPR bloqueada em ambiente de produção física (DEPLOY_TARGET=physical_guarita). O reconhecimento veicular exige câmera LPR física real e validação física.',
+        simulationBlocked: true,
+        deployTarget: deployTargetEnv,
+      });
+    }
+
     const { plate } = req.body;
     if (!plate) return res.status(400).json({ error: 'Placa obrigatória.' });
 
@@ -1068,13 +1116,13 @@ async function startServer() {
 
       if (matchedVehicle && matchedUnit && garageGate) {
         const newEntry: LprLogEntry = {
-          id: `lpr-${Date.now()}`,
+          id: `lpr-sim-${Date.now()}`,
           timestamp: new Date().toISOString(),
           plate: cleanPlate,
           confidence: 97.5,
-          cameraName: 'Câmera Portão Garagem (LPR)',
-          action: 'ABERTURA_AUTOMATICA',
-          reason: 'Veículo autorizado via cadastro LPR',
+          cameraName: 'Câmera Portão Garagem [SIMULADA]',
+          action: 'SIMULACAO_LPR_AUTORIZADA',
+          reason: 'Veículo autorizado via cadastro (Modo Simulação / Sandbox)',
           matchedVehicle,
           matchedUnitNumber: matchedUnit.number,
         };
@@ -1082,46 +1130,75 @@ async function startServer() {
         lprLogs.unshift(newEntry);
         if (lprLogs.length > 50) lprLogs.pop();
 
-        publishEvent('GATE_OPENED', 'lpr_controller', { gateId: garageGate.id, plate: cleanPlate });
-        logAudit('Sistema LPR', 'sistema', 'LPR_ACESSO_AUTORIZADO', 'Portão Garagem', 'PERMITIDO', {
+        // REGRA DE OURO: Em simulação, NUNCA acionar relé físico nem emitir GATE_OPENED no barramento de controle real
+        logAudit('Sistema LPR (Simulado)', 'sistema', 'LPR_SIMULACAO_TESTE', 'Portão Garagem (Simulado)', 'PERMITIDO', {
           plate: cleanPlate,
           unitNumber: matchedUnit.number,
+          simulation: true,
         });
 
-        return res.json({ success: true, authorized: true, lprEntry: newEntry, gate: garageGate });
+        return res.json({
+          success: true,
+          authorized: true,
+          isSimulation: true,
+          status: 'SIMULADA',
+          lprEntry: newEntry,
+          gate: garageGate,
+          message: 'Simulação LPR autorizada em modo didático/sandbox (sem acionamento físico de relé).',
+        });
       } else {
         const newEntry: LprLogEntry = {
-          id: `lpr-${Date.now()}`,
+          id: `lpr-sim-${Date.now()}`,
           timestamp: new Date().toISOString(),
           plate: cleanPlate,
           confidence: 92.0,
-          cameraName: 'Câmera Portão Garagem (LPR)',
-          action: 'NEGADO_DESCONHECIDO',
-          reason: `Placa ${cleanPlate} não vinculada a moradores cadastrados.`,
+          cameraName: 'Câmera Portão Garagem [SIMULADA]',
+          action: 'SIMULACAO_LPR_NEGADA',
+          reason: `Placa ${cleanPlate} não vinculada a moradores cadastrados (Modo Simulação / Sandbox).`,
         };
 
         lprLogs.unshift(newEntry);
         if (lprLogs.length > 50) lprLogs.pop();
 
-        publishEvent('ACCESS_DENIED', 'lpr_system', { plate: cleanPlate });
-        logAudit('Sistema LPR', 'sistema', 'LPR_ACESSO_NEGADO', 'Portão Garagem', 'NEGADO', { plate: cleanPlate });
+        logAudit('Sistema LPR (Simulado)', 'sistema', 'LPR_SIMULACAO_TESTE', 'Portão Garagem (Simulado)', 'NEGADO', {
+          plate: cleanPlate,
+          simulation: true,
+        });
 
         return res.json({
           success: false,
           authorized: false,
+          isSimulation: true,
+          status: 'SIMULADA',
           lprEntry: newEntry,
-          message: `Veículo com placa ${cleanPlate} não autorizado.`,
+          message: `Veículo com placa ${cleanPlate} não autorizado (Simulação).`,
         });
       }
     } catch (err: any) {
       handleDbError(err, res);
     }
-  });
+  };
+
+  app.post('/api/v1/vehicles/lpr-simulate', requireAuth, handleLprSimulate);
+  app.post('/api/v1/lpr-simulate', requireAuth, handleLprSimulate);
 
   // ============================================================================
   // 9. CHAMADAS ASTERISK PJSIP / TOTEM XPE
   // ============================================================================
-  app.get('/api/v1/calls/active', (req, res) => {
+  app.get('/api/v1/calls/active', requireAuth, (req, res) => {
+    const user = (req as any).user as UserSession;
+    if (!activeCall) {
+      return res.json({ activeCall: null });
+    }
+    // Se for morador, filtra chamadas destinadas exclusivamente à sua unidade
+    if (user.role === 'morador' && user.unitNumber) {
+      const isTargeted =
+        activeCall.targetUnitNumber === user.unitNumber ||
+        activeCall.targetUnitId === user.unitId;
+      if (!isTargeted) {
+        return res.json({ activeCall: null });
+      }
+    }
     res.json({ activeCall });
   });
 
@@ -1133,7 +1210,46 @@ async function startServer() {
     res.json(callHistory);
   });
 
+  let lastCallStartTime = 0;
   app.post('/api/v1/calls/xpe/start', async (req, res) => {
+    const clientIp = extractClientIp(req);
+    const now = Date.now();
+    const deployTargetEnv = (process.env.DEPLOY_TARGET || '').trim();
+    const isStrictGuarita = deployTargetEnv === 'physical_guarita' || deployTargetEnv === 'guarita' || process.env.STRICT_PRODUCTION_AUDIT === 'true';
+
+    // 1. Anti-flood / Rate limiting
+    if (now - lastCallStartTime < 1000) {
+      return res.status(429).json({ error: 'Frequência de chamadas excessiva. Aguarde 1 segundo.' });
+    }
+    lastCallStartTime = now;
+
+    // 2. Em produção física (physical_guarita / strict), chamadas do XPE ocorrem nativamente via PJSIP do totem.
+    // Iniciação direta via HTTP é restrita a IP do XPE, IP do Asterisk, localhost ou operadores autenticados.
+    if (isStrictGuarita) {
+      const isAllowedIp =
+        clientIp === process.env.XPE_IP ||
+        clientIp === process.env.ASTERISK_HOST ||
+        clientIp === '127.0.0.1' ||
+        clientIp === '::1';
+
+      let isAllowedUser = false;
+      const authHeader = req.headers.authorization;
+      if (authHeader && authHeader.startsWith('Bearer ')) {
+        const token = authHeader.split(' ')[1];
+        const session = AuthService.verifySessionToken(token);
+        if (session && ['super_admin', 'sindico', 'admin_sistema', 'portaria'].includes(session.role)) {
+          isAllowedUser = true;
+        }
+      }
+
+      if (!isAllowedIp && !isAllowedUser) {
+        return res.status(403).json({
+          error: 'Iniciação direta de chamadas via HTTP desativada no modo físico da guarita. Chamadas devem originar nativamente via PJSIP do hardware XPE 3115-IP.',
+          blockedInProduction: true,
+        });
+      }
+    }
+
     const { unitNumber, purpose } = req.body;
     try {
       const unitsList = await DatabaseRepository.getUnits();
@@ -1411,7 +1527,8 @@ async function startServer() {
       streamEndpoint: '/api/v1/stream/disc-cam-01',
       isConfigured: hasConfiguredXpe,
       detectedCodec: 'H.264',
-      classification: hasConfiguredXpe ? 'REAL_HARDWARE' : 'MOCK_DEMO',
+      classification: hasConfiguredXpe ? 'PENDING_VERIFICATION' : 'MOCK_DEMO',
+      validationStatus: 'PENDING',
       isMock: !hasConfiguredXpe,
       credentialsStatus: hasConfiguredXpe ? 'configurado' : 'pendente',
     },
@@ -1430,6 +1547,7 @@ async function startServer() {
       isConfigured: false,
       detectedCodec: 'H.264',
       classification: 'MOCK_DEMO',
+      validationStatus: 'PENDING',
       isMock: true,
       credentialsStatus: 'pendente',
     },
@@ -1448,6 +1566,7 @@ async function startServer() {
       isConfigured: false,
       detectedCodec: 'H.264',
       classification: 'MOCK_DEMO',
+      validationStatus: 'PENDING',
       isMock: true,
       credentialsStatus: 'pendente',
     },
@@ -1469,53 +1588,179 @@ async function startServer() {
     res.json({ success: true, devices: filtered.map((c) => sanitizeCameraForClient(c)) });
   });
 
-  app.post('/api/v1/discovery/test-stream', requireAuth, (req, res) => {
-    const { ip } = req.body;
+  app.post('/api/v1/discovery/test-stream', requireAuth, async (req, res) => {
+    const { ip, rtspPort, onvifPort } = req.body;
     const targetIp = (ip || '').trim();
 
-    // Determina se o alvo é uma câmera mock / simulada
-    const isMockCam = !targetIp || targetIp === '192.168.1.102' || targetIp === '192.168.1.103' || (targetIp !== process.env.XPE_IP && !hasConfiguredXpe);
-
-    if (isStrictProduction && isMockCam && !allowDemoCameras) {
-      return res.status(403).json({
+    if (!targetIp) {
+      return res.status(400).json({
         success: false,
-        isMock: true,
-        classification: 'MOCK_DEMO',
-        status: 'MOCK_REJECTED',
-        error: 'Em ambiente de produção física/guarita (ALLOW_DEMO_CAMERAS=false), fluxos de câmeras simuladas/demo são bloqueados.',
+        classification: 'FAILED',
+        status: 'FAILED',
+        error: 'Endereço IP não informado para teste de conectividade.',
       });
     }
 
-    if (isMockCam) {
+    const valResult = await CameraValidationService.validateDevice({
+      ip: targetIp,
+      rtspPort: Number(rtspPort) || 554,
+      onvifPort: Number(onvifPort) || 80,
+      isStrict: isStrictProduction,
+      allowDemo: allowDemoCameras,
+      timeoutMs: 2500,
+    });
+
+    CameraValidationService.setRecord({
+      ip: targetIp,
+      status: valResult.status,
+      classification: valResult.classification,
+      isMock: valResult.isMock,
+      validatedAt: Date.now(),
+      latencyMs: valResult.latencyMs,
+      detectedCodec: valResult.detectedCodec,
+      error: valResult.error,
+    });
+
+    // Se for mock
+    if (valResult.isMock) {
+      if (isStrictProduction && !allowDemoCameras) {
+        return res.status(403).json({
+          success: false,
+          isMock: true,
+          classification: 'MOCK_DEMO',
+          status: 'MOCK_REJECTED',
+          error: 'Em ambiente de produção física/guarita (ALLOW_DEMO_CAMERAS=false), fluxos de câmeras simuladas/demo são bloqueados.',
+        });
+      }
+
+      // Em modo sandbox: identifica claramente como simulação e NUNCA finge ser hardware real online
       return res.json({
         success: true,
         isMock: true,
         classification: 'MOCK_DEMO',
         status: 'SIMULADA',
         message: 'Câmera de demonstração (Fluxo simulado para testes locais).',
-        latencyEstimateMs: 42,
-        videoCodec: 'H.264 High Profile (Simulado)',
         streamProtocol: 'webrtc',
-        streamEndpoint: `/api/v1/stream/preview?ip=${encodeURIComponent(targetIp)}&mock=true`,
+        streamEndpoint: valResult.streamEndpoint,
       });
     }
 
+    // Se a validação física falhou (timeout, porta fechada, inalcançável)
+    if (!valResult.success || valResult.status !== 'VALIDATED') {
+      return res.status(422).json({
+        success: false,
+        isMock: false,
+        classification: 'FAILED',
+        status: 'FAILED',
+        step: valResult.step,
+        error: valResult.error || 'Falha de conectividade física com o dispositivo.',
+      });
+    }
+
+    // Dispositivo validado fisicamente com sucesso na rede
     res.json({
       success: true,
       isMock: false,
       classification: 'REAL_HARDWARE',
       status: 'online',
-      latencyEstimateMs: 28,
-      videoCodec: 'H.264 High Profile',
+      latencyEstimateMs: valResult.latencyMs,
+      videoCodec: valResult.detectedCodec || 'H.264 High Profile',
       streamProtocol: 'webrtc',
-      streamEndpoint: `/api/v1/stream/preview?ip=${encodeURIComponent(targetIp)}`,
+      streamEndpoint: valResult.streamEndpoint,
     });
   });
 
-  app.post('/api/v1/discovery/import', requireAuth, requireRole(['super_admin', 'admin_sistema']), (req, res) => {
-    const { customName, customLocation } = req.body;
-    publishEvent('CAMERA_PARAMETRIZED_VIA_DISCOVERY', 'onvif_discovery', { customName, customLocation });
-    res.json({ success: true, message: `Câmera '${customName}' importada para o CFTV.` });
+  app.post('/api/v1/discovery/import', requireAuth, requireRole(['super_admin', 'admin_sistema']), async (req, res) => {
+    const { discoveredId, ip, customName, customLocation, selectedProfile } = req.body;
+
+    // 1. Determina o IP alvo da câmera
+    let targetIp = (ip || '').trim();
+    if (!targetIp && discoveredId) {
+      const disc = discoveredCams.find((c) => c.id === discoveredId);
+      if (disc) targetIp = (disc.ip || '').trim();
+    }
+
+    if (!targetIp) {
+      return res.status(400).json({
+        success: false,
+        status: 'FAILED',
+        error: 'Dispositivo inexistente ou IP não especificado para importação.',
+      });
+    }
+
+    // 2. Em modo físico/produção, bloqueia categoricamente importação de mocks
+    const isMock =
+      targetIp === '192.168.1.102' ||
+      targetIp === '192.168.1.103' ||
+      targetIp.includes('mock') ||
+      targetIp.includes('demo');
+
+    if (isStrictProduction && isMock && !allowDemoCameras) {
+      return res.status(403).json({
+        success: false,
+        status: 'FAILED',
+        error: 'Importação de câmeras simuladas/demo não é permitida no modo físico/produção (ALLOW_DEMO_CAMERAS=false).',
+      });
+    }
+
+    // 3. Validação real prévia ou em tempo real
+    let record = CameraValidationService.getRecord(targetIp);
+    const isRecentlyValidated = record && record.status === 'VALIDATED' && (Date.now() - record.validatedAt < 5 * 60 * 1000);
+
+    if (!isRecentlyValidated) {
+      const val = await CameraValidationService.validateDevice({
+        ip: targetIp,
+        rtspPort: 554,
+        isStrict: isStrictProduction,
+        allowDemo: allowDemoCameras,
+        timeoutMs: 2500,
+      });
+
+      CameraValidationService.setRecord({
+        ip: targetIp,
+        status: val.status,
+        classification: val.classification,
+        isMock: val.isMock,
+        validatedAt: Date.now(),
+        latencyMs: val.latencyMs,
+        detectedCodec: val.detectedCodec,
+        error: val.error,
+      });
+
+      if (!val.success || val.status !== 'VALIDATED') {
+        return res.status(422).json({
+          success: false,
+          status: 'FAILED',
+          error: 'O dispositivo não pôde ser validado na rede física e sua importação foi recusada.',
+          details: val.error,
+          step: val.step,
+        });
+      }
+    }
+
+    // 4. Dispositivo físico comprovado e validado -> Conclui importação no CFTV
+    publishEvent('CAMERA_PARAMETRIZED_VIA_DISCOVERY', 'onvif_discovery', {
+      targetIp,
+      customName,
+      customLocation,
+      classification: 'REAL_HARDWARE',
+    });
+
+    logAudit(
+      'Super Admin',
+      'super_admin',
+      'CAMERA_IMPORTADA_CFTV',
+      customLocation || targetIp,
+      'PERMITIDO',
+      { ip: targetIp, name: customName, profile: selectedProfile }
+    );
+
+    res.json({
+      success: true,
+      status: 'VALIDATED',
+      classification: 'REAL_HARDWARE',
+      message: `Câmera '${customName || targetIp}' validada fisicamente e importada com sucesso no CFTV.`,
+    });
   });
 
   // ============================================================================
@@ -1574,12 +1819,36 @@ async function startServer() {
   // ============================================================================
   // 18. NOTIFICAÇÕES PUSH NATIVAS
   // ============================================================================
-  app.post('/api/v1/notifications/subscribe', (req, res) => {
+  app.post('/api/v1/notifications/subscribe', requireAuth, (req, res) => {
     const { endpoint, userAgent, timestamp } = req.body;
-    if (endpoint) {
-      pushSubscriptions.push({ endpoint, userAgent: userAgent || '', timestamp: timestamp || Date.now() });
-      publishEvent('PUSH_SUBSCRIPTION_REGISTERED', 'pwa_push', { endpoint });
+    const user = (req as any).user as UserSession;
+
+    if (!endpoint || typeof endpoint !== 'string' || !endpoint.startsWith('https://')) {
+      return res.status(400).json({ error: 'Endpoint Push Notification inválido (deve ser URL HTTPS).' });
     }
+
+    // Deduplicação e limitação de memória (máximo 100 subscrições com evicção do mais antigo)
+    const existingIdx = pushSubscriptions.findIndex((s) => s.endpoint === endpoint);
+    if (existingIdx !== -1) {
+      pushSubscriptions[existingIdx] = {
+        endpoint,
+        userAgent: userAgent || '',
+        timestamp: timestamp || Date.now(),
+        userId: user.id,
+      };
+    } else {
+      if (pushSubscriptions.length >= 100) {
+        pushSubscriptions.shift();
+      }
+      pushSubscriptions.push({
+        endpoint,
+        userAgent: userAgent || '',
+        timestamp: timestamp || Date.now(),
+        userId: user.id,
+      });
+    }
+
+    publishEvent('PUSH_SUBSCRIPTION_REGISTERED', 'pwa_push', { endpoint, userId: user.id });
     res.json({ success: true });
   });
 

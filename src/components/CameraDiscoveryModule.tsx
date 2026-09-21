@@ -50,7 +50,10 @@ export const CameraDiscoveryModule: React.FC<CameraDiscoveryModuleProps> = ({ on
 
   // Stream test state
   const [testingIp, setTestingIp] = useState<string | null>(null);
-  const [testResults, setTestResults] = useState<Record<string, { latency: number; codec: string; status: string }>>({});
+  const [testResults, setTestResults] = useState<
+    Record<string, { latency?: number; codec?: string; status: string; isFailed?: boolean; isMock?: boolean }>
+  >({});
+  const [importErrorMsg, setImportErrorMsg] = useState<string | null>(null);
 
   const fetchDiscovered = async () => {
     try {
@@ -97,20 +100,57 @@ export const CameraDiscoveryModule: React.FC<CameraDiscoveryModuleProps> = ({ on
         body: JSON.stringify({
           ip: cam.ip,
           manufacturer: cam.manufacturer,
-          rtspPort: cam.rtspPort,
+          rtspPort: cam.rtspPort || 554,
+          onvifPort: cam.onvifPort || 80,
         }),
       });
       const data = await res.json();
+
+      if (res.ok && data.success && data.classification === 'REAL_HARDWARE') {
+        setTestResults((prev) => ({
+          ...prev,
+          [cam.ip]: {
+            latency: data.latencyEstimateMs,
+            codec: data.videoCodec || 'H.264',
+            status: 'Hardware Físico Online • 200 OK',
+            isFailed: false,
+            isMock: false,
+          },
+        }));
+      } else if (data.isMock) {
+        setTestResults((prev) => ({
+          ...prev,
+          [cam.ip]: {
+            latency: undefined,
+            codec: 'H.264 (Simulado)',
+            status: 'Simulada • Demo Sandbox',
+            isFailed: false,
+            isMock: true,
+          },
+        }));
+      } else {
+        setTestResults((prev) => ({
+          ...prev,
+          [cam.ip]: {
+            latency: undefined,
+            codec: undefined,
+            status: `Falha: ${data.error || 'Dispositivo inacessível'}`,
+            isFailed: true,
+            isMock: false,
+          },
+        }));
+      }
+    } catch (e: any) {
       setTestResults((prev) => ({
         ...prev,
         [cam.ip]: {
-          latency: data.latencyEstimateMs || 45,
-          codec: data.videoCodec || 'H.264',
-          status: 'Online • 200 OK',
+          latency: undefined,
+          codec: undefined,
+          status: `Erro de rede: ${e.message || 'Falha de comunicação'}`,
+          isFailed: true,
+          isMock: false,
         },
       }));
-    } catch (e) {
-      console.error('Erro ao testar stream:', e);
     } finally {
       setTestingIp(null);
     }
@@ -131,6 +171,7 @@ export const CameraDiscoveryModule: React.FC<CameraDiscoveryModuleProps> = ({ on
     setSelectedProfile(cam.supportedProfiles[0] || 'ONVIF_Profile_T');
     setUseSubStream(false);
     setImportSuccessMsg(null);
+    setImportErrorMsg(null);
   };
 
   const handleConfirmImport = async (e: React.FormEvent) => {
@@ -139,11 +180,13 @@ export const CameraDiscoveryModule: React.FC<CameraDiscoveryModuleProps> = ({ on
 
     try {
       setImporting(true);
+      setImportErrorMsg(null);
       const res = await fetch('/api/v1/discovery/import', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           discoveredId: selectedCameraForImport.id,
+          ip: selectedCameraForImport.ip,
           customName,
           customLocation,
           username: username || 'admin',
@@ -154,8 +197,8 @@ export const CameraDiscoveryModule: React.FC<CameraDiscoveryModuleProps> = ({ on
       });
 
       const data = await res.json();
-      if (res.ok) {
-        setImportSuccessMsg(data.message || 'Câmera importada com sucesso no go2rtc!');
+      if (res.ok && data.success) {
+        setImportSuccessMsg(data.message || 'Câmera validada e importada com sucesso no CFTV!');
         // Atualiza a lista de descobertas local
         setDiscoveredCameras((prev) =>
           prev.map((c) => (c.id === selectedCameraForImport.id ? { ...c, isConfigured: true } : c))
@@ -165,9 +208,11 @@ export const CameraDiscoveryModule: React.FC<CameraDiscoveryModuleProps> = ({ on
           setSelectedCameraForImport(null);
           setImportSuccessMsg(null);
         }, 1200);
+      } else {
+        setImportErrorMsg(data.error || data.details || 'Falha ao validar ou importar o equipamento.');
       }
-    } catch (err) {
-      console.error(err);
+    } catch (err: any) {
+      setImportErrorMsg(err.message || 'Erro de comunicação ao importar câmera.');
     } finally {
       setImporting(false);
     }
@@ -394,11 +439,23 @@ export const CameraDiscoveryModule: React.FC<CameraDiscoveryModuleProps> = ({ on
                     </div>
                   </div>
 
-                  {/* Resultado do Teste de Conexão se houver */}
+                  {/* Resultado do Teste de Conexão com Verificação Física Real */}
                   {testResult && (
-                    <div className="mb-3 px-2.5 py-1.5 rounded-xl bg-[#ebfbf8] dark:bg-emerald-950/40 border border-[#18c7a8]/30 dark:border-emerald-800 text-[#18c7a8] dark:text-emerald-400 text-[11px] flex items-center justify-between font-mono animate-fadeIn">
-                      <span>{testResult.status} ({testResult.codec})</span>
-                      <span className="font-bold">{testResult.latency}ms latência</span>
+                    <div
+                      className={`mb-3 px-2.5 py-1.5 rounded-xl border text-[11px] flex items-center justify-between font-mono animate-fadeIn ${
+                        testResult.isFailed
+                          ? 'bg-rose-50 dark:bg-rose-950/40 border-rose-200 dark:border-rose-800 text-rose-600 dark:text-rose-400'
+                          : testResult.isMock
+                          ? 'bg-amber-50 dark:bg-amber-950/40 border-amber-200 dark:border-amber-800 text-amber-700 dark:text-amber-400'
+                          : 'bg-[#ebfbf8] dark:bg-emerald-950/40 border-[#18c7a8]/30 dark:border-emerald-800 text-[#18c7a8] dark:text-emerald-400'
+                      }`}
+                    >
+                      <span className="truncate mr-2">
+                        {testResult.status} {testResult.codec ? `(${testResult.codec})` : ''}
+                      </span>
+                      {testResult.latency !== undefined && (
+                        <span className="font-bold shrink-0">{testResult.latency}ms</span>
+                      )}
                     </div>
                   )}
                 </div>
@@ -513,6 +570,12 @@ export const CameraDiscoveryModule: React.FC<CameraDiscoveryModuleProps> = ({ on
               </div>
             ) : (
               <form onSubmit={handleConfirmImport} className="p-5 space-y-4">
+                {importErrorMsg && (
+                  <div className="p-3 bg-rose-50 dark:bg-rose-950/40 border border-rose-200 dark:border-rose-800 rounded-xl text-xs text-rose-600 dark:text-rose-400 flex items-center gap-2">
+                    <AlertCircle className="w-4 h-4 shrink-0" />
+                    <span>{importErrorMsg}</span>
+                  </div>
+                )}
                 <div className="bg-[#f8fafc] dark:bg-slate-950 p-3 rounded-xl border border-[#dde5f0] dark:border-slate-800 text-xs space-y-1">
                   <div className="text-[#5a6a85] dark:text-slate-400">
                     Dispositivo:{' '}

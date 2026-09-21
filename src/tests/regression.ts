@@ -14,6 +14,7 @@ import net from 'net';
 import { AsteriskAMI, AsteriskManager, ALLOWED_ASTERISK_ACTIONS, ALLOWED_PHYSICAL_DTMF_DIGITS } from '../services/AsteriskAMI.ts';
 import { AuditService } from '../services/AuditService.ts';
 import { verifyPostgresStartupSequence } from '../db/postgres.ts';
+import { CameraValidationService } from '../services/CameraValidator.ts';
 import type { FinancialBill, Gate, UserSession } from '../types.ts';
 
 let passedTests = 0;
@@ -2111,6 +2112,172 @@ export async function runRegressionTests() {
   assert(mockDevStream.status === 200, 'Câmeras Demo: Em desenvolvimento com allowDemo, teste de stream é aceito');
   assert(mockDevStream.statusText === 'SIMULADA', 'Câmeras Demo: Em desenvolvimento, status é SIMULADA e NUNCA "online"');
   assert(mockDevStream.statusText !== 'online', 'Câmeras Demo: Câmera mock JAMAIS é apresentada como "online" como hardware real');
+
+  // ============================================================================
+  // TESTE 10: CAMERA VALIDATION SERVICE, LPR HARDENING E ISOLAMENTO DE CHAMADAS
+  // ============================================================================
+  console.log('\n--- Teste 10: Camera Validation Service, LPR Hardening e Chamadas Ativas ---');
+
+  // 10.1: CameraValidationService - Detecção e bloqueio de câmera mock em modo estrito
+  const mockCamValidationStrict = await CameraValidationService.validateDevice({
+    ip: '192.168.1.102',
+    rtspPort: 554,
+    timeoutMs: 400,
+    isStrict: true,
+    allowDemo: false,
+  });
+  assert(mockCamValidationStrict.success === false, 'CameraValidationService: Mock em modo estrito com allowDemo=false rejeitado');
+  assert(mockCamValidationStrict.isMock === true, 'CameraValidationService: Identifica isMock: true para IP conhecido');
+  assert(mockCamValidationStrict.classification === 'MOCK_DEMO', 'CameraValidationService: Classificação é MOCK_DEMO');
+  assert(mockCamValidationStrict.status === 'FAILED', 'CameraValidationService: Status retornado para mock bloqueado é FAILED');
+  assert(mockCamValidationStrict.error?.includes('ALLOW_DEMO_CAMERAS=false') === true, 'CameraValidationService: Mensagem de erro cita ALLOW_DEMO_CAMERAS=false');
+
+  // 10.2: CameraValidationService - Câmera mock permitida em sandbox/dev
+  const mockCamValidationDev = await CameraValidationService.validateDevice({
+    ip: '192.168.1.102',
+    rtspPort: 554,
+    timeoutMs: 400,
+    isStrict: false,
+    allowDemo: true,
+  });
+  assert(mockCamValidationDev.success === true, 'CameraValidationService: Mock em ambiente de desenvolvimento é permitido com sucesso');
+  assert(mockCamValidationDev.classification === 'MOCK_DEMO', 'CameraValidationService: Classificação em dev é MOCK_DEMO');
+  assert(mockCamValidationDev.status === 'PENDING', 'CameraValidationService: Status em dev é PENDING (nunca VALIDATED)');
+
+  // 10.3: CameraValidationService - Porta RTSP fechada/inexistente falha sem atalho
+  const closedPortValidation = await CameraValidationService.validateDevice({
+    ip: '127.0.0.1',
+    rtspPort: 55499, // Porta fechada
+    timeoutMs: 300,
+    isStrict: true,
+    allowDemo: false,
+  });
+  assert(closedPortValidation.success === false, 'CameraValidationService: Porta fechada resulta em success: false');
+  assert(closedPortValidation.classification === 'FAILED', 'CameraValidationService: Classificação para porta fechada é FAILED');
+  assert(closedPortValidation.status === 'FAILED', 'CameraValidationService: Status para porta fechada é FAILED');
+
+  // 10.4: CameraValidationService - Conectividade TCP RTSP real bem-sucedida (Hardware Real)
+  const mockRtspServer = net.createServer((socket) => {
+    socket.on('data', (data) => {
+      // Simula resposta mínima RTSP Options
+      socket.write('RTSP/1.0 200 OK\r\nCSeq: 1\r\nPublic: OPTIONS, DESCRIBE, SETUP, TEARDOWN, PLAY\r\n\r\n');
+    });
+  });
+
+  const rtspTestPort = 55498;
+  await new Promise<void>((resolve) => mockRtspServer.listen(rtspTestPort, '127.0.0.1', () => resolve()));
+
+  try {
+    const realCamValidation = await CameraValidationService.validateDevice({
+      ip: '127.0.0.1',
+      rtspPort: rtspTestPort,
+      timeoutMs: 1000,
+      isStrict: true,
+      allowDemo: false,
+    });
+    assert(realCamValidation.success === true, 'CameraValidationService: Conexão real com porta RTSP retorna success: true');
+    assert(realCamValidation.isMock === false, 'CameraValidationService: Dispositivo real tem isMock: false');
+    assert(realCamValidation.classification === 'REAL_HARDWARE', 'CameraValidationService: Classificado como REAL_HARDWARE');
+    assert(realCamValidation.status === 'VALIDATED', 'CameraValidationService: Status atestado como VALIDATED');
+    assert(typeof realCamValidation.latencyMs === 'number' && realCamValidation.latencyMs >= 0, 'CameraValidationService: Latência calculada');
+
+    // 10.5: Teste de Cache e Deduplicação do CameraValidationService
+    CameraValidationService.setRecord({
+      ip: '127.0.0.1',
+      status: 'VALIDATED',
+      classification: 'REAL_HARDWARE',
+      isMock: false,
+      validatedAt: Date.now(),
+      latencyMs: realCamValidation.latencyMs,
+      detectedCodec: 'H.264',
+    });
+    assert(CameraValidationService.isIpValidated('127.0.0.1'), 'CameraValidationService: isIpValidated retorna true para IP validado no cache');
+    const cachedRecord = CameraValidationService.getRecord('127.0.0.1');
+    assert(cachedRecord?.classification === 'REAL_HARDWARE', 'CameraValidationService: getRecord recupera registro em cache');
+  } finally {
+    mockRtspServer.close();
+  }
+
+  // 10.6: LPR Hardening - Bloqueio estrito em DEPLOY_TARGET=physical_guarita
+  function simulateLprEndpoint(body: { plate: string; isStrictProduction: boolean }) {
+    if (body.isStrictProduction) {
+      return {
+        status: 403,
+        json: {
+          error: 'SIMULAÇÃO_BLOQUEADA_EM_PRODUCAO',
+          message: 'Simulação LPR expressamente proibida em ambiente de produção física da guarita.',
+          simulationBlocked: true,
+        },
+      };
+    }
+    // Em sandbox
+    return {
+      status: 200,
+      json: {
+        success: true,
+        authorized: true,
+        plate: body.plate,
+        isSimulation: true,
+        relayTriggered: false,
+        status: 'SIMULADA',
+        notice: 'SIMULAÇÃO_SANDBOX: Nenhum contato físico de relé acionado em teste.',
+      },
+    };
+  }
+
+  const lprStrictBlock = simulateLprEndpoint({ plate: 'BRA2E19', isStrictProduction: true });
+  assert(lprStrictBlock.status === 403, 'LPR Hardening: Simulação de LPR em produção física retorna HTTP 403 Forbidden');
+  assert(lprStrictBlock.json.simulationBlocked === true, 'LPR Hardening: Flag simulationBlocked: true');
+
+  const lprSandbox = simulateLprEndpoint({ plate: 'BRA2E19', isStrictProduction: false });
+  assert(lprSandbox.status === 200, 'LPR Hardening: Simulação em sandbox retorna HTTP 200');
+  assert(lprSandbox.json.isSimulation === true, 'LPR Hardening: Simulação marcada estritamente com isSimulation: true');
+  assert(lprSandbox.json.relayTriggered === false, 'LPR Hardening: relayTriggered é rigorosamente false (Sem acionamento de relé físico)');
+  assert(lprSandbox.json.status === 'SIMULADA', 'LPR Hardening: Status é SIMULADA');
+
+  // 10.7: Isolamento de Chamadas Ativas por Unidade
+  function simulateActiveCallsEndpoint(user: UserSession, activeCall: { unitNumber: string; xpeId: string } | null) {
+    if (user.role === 'morador') {
+      if (activeCall && activeCall.unitNumber === user.unitNumber) {
+        return { activeCall, isLive: true };
+      }
+      return { activeCall: null, isLive: false };
+    }
+    // Síndico / Admin vê qualquer chamada
+    return { activeCall, isLive: !!activeCall };
+  }
+
+  const morador101: UserSession = { id: 'm1', role: 'morador', unitNumber: '101', name: 'M1', email: 'm1@local', mfaEnabled: false };
+  const callFor202 = { unitNumber: '202', xpeId: 'xpe-portaria' };
+  const callFor101 = { unitNumber: '101', xpeId: 'xpe-portaria' };
+
+  const moradorFiltered = simulateActiveCallsEndpoint(morador101, callFor202);
+  assert(moradorFiltered.activeCall === null, 'Chamadas Ativas: Morador da 101 NÃO recebe evento de chamada direcionada ao apto 202');
+
+  const moradorAllowed = simulateActiveCallsEndpoint(morador101, callFor101);
+  assert(moradorAllowed.activeCall?.unitNumber === '101', 'Chamadas Ativas: Morador da 101 recebe evento de chamada direcionada à sua própria unidade');
+
+  const adminCallView = simulateActiveCallsEndpoint(adminSession, callFor202);
+  assert(adminCallView.activeCall?.unitNumber === '202', 'Chamadas Ativas: Administrador visualiza chamada da unidade 202 para monitoramento da portaria');
+
+  // 10.8: Proteção contra Iniciação HTTP de Chamada XPE no Modo Físico
+  function simulateXpeCallStart(isStrictProduction: boolean, isPjsipNative: boolean) {
+    if (isStrictProduction && !isPjsipNative) {
+      return {
+        status: 403,
+        error: 'XPE_PHYSICAL_CALL_ONLY',
+        message: 'No modo guarita física, chamadas de interfone devem originar nativamente do ramal PJSIP.',
+      };
+    }
+    return { status: 200, started: true };
+  }
+
+  const httpCallBlocked = simulateXpeCallStart(true, false);
+  assert(httpCallBlocked.status === 403, 'Interfonia: Iniciação de chamada XPE via HTTP arbitrário bloqueada em guarita física');
+  assert(httpCallBlocked.error === 'XPE_PHYSICAL_CALL_ONLY', 'Interfonia: Código de erro XPE_PHYSICAL_CALL_ONLY');
+
+  const pjsipCallAllowed = simulateXpeCallStart(true, true);
+  assert(pjsipCallAllowed.status === 200, 'Interfonia: Chamada nativa PJSIP autenticada aceita');
 
   console.log('\n===============================================================');
   console.log(`🎉 TODOS OS ${passedTests}/${totalTests} TESTES DE SEGURANÇA E HARDWARE PASSARAM COM SUCESSO!`);

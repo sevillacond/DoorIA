@@ -93,7 +93,7 @@ export interface LprLogEntry {
   cameraName: string;
   matchedVehicle?: Vehicle;
   matchedUnitNumber?: string;
-  action: 'ABERTURA_AUTOMATICA' | 'NEGADO_DESCONHECIDO' | 'ALERTA_SUSPEITO';
+  action: 'ABERTURA_AUTOMATICA' | 'NEGADO_DESCONHECIDO' | 'ALERTA_SUSPEITO' | 'SIMULACAO_LPR_AUTORIZADA' | 'SIMULACAO_LPR_NEGADA';
   reason: string;
   snapshotUrl?: string;
 }
@@ -147,7 +147,9 @@ export interface DiscoveredCamera {
   isConfigured: boolean;
   defaultCredentialsHint?: string;
   detectedCodec: string;
-  classification?: 'MOCK_DEMO' | 'REAL_HARDWARE';
+  classification?: 'MOCK_DEMO' | 'REAL_HARDWARE' | 'PENDING_VERIFICATION' | 'FAILED' | 'VALIDATED';
+  validationStatus?: 'PENDING' | 'VALIDATED' | 'FAILED';
+  validationError?: string;
   isMock?: boolean;
   credentialsStatus?: 'configurado' | 'pendente' | 'nao_aplicavel';
 }
