@@ -1,0 +1,60 @@
+name: Enlace-DoorIA CI/CD Pipeline
+
+on:
+  push:
+    branches: [ main, master ]
+  pull_request:
+    branches: [ main, master ]
+
+jobs:
+  validate:
+    name: Build, Lint, Typecheck & Security Regression Tests
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js 20 LTS
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: 'npm'
+
+      - name: Install Dependencies
+        run: npm ci
+
+      - name: Validate TypeScript Types (Typecheck)
+        run: npm run typecheck
+
+      - name: Validate Code Quality (Lint)
+        run: npm run lint
+
+      - name: Compile & Bundle Production Build
+        run: npm run build
+
+      - name: Run Complete Regression & Security Suite (Anti-Bypass, DTMF, Correlation)
+        run: npm test
+
+      - name: Validate Docker Compose Configuration (Syntax & Variables Check)
+        env:
+          POSTGRES_PASSWORD: ci_test_password_placeholder_32chars
+          SESSION_SECRET: ci_session_secret_placeholder_must_be_32_chars_long
+          CONDO_CNPJ: "00.000.000/0001-00"
+          CONDO_NAME: "Condominio CI Test"
+          CONDO_CITY: "Sao Luis"
+          CONDO_STATE: "MA"
+          CONDO_UNITS_COUNT: "10"
+          LOCAL_SERVER_IP: "192.168.1.100"
+          INITIAL_ADMIN_USER: "ci_admin"
+          INITIAL_ADMIN_PASSWORD: "ci_initial_admin_password_32chars"
+          INITIAL_ADMIN_EMAIL: "admin@ci.local"
+          ASTERISK_HOST: "192.168.1.100"
+          ASTERISK_AMI_USERNAME: "ci_ami_user"
+          ASTERISK_AMI_SECRET: "ci_ami_secret_placeholder"
+          XPE_IP: "192.168.1.150"
+          XPE_SIP_SECRET: "ci_xpe_secret"
+          XPE_RTSP_USERNAME: "admin"
+          XPE_RTSP_PASSWORD: "ci_xpe_rtsp_password"
+          RELAY_CONTROLLER_IP: "192.168.1.160"
+        run: docker compose config

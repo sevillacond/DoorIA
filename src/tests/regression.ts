@@ -1234,6 +1234,352 @@ export async function runRegressionTests() {
   const failingChannels = await failingCoreShowAmi.getActiveChannelsForPhysicalAction();
   assert(Array.isArray(failingChannels) && failingChannels.length === 0, 'getActiveChannelsForPhysicalAction com CoreShowChannels falhando NÃO usa cache e retorna []');
 
+  // ==========================================================================
+  // [14/14] MATRIZ FORMAL DE AUDITORIA PRÉ-HOMOLOGAÇÃO FÍSICA
+  // ==========================================================================
+  console.log('\n--- [14/14] Matriz Formal de Auditoria Pré-Homologação Física (Cenários Críticos) ---');
+
+  // --- CENÁRIO A: DTMF ESTREITO (*07, 07, *08, 08 vs *09, 09 e outros) ---
+  const matrixAmi = new AsteriskAMI('127.0.0.1', 5038, 'admin_sec', 'SecretSeguro2026!');
+  let matrixPlayDtmfCount = 0;
+  let matrixLastCapturedDigit: string | null = null;
+  setAmiLiveChannels(matrixAmi, [
+    {
+      channel: 'PJSIP/xpe_3115-00000999',
+      channelStateDesc: 'Up',
+      callerIdNum: '8000',
+      connectedLineNum: '101',
+      uniqueId: 'uid-matrix-999',
+      linkedId: 'lid-matrix-999',
+    },
+  ], (action: string, params: any) => {
+    if (action === 'PlayDTMF') {
+      matrixPlayDtmfCount++;
+      matrixLastCapturedDigit = params?.Digit;
+      return { success: true, message: 'PlayDTMF queued' };
+    }
+    return { success: true };
+  });
+
+  const matrixAdapter = new RealHardwareAdapter();
+  (matrixAdapter as any).ami = matrixAmi;
+
+  // A.1 Rejeição de *09 e 09 (NÃO chegam ao PlayDTMF)
+  matrixPlayDtmfCount = 0;
+  let rejectedA1Star09 = false;
+  try {
+    await matrixAmi.injectDtmf('PJSIP/xpe_3115-00000999', '*09');
+  } catch {
+    rejectedA1Star09 = true;
+  }
+  assert(rejectedA1Star09, 'Matriz DTMF: *09 rejeitado obrigatoriamente por injectDtmf');
+  assert(matrixPlayDtmfCount === 0, 'Matriz DTMF: *09 NUNCA chega ao PlayDTMF');
+
+  let rejectedA109 = false;
+  try {
+    await matrixAmi.injectDtmf('PJSIP/xpe_3115-00000999', '09');
+  } catch {
+    rejectedA109 = true;
+  }
+  assert(rejectedA109, 'Matriz DTMF: 09 rejeitado obrigatoriamente por injectDtmf');
+  assert(matrixPlayDtmfCount === 0, 'Matriz DTMF: 09 NUNCA chega ao PlayDTMF');
+
+  // A.2 Rejeição de códigos espúrios (*99, 123, etc)
+  let rejectedA1Spurious = false;
+  try {
+    await matrixAmi.injectDtmf('PJSIP/xpe_3115-00000999', '*99');
+  } catch {
+    rejectedA1Spurious = true;
+  }
+  assert(rejectedA1Spurious, 'Matriz DTMF: código arbitrário *99 rejeitado');
+  assert(matrixPlayDtmfCount === 0, 'Matriz DTMF: código arbitrário NUNCA chega ao PlayDTMF');
+
+  // A.3 Autorização de *07, 07, *08, 08
+  matrixPlayDtmfCount = 0;
+  const resA3Star07 = await matrixAmi.injectDtmf('PJSIP/xpe_3115-00000999', '*07');
+  assert(resA3Star07.status === 'Success', 'Matriz DTMF: *07 aceito');
+  assert(matrixPlayDtmfCount === 1 && matrixLastCapturedDigit === '07', 'Matriz DTMF: *07 transmitido como 07');
+
+  matrixPlayDtmfCount = 0;
+  const resA307 = await matrixAmi.injectDtmf('PJSIP/xpe_3115-00000999', '07');
+  assert(resA307.status === 'Success', 'Matriz DTMF: 07 aceito');
+  assert(matrixPlayDtmfCount === 1 && matrixLastCapturedDigit === '07', 'Matriz DTMF: 07 transmitido como 07');
+
+  matrixPlayDtmfCount = 0;
+  const resA3Star08 = await matrixAmi.injectDtmf('PJSIP/xpe_3115-00000999', '*08');
+  assert(resA3Star08.status === 'Success', 'Matriz DTMF: *08 aceito');
+  assert(matrixPlayDtmfCount === 1 && matrixLastCapturedDigit === '08', 'Matriz DTMF: *08 transmitido como 08');
+
+  matrixPlayDtmfCount = 0;
+  const resA308 = await matrixAmi.injectDtmf('PJSIP/xpe_3115-00000999', '08');
+  assert(resA308.status === 'Success', 'Matriz DTMF: 08 aceito');
+  assert(matrixPlayDtmfCount === 1 && matrixLastCapturedDigit === '08', 'Matriz DTMF: 08 transmitido como 08');
+
+  // --- CENÁRIO B: AMI (INDISPONÍVEL, NÃO AUTENTICADO, CORESHOUWCHANNELS COM FALHA, VAZIO) ---
+  // B.1 AMI indisponível
+  const amiDown = new AsteriskAMI('127.0.0.1', 5038, 'admin_sec', 'SecretSeguro2026!');
+  (amiDown as any).connect = async () => false;
+  (amiDown as any).isConnected = () => false;
+  (amiDown as any).isAuthenticated = () => false;
+  let playSentB1 = false;
+  (amiDown as any).executeSafeAction = async (action: string) => {
+    if (action === 'PlayDTMF') playSentB1 = true;
+    return { success: false, message: 'AMI indisponível' };
+  };
+  const adapterB1 = new RealHardwareAdapter();
+  (adapterB1 as any).ami = amiDown;
+  const resB1 = await adapterB1.triggerRelay(testGate, 1);
+  assert(resB1.commandStatus === 'HARDWARE_FAILURE', 'Matriz AMI: AMI indisponível -> HARDWARE_FAILURE');
+  assert(!playSentB1, 'Matriz AMI: Nenhum PlayDTMF executado com AMI indisponível');
+
+  // B.2 AMI não autenticado
+  const amiUnauth = new AsteriskAMI('127.0.0.1', 5038, 'admin_sec', 'SecretSeguro2026!');
+  (amiUnauth as any).connect = async () => true;
+  (amiUnauth as any).isConnected = () => true;
+  (amiUnauth as any).isAuthenticated = () => false; // Falha no handshake Login
+  let playSentB2 = false;
+  (amiUnauth as any).executeSafeAction = async (action: string) => {
+    if (action === 'PlayDTMF') playSentB2 = true;
+    return { success: false, message: 'AMI não autenticado' };
+  };
+  const adapterB2 = new RealHardwareAdapter();
+  (adapterB2 as any).ami = amiUnauth;
+  const resB2 = await adapterB2.triggerRelay(testGate, 1);
+  assert(resB2.commandStatus === 'HARDWARE_FAILURE', 'Matriz AMI: AMI não autenticado -> HARDWARE_FAILURE');
+  assert(!playSentB2, 'Matriz AMI: Nenhum PlayDTMF executado com AMI não autenticado');
+
+  // B.3 CoreShowChannels com falha de execução
+  const amiQueryFail = new AsteriskAMI('127.0.0.1', 5038, 'admin_sec', 'SecretSeguro2026!');
+  (amiQueryFail as any).connect = async () => true;
+  (amiQueryFail as any).isConnected = () => true;
+  (amiQueryFail as any).isAuthenticated = () => true;
+  let playSentB3 = false;
+  (amiQueryFail as any).executeSafeAction = async (action: string) => {
+    if (action === 'CoreShowChannels') {
+      return { success: false, message: 'Timeout executando CoreShowChannels' };
+    }
+    if (action === 'PlayDTMF') playSentB3 = true;
+    return { success: true };
+  };
+  const adapterB3 = new RealHardwareAdapter();
+  (adapterB3 as any).ami = amiQueryFail;
+  const resB3 = await adapterB3.triggerRelay(testGate, 1);
+  assert(resB3.commandStatus === 'HARDWARE_FAILURE', 'Matriz AMI: CoreShowChannels com falha -> HARDWARE_FAILURE');
+  assert(!playSentB3, 'Matriz AMI: Nenhum PlayDTMF executado em falha de CoreShowChannels');
+
+  // B.4 CoreShowChannels com retorno vazio (sem chamadas ativas)
+  const amiQueryEmpty = new AsteriskAMI('127.0.0.1', 5038, 'admin_sec', 'SecretSeguro2026!');
+  (amiQueryEmpty as any).connect = async () => true;
+  (amiQueryEmpty as any).isConnected = () => true;
+  (amiQueryEmpty as any).isAuthenticated = () => true;
+  let playSentB4 = false;
+  (amiQueryEmpty as any).executeSafeAction = async (action: string) => {
+    if (action === 'CoreShowChannels') {
+      return { success: true, response: { channels: [] } };
+    }
+    if (action === 'PlayDTMF') playSentB4 = true;
+    return { success: true };
+  };
+  const adapterB4 = new RealHardwareAdapter();
+  (adapterB4 as any).ami = amiQueryEmpty;
+  const resB4 = await adapterB4.triggerRelay(testGate, 1);
+  assert(resB4.commandStatus === 'HARDWARE_FAILURE', 'Matriz AMI: CoreShowChannels vazio -> HARDWARE_FAILURE');
+  assert(!playSentB4, 'Matriz AMI: Nenhum PlayDTMF executado quando Asterisk reporta zero canais');
+
+  // --- CENÁRIO C: CACHE FÍSICO PROIBIDO (CACHE ANTIGO = VÁLIDO, CORESHOUWCHANNELS ATUAL = VAZIO) ---
+  const amiStaleCache = new AsteriskAMI('127.0.0.1', 5038, 'admin_sec', 'SecretSeguro2026!');
+  (amiStaleCache as any).connect = async () => true;
+  (amiStaleCache as any).isConnected = () => true;
+  (amiStaleCache as any).isAuthenticated = () => true;
+  // Popula o cache local com um canal que era válido anteriormente
+  (amiStaleCache as any).activeChannels.set('PJSIP/xpe_3115-00000555', {
+    channel: 'PJSIP/xpe_3115-00000555',
+    channelStateDesc: 'Up',
+    callerIdNum: '8000',
+    connectedLineNum: '101',
+    uniqueId: 'uid-stale-555',
+    linkedId: 'lid-stale-555',
+  });
+  let playSentC = false;
+  (amiStaleCache as any).executeSafeAction = async (action: string) => {
+    if (action === 'CoreShowChannels') {
+      // O Asterisk em tempo real retorna lista vazia (chamada já foi encerrada fisicamente)
+      return { success: true, response: { channels: [] } };
+    }
+    if (action === 'PlayDTMF') playSentC = true;
+    return { success: true };
+  };
+  const adapterC = new RealHardwareAdapter();
+  (adapterC as any).ami = amiStaleCache;
+  const resC = await adapterC.triggerRelay(testGate, 1);
+  assert(resC.commandStatus === 'HARDWARE_FAILURE', 'Matriz Cache: Cache antigo com Asterisk vazio resulta estritamente em HARDWARE_FAILURE');
+  assert(!playSentC, 'Matriz Cache: PlayDTMF NUNCA é executado em canal residual de cache');
+
+  // --- CENÁRIO D: CORRELAÇÃO DE CANAIS ---
+  // D.1 1 canal correto -> Permitido
+  const amiCorr = new AsteriskAMI('127.0.0.1', 5038, 'admin_sec', 'SecretSeguro2026!');
+  setAmiLiveChannels(amiCorr, [
+    {
+      channel: 'PJSIP/xpe_3115-00000111',
+      channelStateDesc: 'Up',
+      callerIdNum: '8000',
+      connectedLineNum: '101',
+      uniqueId: 'uid-corr-111',
+      linkedId: 'lid-corr-111',
+    },
+  ]);
+  const resD1 = await amiCorr.findActiveChannelForXpe();
+  assert(resD1 === 'PJSIP/xpe_3115-00000111', 'Matriz Correlação: 1 canal correto do XPE é validado e retornado');
+
+  // D.2 0 canais -> Falha (HARDWARE_FAILURE)
+  setAmiLiveChannels(amiCorr, []);
+  const resD2 = await amiCorr.findActiveChannelForXpe();
+  assert(resD2 === null, 'Matriz Correlação: 0 canais retorna null');
+
+  // D.3 2 canais candidatos sem UniqueID -> Falha (sem escolher [0])
+  setAmiLiveChannels(amiCorr, [
+    {
+      channel: 'PJSIP/xpe_3115-00000111',
+      channelStateDesc: 'Up',
+      callerIdNum: '8000',
+      uniqueId: 'uid-ambig-1',
+    },
+    {
+      channel: 'PJSIP/xpe_3115-00000222',
+      channelStateDesc: 'Up',
+      callerIdNum: '8000',
+      uniqueId: 'uid-ambig-2',
+    },
+  ]);
+  const resD3 = await amiCorr.findActiveChannelForXpe();
+  assert(resD3 === null, 'Matriz Correlação: 2 canais candidatos sem desempate inequívoco retornam null (Sem activeXpeChannels[0])');
+
+  // D.4 preferredChannel correto -> Permitido
+  setAmiLiveChannels(amiCorr, [
+    {
+      channel: 'PJSIP/xpe_3115-00000333',
+      channelStateDesc: 'Up',
+      callerIdNum: '8000',
+      connectedLineNum: '101',
+      uniqueId: 'uid-corr-333',
+      linkedId: 'lid-corr-333',
+    },
+  ]);
+  const resD4 = await amiCorr.findActiveChannelForXpe({ preferredChannel: 'PJSIP/xpe_3115-00000333' });
+  assert(resD4 === 'PJSIP/xpe_3115-00000333', 'Matriz Correlação: preferredChannel correto é aceito');
+
+  // D.5 preferredChannel incorreto -> Falha (sem fallback para outro canal)
+  setAmiLiveChannels(amiCorr, [
+    {
+      channel: 'PJSIP/xpe_3115-00000333',
+      channelStateDesc: 'Up',
+      callerIdNum: '8000',
+      connectedLineNum: '101',
+      uniqueId: 'uid-corr-333',
+      linkedId: 'lid-corr-333',
+    },
+  ]);
+  const resD5 = await amiCorr.findActiveChannelForXpe({ preferredChannel: 'PJSIP/xpe_3115-INEXISTENTE' });
+  assert(resD5 === null, 'Matriz Correlação: preferredChannel inexistente falha sem fazer fallback');
+
+  // D.6 Canal pertencente a outra chamada -> Falha (rejeita)
+  setAmiLiveChannels(amiCorr, [
+    {
+      channel: 'PJSIP/ramal_201-00000444',
+      channelStateDesc: 'Up',
+      callerIdNum: '201',
+      connectedLineNum: '202',
+      uniqueId: 'uid-call-201',
+    },
+    {
+      channel: 'PJSIP/xpe_3115-00000555',
+      channelStateDesc: 'Up',
+      callerIdNum: '8000',
+      connectedLineNum: '101',
+      uniqueId: 'uid-xpe-555',
+      linkedId: 'lid-xpe-555',
+    },
+  ]);
+  const resD6 = await amiCorr.findActiveChannelForXpe({ preferredChannel: 'PJSIP/ramal_201-00000444' });
+  assert(resD6 === null, 'Matriz Correlação: canal de chamada alheia informado como preferredChannel é rejeitado');
+
+  // D.7 Chamada encerrada (nenhum canal ativo) -> Falha
+  setAmiLiveChannels(amiCorr, []);
+  const resD7 = await amiCorr.findActiveChannelForXpe({ preferredChannel: 'PJSIP/xpe_3115-00000555' });
+  assert(resD7 === null, 'Matriz Correlação: chamada encerrada com preferredChannel retorna null');
+
+  // --- CENÁRIO E: ANTI-BYPASS EM injectDtmf() ---
+  // Testar tentativa direta de injectDtmf("PJSIP/canal-arbitrario", "07") no RealHardwareAdapter
+  let playSentE = false;
+  const amiAntiBypass = new AsteriskAMI('127.0.0.1', 5038, 'admin_sec', 'SecretSeguro2026!');
+  setAmiLiveChannels(amiAntiBypass, [
+    {
+      channel: 'PJSIP/xpe_3115-00000888',
+      channelStateDesc: 'Up',
+      callerIdNum: '8000',
+      connectedLineNum: '101',
+      uniqueId: 'uid-xpe-888',
+      linkedId: 'lid-xpe-888',
+    },
+  ], (action: string) => {
+    if (action === 'PlayDTMF') playSentE = true;
+    return { success: true };
+  });
+  const adapterAntiBypass = new RealHardwareAdapter();
+  (adapterAntiBypass as any).ami = amiAntiBypass;
+  const resE = await adapterAntiBypass.injectDtmf('PJSIP/canal-arbitrario', '07');
+  assert(resE.commandStatus === 'HARDWARE_FAILURE', 'Matriz Anti-Bypass: injectDtmf com canal arbitrário retorna HARDWARE_FAILURE');
+  assert(resE.success === false, 'Matriz Anti-Bypass: injectDtmf com canal arbitrário retorna success: false');
+  assert(!playSentE, 'Matriz Anti-Bypass: PlayDTMF NUNCA é executado em canal arbitrário');
+
+  // --- CENÁRIO F: ESTADO FÍSICO (COMMAND_SENT vs HARDWARE_CONFIRMED) ---
+  // F.1 PlayDTMF Success + sem sensor físico real -> COMMAND_SENT (nunca HARDWARE_CONFIRMED)
+  const amiFeedback = new AsteriskAMI('127.0.0.1', 5038, 'admin_sec', 'SecretSeguro2026!');
+  setAmiLiveChannels(amiFeedback, [
+    {
+      channel: 'PJSIP/xpe_3115-00000777',
+      channelStateDesc: 'Up',
+      callerIdNum: '8000',
+      connectedLineNum: '101',
+      uniqueId: 'uid-feed-777',
+      linkedId: 'lid-feed-777',
+    },
+  ], (action: string) => {
+    return { success: true, message: 'DTMF queued' };
+  });
+  const adapterNoSensor = new RealHardwareAdapter();
+  (adapterNoSensor as any).ami = amiFeedback;
+  (adapterNoSensor as any).sensorReader = {
+    readSensor: async () => ({
+      hasPhysicalSensor: false,
+      state: 'desconhecido' as const,
+      source: 'none' as const,
+      measuredAt: new Date().toISOString(),
+      pinNumber: 1,
+    }),
+  };
+  const resF1 = await adapterNoSensor.triggerRelay(testGate, 1);
+  assert(resF1.success === true, 'Matriz Físico: Comando aceito pelo Asterisk retorna success: true');
+  assert(resF1.commandStatus === 'COMMAND_SENT', 'Matriz Físico: Sem sensor físico -> estritamente COMMAND_SENT');
+  assert(resF1.commandStatus !== 'HARDWARE_CONFIRMED', 'Matriz Físico: Sem sensor físico -> NUNCA HARDWARE_CONFIRMED');
+
+  // F.2 PlayDTMF Success + sensor físico real = 'aberto' -> HARDWARE_CONFIRMED
+  const adapterWithSensorOpen = new RealHardwareAdapter();
+  (adapterWithSensorOpen as any).ami = amiFeedback;
+  (adapterWithSensorOpen as any).sensorReader = {
+    readSensor: async () => ({
+      hasPhysicalSensor: true,
+      state: 'aberto' as const,
+      source: 'reed_switch' as const,
+      measuredAt: new Date().toISOString(),
+      pinNumber: 1,
+    }),
+  };
+  const resF2 = await adapterWithSensorOpen.triggerRelay(testGate, 1);
+  assert(resF2.success === true, 'Matriz Físico: Comando aceito com sensor físico');
+  assert(resF2.commandStatus === 'HARDWARE_CONFIRMED', 'Matriz Físico: Sensor físico em estado aberto -> HARDWARE_CONFIRMED');
+  assert(resF2.hasPhysicalFeedbackSensor === true, 'Matriz Físico: hasPhysicalFeedbackSensor é true');
+
   console.log('\n===============================================================');
   console.log(`🎉 TODOS OS ${passedTests}/${totalTests} TESTES DE SEGURANÇA E HARDWARE PASSARAM COM SUCESSO!`);
   console.log('===============================================================');

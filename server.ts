@@ -1500,11 +1500,27 @@ async function startServer() {
   // ============================================================================
   const errorLogRateLimitMap = new Map<string, { count: number; resetTime: number }>();
 
+  // Limpeza periódica de registros de rate limit expirados para evitar acúmulo de memória
+  setInterval(() => {
+    const now = Date.now();
+    for (const [ip, record] of errorLogRateLimitMap.entries()) {
+      if (now > record.resetTime) {
+        errorLogRateLimitMap.delete(ip);
+      }
+    }
+  }, 300000).unref();
+
   app.post('/api/v1/log-error', (req, res) => {
+    // 1. Validação obrigatória de Content-Type: deve ser estritamente application/json
+    const contentType = req.headers['content-type'] || '';
+    if (!contentType.toLowerCase().includes('application/json')) {
+      return res.status(415).json({ error: 'Content-Type deve ser application/json.' });
+    }
+
     const clientIp = extractClientIp(req);
     const now = Date.now();
 
-    // 1. Rate Limiting por IP (máximo 10 requisições por minuto por IP para evitar DoS)
+    // 2. Rate Limiting por IP (máximo 10 requisições por minuto por IP para mitigar DoS/spam)
     const currentRate = errorLogRateLimitMap.get(clientIp) || { count: 0, resetTime: now + 60000 };
     if (now > currentRate.resetTime) {
       currentRate.count = 0;
@@ -1517,21 +1533,40 @@ async function startServer() {
       return res.status(429).json({ error: 'Limite de envio de relatórios de erro excedido. Tente novamente mais tarde.' });
     }
 
-    // 2. Validação estrita de Payload
+    // 3. Validação estrita de Payload: limite de tamanho e estrutura
     const body = req.body;
     if (!body || typeof body !== 'object' || Array.isArray(body)) {
-      return res.status(400).json({ error: 'Payload de erro inválido.' });
+      return res.status(400).json({ error: 'Payload de erro inválido: esperado objeto JSON.' });
     }
 
-    // 3. Sanitização contra Log Injection (CRLF) e vazamento de credenciais
+    // Limite rigoroso de tamanho do payload JSON (máximo 2 KB)
+    try {
+      if (JSON.stringify(body).length > 2048) {
+        return res.status(413).json({ error: 'Payload excede o tamanho máximo permitido (2 KB).' });
+      }
+    } catch {
+      return res.status(400).json({ error: 'Payload malformado.' });
+    }
+
+    // Rejeição de propriedades arbitrárias não autorizadas (impede uso indevido para trânsito/armazenamento de dados)
+    const allowedFields = new Set(['message', 'context', 'stack', 'componentStack']);
+    const keys = Object.keys(body);
+    const invalidFields = keys.filter((k) => !allowedFields.has(k));
+    if (invalidFields.length > 0) {
+      return res.status(400).json({ error: `Campos não autorizados no payload de erro: ${invalidFields.join(', ')}.` });
+    }
+
+    // 4. Sanitização profunda contra Log Injection (CRLF) e Mascaramento Completo de Secrets
     const sanitizeString = (str: unknown, maxLength: number): string => {
       if (typeof str !== 'string') return '';
       let clean = str.slice(0, maxLength);
       // Remove quebras de linha e caracteres de controle (prevenção de CRLF / log injection)
       clean = clean.replace(/[\r\n\x00-\x1F\x7F]/g, ' ');
-      // Mascara tokens Bearer, senhas e credenciais sensíveis
+      // Mascara tokens Bearer e cabeçalhos de autorização
       clean = clean.replace(/Bearer\s+[A-Za-z0-9._~+/-]+/gi, 'Bearer [REDACTED]');
-      clean = clean.replace(/(password|pass|secret|token|apiKey|key)["']?\s*[:=]\s*["']?[^"',\s]+/gi, '$1: [REDACTED]');
+      clean = clean.replace(/Authorization\s*[:=]\s*[^\s,]+/gi, 'Authorization: [REDACTED]');
+      // Mascara senhas, secrets, tokens, API keys e credenciais
+      clean = clean.replace(/(password|passwd|pass|senha|secret|token|apiKey|api_key|access_token|key)["']?\s*[:=]\s*["']?[^"',\s]+/gi, '$1: [REDACTED]');
       return clean.trim();
     };
 
@@ -1543,7 +1578,7 @@ async function startServer() {
       return res.status(400).json({ error: 'Mensagem de erro obrigatória.' });
     }
 
-    // 4. Registro seguro estruturado em produção sem despejo de memória ou disco
+    // 5. Registro seguro estruturado em log sem persistência arbitrária e sem execução de qualquer ação
     console.warn(`[ClientErrorLog] [IP: ${clientIp}] [Contexto: ${context || 'N/A'}] ${message}${stack ? ` | Stack: ${stack}` : ''}`);
 
     return res.json({ success: true });
