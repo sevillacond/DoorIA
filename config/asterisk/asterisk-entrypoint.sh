@@ -15,6 +15,13 @@ if [ -n "$ASTERISK_AMI_USERNAME" ] && [ -n "$ASTERISK_AMI_SECRET" ]; then
     exit 1
   fi
 
+  # Subnet Docker real utilizada pelo DoorIA Core (definida no docker-compose.yml como 172.28.0.0/24)
+  REAL_DOCKER_SUBNET="${DOCKER_SUBNET:-172.28.0.0/255.255.255.0}"
+  if [ "$REAL_DOCKER_SUBNET" = "0.0.0.0/0.0.0.0" ] || [ "$REAL_DOCKER_SUBNET" = "0.0.0.0/0" ]; then
+    echo "❌ [Asterisk Entrypoint] ERRO DE SEGURANÇA: DOCKER_SUBNET não pode permitir 0.0.0.0/0 (exposição pública proibida)." >&2
+    exit 1
+  fi
+
   cat <<EOF > /etc/asterisk/manager.conf
 ; ==============================================================================
 ; ENLACE-DOORIA: ASTERISK MANAGEMENT INTERFACE (AMI) - CONFIGURAÇÃO SEGURA
@@ -31,7 +38,7 @@ displayconnects = no
 secret = ${ASTERISK_AMI_SECRET}
 deny = 0.0.0.0/0.0.0.0
 permit = 127.0.0.1/255.255.255.255
-permit = 172.16.0.0/255.240.0.0
+permit = ${REAL_DOCKER_SUBNET}
 EOF
 
   # Permite conexão da interface do servidor local caso configurado

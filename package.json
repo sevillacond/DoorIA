@@ -20,7 +20,8 @@
     "db:seed": "tsx src/db/seed.ts",
     "db:seed:dev": "tsx src/db/seeds/devSeed.ts",
     "test": "tsx src/tests/regression.ts",
-    "test:regression": "tsx src/tests/regression.ts"
+    "test:regression": "tsx src/tests/regression.ts",
+    "test:ami": "tsx scripts/test-core-ami.ts"
   },
   "dependencies": {
     "@capacitor/core": "^8.5.2",

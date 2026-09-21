@@ -102,6 +102,7 @@ services:
       ASTERISK_AMI_SECRET: "${ASTERISK_AMI_SECRET:?Erro de Seguranca - ASTERISK_AMI_SECRET e obrigatorio}"
       ASTERISK_AMI_BINDADDR: "${ASTERISK_AMI_BINDADDR:-0.0.0.0}"
       ASTERISK_AMI_PERMIT: "${ASTERISK_AMI_PERMIT:-}"
+      DOCKER_SUBNET: "${DOCKER_SUBNET:-172.28.0.0/255.255.255.0}"
       LOCAL_SERVER_IP: "${LOCAL_SERVER_IP:-}"
       ASTERISK_HOST: "${ASTERISK_HOST:-}"
     healthcheck:
@@ -134,3 +135,7 @@ networks:
   dooria-network:
     name: dooria-network
     driver: bridge
+    ipam:
+      driver: default
+      config:
+        - subnet: 172.28.0.0/24

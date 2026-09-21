@@ -1,4 +1,5 @@
 import type { UserRole } from '../types.ts';
+import { ALLOWED_ASTERISK_ACTIONS, ALLOWED_PHYSICAL_DTMF_DIGITS } from './AsteriskAMI.ts';
 
 export interface PolicyEvaluationRequest {
   actor: {
@@ -221,13 +222,22 @@ export class PolicyEngine {
 
     // 6. COMANDOS ASTERISK AMI
     if (action === 'EXEC_AMI_COMMAND') {
-      const allowedAmiActions = ['Ping', 'SIPpeers', 'PJSIPShowEndpoints', 'CoreShowChannels', 'Status', 'Hangup', 'PlayDTMF'];
-      if (!resource.amiAction || !allowedAmiActions.includes(resource.amiAction)) {
+      if (!resource.amiAction || !(ALLOWED_ASTERISK_ACTIONS as readonly string[]).includes(resource.amiAction)) {
         return {
           allowed: false,
           policyCode: 'DENY_INVALID_AMI_ACTION',
-          reason: `Ação AMI '${resource.amiAction}' não consta na lista de comandos permitidos (whitelist).`,
+          reason: `Ação AMI '${resource.amiAction}' não consta na whitelist canônica de comandos permitidos.`,
         };
+      }
+      if (resource.amiAction === 'PlayDTMF') {
+        const dtmf = resource.dtmfCommand?.trim();
+        if (!dtmf || !(ALLOWED_PHYSICAL_DTMF_DIGITS as readonly string[]).includes(dtmf)) {
+          return {
+            allowed: false,
+            policyCode: 'DENY_INVALID_DTMF_DIGIT',
+            reason: `Dígito DTMF '${dtmf}' não autorizado para acionamento de portão físico. Permitidos: ${ALLOWED_PHYSICAL_DTMF_DIGITS.join(', ')}`,
+          };
+        }
       }
       if (!['super_admin', 'sindico', 'operador'].includes(actor.role)) {
         return {

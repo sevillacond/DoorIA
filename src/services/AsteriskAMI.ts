@@ -14,6 +14,10 @@ export const ALLOWED_ASTERISK_ACTIONS = [
 
 export type AllowedAsteriskAction = typeof ALLOWED_ASTERISK_ACTIONS[number];
 
+// Dígitos DTMF autorizados canonicamente para acionamento de portão físico (*07 / *08)
+export const ALLOWED_PHYSICAL_DTMF_DIGITS = ['*07', '07', '*08', '08'] as const;
+export type AllowedPhysicalDtmfDigit = typeof ALLOWED_PHYSICAL_DTMF_DIGITS[number];
+
 export interface ActiveChannelInfo {
   channel: string;          // Ex: "PJSIP/xpe_3115-00000001"
   channelState?: string;    // "Up", "Ring", "Ringing"
@@ -400,6 +404,206 @@ export class AsteriskManager extends EventEmitter {
     } catch (err: any) {
       return { ok: false, message: err.message || 'Erro inesperado no ping AMI' };
     }
+  }
+
+  /**
+   * Teste diagnóstico ponta-a-ponta do caminho real: DoorIA Core ➔ Asterisk AMI
+   * Valida estritamente:
+   * 1. Conexão TCP na porta 5038 do Asterisk
+   * 2. Handshake de autenticação (Action: Login)
+   * 3. Confirmação de vitalidade (Action: Ping -> Response: Success / Ping: Pong)
+   * 4. Opcionalmente: diagnóstico de canais via Action: CoreShowChannels
+   * 5. Encerramento gracioso com Action: Logoff
+   * REGRA DE OURO: NUNCA executa PlayDTMF, *07, *08, acionamento de relé ou qualquer comando físico.
+   */
+  public static async testCoreToAmiPath(options?: {
+    host?: string;
+    port?: number;
+    username?: string;
+    secret?: string;
+    includeCoreShowChannels?: boolean;
+    timeoutMs?: number;
+  }): Promise<{
+    success: boolean;
+    step: 'tcp_connect' | 'login' | 'ping' | 'core_show_channels' | 'logoff' | 'completed';
+    latencyMs?: number;
+    channelCount?: number;
+    error?: string;
+  }> {
+    const host = options?.host || process.env.ASTERISK_HOST || '127.0.0.1';
+    const port = options?.port || parseInt(process.env.ASTERISK_AMI_PORT || '5038', 10);
+    const username = options?.username || process.env.ASTERISK_AMI_USERNAME || process.env.ASTERISK_AMI_USER || '';
+    const secret = options?.secret || process.env.ASTERISK_AMI_SECRET || '';
+    const timeoutMs = options?.timeoutMs || 4000;
+    const includeChannels = options?.includeCoreShowChannels ?? false;
+
+    if (!username || !secret) {
+      return {
+        success: false,
+        step: 'login',
+        error: 'Credenciais ASTERISK_AMI_USERNAME e ASTERISK_AMI_SECRET não fornecidas para o teste.',
+      };
+    }
+
+    const startTime = Date.now();
+
+    return new Promise((resolve) => {
+      let resolved = false;
+      const socket = new net.Socket();
+      let buffer = '';
+      let step: 'tcp_connect' | 'login' | 'ping' | 'core_show_channels' | 'logoff' | 'completed' = 'tcp_connect';
+      let channelCount = 0;
+
+      const safeResolve = (result: {
+        success: boolean;
+        step: 'tcp_connect' | 'login' | 'ping' | 'core_show_channels' | 'logoff' | 'completed';
+        latencyMs?: number;
+        channelCount?: number;
+        error?: string;
+      }) => {
+        if (!resolved) {
+          resolved = true;
+          clearTimeout(timer);
+          try {
+            socket.destroy();
+          } catch {
+            // no-op
+          }
+          resolve(result);
+        }
+      };
+
+      const timer = setTimeout(() => {
+        safeResolve({
+          success: false,
+          step,
+          error: `Timeout de ${timeoutMs}ms aguardando resposta do Asterisk AMI durante a etapa '${step}'.`,
+        });
+      }, timeoutMs);
+
+      socket.on('error', (err: Error) => {
+        safeResolve({
+          success: false,
+          step,
+          error: `Erro no socket TCP (${host}:${port}): ${err.message}`,
+        });
+      });
+
+      socket.on('connect', () => {
+        step = 'login';
+      });
+
+      socket.on('data', (data: Buffer) => {
+        buffer += data.toString('utf8');
+
+        // 1. Recebimento do Banner do Asterisk AMI
+        if (buffer.startsWith('Asterisk Call Manager') && step === 'login') {
+          const bannerEnd = buffer.indexOf('\r\n');
+          if (bannerEnd !== -1) {
+            buffer = buffer.slice(bannerEnd + 2);
+            // Envia Action: Login
+            const loginPayload = [
+              'Action: Login',
+              `Username: ${username}`,
+              `Secret: ${secret}`,
+              'ActionID: test-diag-login',
+              '',
+              '',
+            ].join('\r\n');
+            socket.write(loginPayload, 'utf8');
+          }
+        }
+
+        // Processa blocos completos
+        let delimIdx: number;
+        while ((delimIdx = buffer.indexOf('\r\n\r\n')) !== -1) {
+          const block = buffer.slice(0, delimIdx);
+          buffer = buffer.slice(delimIdx + 4);
+
+          // Verifica bloco de resposta
+          if (block.includes('ActionID: test-diag-login')) {
+            if (block.includes('Response: Success')) {
+              step = 'ping';
+              const pingPayload = [
+                'Action: Ping',
+                'ActionID: test-diag-ping',
+                '',
+                '',
+              ].join('\r\n');
+              socket.write(pingPayload, 'utf8');
+            } else {
+              safeResolve({
+                success: false,
+                step: 'login',
+                error: 'Falha de autenticação no login do Asterisk AMI.',
+              });
+              return;
+            }
+          } else if (block.includes('ActionID: test-diag-ping')) {
+            if (block.includes('Response: Success') || block.includes('Ping: Pong')) {
+              if (includeChannels) {
+                step = 'core_show_channels';
+                const showChannelsPayload = [
+                  'Action: CoreShowChannels',
+                  'ActionID: test-diag-channels',
+                  '',
+                  '',
+                ].join('\r\n');
+                socket.write(showChannelsPayload, 'utf8');
+              } else {
+                step = 'logoff';
+                const logoffPayload = [
+                  'Action: Logoff',
+                  'ActionID: test-diag-logoff',
+                  '',
+                  '',
+                ].join('\r\n');
+                socket.write(logoffPayload, 'utf8');
+              }
+            } else {
+              safeResolve({
+                success: false,
+                step: 'ping',
+                error: 'Falha no Ping AMI (resposta inválida do Asterisk).',
+              });
+              return;
+            }
+          } else if (block.includes('ActionID: test-diag-channels') || block.includes('Event: CoreShowChannelsComplete') || block.includes('Event: CoreShowChannel')) {
+            if (block.includes('Event: CoreShowChannelsComplete')) {
+              step = 'logoff';
+              const logoffPayload = [
+                'Action: Logoff',
+                'ActionID: test-diag-logoff',
+                '',
+                '',
+              ].join('\r\n');
+              socket.write(logoffPayload, 'utf8');
+            } else if (block.includes('Event: CoreShowChannel')) {
+              channelCount += 1;
+            }
+          } else if (block.includes('ActionID: test-diag-logoff') || block.includes('Response: Goodbye')) {
+            step = 'completed';
+            safeResolve({
+              success: true,
+              step: 'completed',
+              latencyMs: Date.now() - startTime,
+              channelCount,
+            });
+            return;
+          }
+        }
+      });
+
+      try {
+        socket.connect(port, host);
+      } catch (err: any) {
+        safeResolve({
+          success: false,
+          step: 'tcp_connect',
+          error: `Exceção ao conectar socket TCP: ${err.message}`,
+        });
+      }
+    });
   }
 
   /**

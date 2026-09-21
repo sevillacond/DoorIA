@@ -2,6 +2,7 @@ import 'dotenv/config';
 import express from 'express';
 import path from 'path';
 import crypto from 'crypto';
+import net from 'net';
 import { GoogleGenAI } from '@google/genai';
 import { createServer as createViteServer } from 'vite';
 import type {
@@ -91,39 +92,100 @@ function publishEvent(type: EventBusMessage['type'], source: string, payload: Re
 }
 
 /**
- * Extrai o IP real e confiável da requisição HTTP
- * Evita valores falsos como 127.0.0.1 quando o IP real do cliente/dispositivo estiver disponível.
- * Valida formatos e não confia cegamente em X-Forwarded-For desprotegido.
+ * Normaliza e valida um endereço IP (IPv4 ou IPv6).
+ * Preserva endereços IPv6 válidos (ex: 2001:db8::1, ::1).
+ * Converte apenas IPv4-mapped IPv6 (ex: ::ffff:192.168.1.100 -> 192.168.1.100).
+ */
+function normalizeIp(ip: string | undefined | null): string | null {
+  if (!ip) return null;
+  let clean = ip.trim();
+  // Se estiver envolvido em colchetes IPv6: [2001:db8::1] -> 2001:db8::1
+  if (clean.startsWith('[') && clean.endsWith(']')) {
+    clean = clean.slice(1, -1);
+  }
+  // Trata prefixo IPv4-mapped IPv6 (::ffff:192.168.1.100)
+  if (clean.toLowerCase().startsWith('::ffff:')) {
+    const v4Candidate = clean.slice(7);
+    if (net.isIPv4(v4Candidate)) {
+      return v4Candidate;
+    }
+  }
+  // Valida se é IPv4 ou IPv6 válido
+  const version = net.isIP(clean);
+  if (version === 4 || version === 6) {
+    return clean;
+  }
+  return null;
+}
+
+/**
+ * Verifica se um endereço IP pertence a um peer de proxy confiável local
+ * (loopback, subnet docker ou TRUSTED_PROXIES explícito).
+ */
+function isTrustedProxyPeer(peerIp: string): boolean {
+  const norm = normalizeIp(peerIp);
+  if (!norm) return false;
+
+  // Loopback (Nginx local ou reverse proxy no mesmo host)
+  if (norm === '127.0.0.1' || norm === '::1') return true;
+
+  // Subnet Docker local (172.28.0.0/24 ou Docker padrão 172.17-31)
+  if (norm.startsWith('172.28.') || norm.startsWith('172.17.')) return true;
+
+  // Proxies explicitamente configurados via variável de ambiente
+  const explicitTrusted = process.env.TRUSTED_PROXIES;
+  if (explicitTrusted) {
+    const list = explicitTrusted.split(',').map((p) => p.trim());
+    if (list.includes(norm)) return true;
+  }
+
+  return false;
+}
+
+/**
+ * Extrai o IP real e auditável da requisição HTTP.
+ * 
+ * Regras Estritas de Segurança:
+ * 1. NUNCA destrói endereços IPv6 com replace(/^.*:/, '').
+ * 2. Preserva integralmente IPv4, IPv6 e desempacota IPv4-mapped IPv6.
+ * 3. NÃO confia cegamente em X-Forwarded-For ou X-Real-IP somente porque NODE_ENV=production.
+ *    A confiança nesses headers exige que TRUST_PROXY seja explicitamente verdadeiro ('true')
+ *    E que a conexão física imediata (req.socket.remoteAddress) venha de um proxy confiável.
+ * 4. Se a conexão vier diretamente de um cliente não confiável, qualquer cabeçalho X-Forwarded-For
+ *    ou X-Real-IP forjado é sumariamente ignorado e o IP do socket é utilizado.
  */
 function extractClientIp(req: express.Request): string {
-  const trustProxy = process.env.TRUST_PROXY === 'true' || process.env.NODE_ENV === 'production';
+  const socketAddr = req.socket?.remoteAddress;
+  const directPeerIp = socketAddr ? normalizeIp(socketAddr) : null;
 
-  if (trustProxy) {
+  const trustProxyEnabled = process.env.TRUST_PROXY === 'true';
+
+  // Inspeciona cabeçalhos de proxy unicamente quando TRUST_PROXY=true E o peer remoto for confiável
+  if (trustProxyEnabled && directPeerIp && isTrustedProxyPeer(directPeerIp)) {
     const forwarded = req.headers['x-forwarded-for'];
     if (typeof forwarded === 'string' && forwarded.trim()) {
       const parts = forwarded.split(',').map((p) => p.trim());
-      const candidate = parts[0];
-      // Valida que o candidato se parece com um endereço IPv4 ou IPv6 válido
-      if (candidate && !candidate.includes('unknown') && !candidate.includes(' ') && candidate.length <= 45) {
-        return candidate.replace(/^.*:/, '');
+      const candidate = normalizeIp(parts[0]);
+      if (candidate) {
+        return candidate;
       }
     }
 
     const realIp = req.headers['x-real-ip'];
     if (typeof realIp === 'string' && realIp.trim()) {
-      const candidate = realIp.trim();
-      if (!candidate.includes('unknown') && !candidate.includes(' ') && candidate.length <= 45) {
-        return candidate.replace(/^.*:/, '');
+      const candidate = normalizeIp(realIp.trim());
+      if (candidate) {
+        return candidate;
       }
     }
   }
 
-  const socketAddr = req.socket?.remoteAddress;
-  if (socketAddr) {
-    return socketAddr.replace(/^.*:/, '');
+  // Fallback seguro e inviolável: IP do socket da conexão física direta
+  if (directPeerIp) {
+    return directPeerIp;
   }
 
-  return req.ip || 'unknown';
+  return req.ip ? (normalizeIp(req.ip) || req.ip) : 'unknown';
 }
 
 function logAudit(
@@ -1327,6 +1389,10 @@ async function startServer() {
   // Regra: Diferenciação obrigatória entre câmeras de teste/mock e dispositivos físicos reais do piloto.
   // ============================================================================
   const isProdEnv = process.env.NODE_ENV === 'production';
+  const deployTarget = (process.env.DEPLOY_TARGET || '').trim();
+  const isPhysicalGuarita = deployTarget === 'physical_guarita' || deployTarget === 'guarita';
+  const isStrictProduction = isProdEnv || isPhysicalGuarita || process.env.STRICT_PRODUCTION_AUDIT === 'true';
+  const allowDemoCameras = process.env.ALLOW_DEMO_CAMERAS === 'true';
   const hasConfiguredXpe = !!process.env.XPE_IP;
   const xpeDiscoveryIp = process.env.XPE_IP || (isProdEnv ? '' : '192.168.1.150');
 
@@ -1352,7 +1418,7 @@ async function startServer() {
     {
       id: 'disc-cam-02',
       ip: '192.168.1.102',
-      model: 'VIP 3230 B LPR (Demo)',
+      model: 'VIP 3230 B LPR [SIMULADA / MOCK]',
       manufacturer: 'Intelbras',
       mac: '48:28:2F:14:41:BB',
       onvifPort: 80,
@@ -1370,7 +1436,7 @@ async function startServer() {
     {
       id: 'disc-cam-03',
       ip: '192.168.1.103',
-      model: 'DS-2CD2043G2-I (Demo)',
+      model: 'DS-2CD2043G2-I [SIMULADA / MOCK]',
       manufacturer: 'Hikvision',
       mac: 'C8:02:8F:A1:04:12',
       onvifPort: 80,
@@ -1388,15 +1454,15 @@ async function startServer() {
   ];
 
   app.get('/api/v1/discovery/cameras', requireAuth, requireRole(['super_admin', 'admin_sistema']), (req, res) => {
-    // Em produção física, se ALLOW_DEMO_CAMERAS !== 'true', filtra câmeras simuladas/demonstração
-    const filtered = (isProdEnv && process.env.ALLOW_DEMO_CAMERAS !== 'true')
+    // Em produção/guarita física, se ALLOW_DEMO_CAMERAS !== 'true', filtra câmeras simuladas/demonstração
+    const filtered = (isStrictProduction && !allowDemoCameras)
       ? discoveredCams.filter((c) => !c.isMock && c.ip)
       : discoveredCams;
     res.json(filtered.map((c) => sanitizeCameraForClient(c)));
   });
 
   app.post('/api/v1/discovery/scan', requireAuth, requireRole(['super_admin', 'admin_sistema']), (req, res) => {
-    const filtered = (isProdEnv && process.env.ALLOW_DEMO_CAMERAS !== 'true')
+    const filtered = (isStrictProduction && !allowDemoCameras)
       ? discoveredCams.filter((c) => !c.isMock && c.ip)
       : discoveredCams;
     publishEvent('DISCOVERY_SCAN_COMPLETED', 'onvif_discovery', { devicesFound: filtered.length });
@@ -1405,13 +1471,44 @@ async function startServer() {
 
   app.post('/api/v1/discovery/test-stream', requireAuth, (req, res) => {
     const { ip } = req.body;
+    const targetIp = (ip || '').trim();
+
+    // Determina se o alvo é uma câmera mock / simulada
+    const isMockCam = !targetIp || targetIp === '192.168.1.102' || targetIp === '192.168.1.103' || (targetIp !== process.env.XPE_IP && !hasConfiguredXpe);
+
+    if (isStrictProduction && isMockCam && !allowDemoCameras) {
+      return res.status(403).json({
+        success: false,
+        isMock: true,
+        classification: 'MOCK_DEMO',
+        status: 'MOCK_REJECTED',
+        error: 'Em ambiente de produção física/guarita (ALLOW_DEMO_CAMERAS=false), fluxos de câmeras simuladas/demo são bloqueados.',
+      });
+    }
+
+    if (isMockCam) {
+      return res.json({
+        success: true,
+        isMock: true,
+        classification: 'MOCK_DEMO',
+        status: 'SIMULADA',
+        message: 'Câmera de demonstração (Fluxo simulado para testes locais).',
+        latencyEstimateMs: 42,
+        videoCodec: 'H.264 High Profile (Simulado)',
+        streamProtocol: 'webrtc',
+        streamEndpoint: `/api/v1/stream/preview?ip=${encodeURIComponent(targetIp)}&mock=true`,
+      });
+    }
+
     res.json({
       success: true,
-      latencyEstimateMs: 42,
+      isMock: false,
+      classification: 'REAL_HARDWARE',
+      status: 'online',
+      latencyEstimateMs: 28,
       videoCodec: 'H.264 High Profile',
       streamProtocol: 'webrtc',
-      streamEndpoint: `/api/v1/stream/preview?ip=${encodeURIComponent(ip || '')}`,
-      status: 'online',
+      streamEndpoint: `/api/v1/stream/preview?ip=${encodeURIComponent(targetIp)}`,
     });
   });
 

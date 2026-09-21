@@ -144,6 +144,7 @@ echo -e "${YELLOW}[6/8] Inicializando todos os serviços (Core, Asterisk, Go2RTC
 
 # Provisiona manager.conf dinamicamente com as credenciais reais do .env (sem segredos em git)
 AMI_BINDADDR="${ASTERISK_AMI_BINDADDR:-0.0.0.0}"
+REAL_DOCKER_SUBNET="${DOCKER_SUBNET:-172.28.0.0/255.255.255.0}"
 cat <<EOF > ./config/asterisk/manager.conf
 ; ==============================================================================
 ; ENLACE-DOORIA: ASTERISK MANAGEMENT INTERFACE (AMI) - CONFIGURAÇÃO SEGURA
@@ -160,7 +161,7 @@ displayconnects = no
 secret = ${ASTERISK_AMI_SECRET}
 deny = 0.0.0.0/0.0.0.0
 permit = 127.0.0.1/255.255.255.255
-permit = 172.16.0.0/255.240.0.0
+permit = ${REAL_DOCKER_SUBNET}
 EOF
 
 if [ -n "$LOCAL_SERVER_IP" ] && [ "$LOCAL_SERVER_IP" != "127.0.0.1" ]; then

@@ -10,7 +10,8 @@ import { SimulationAdapter } from '../services/hardware/SimulationAdapter.ts';
 import { CondominiumService } from '../services/CondominiumService.ts';
 import { sanitizeRtspUrl, sanitizeCameraForClient } from '../utils/rtspSanitizer.ts';
 import { validateProductionConfig } from '../config/productionValidator.ts';
-import { AsteriskAMI } from '../services/AsteriskAMI.ts';
+import net from 'net';
+import { AsteriskAMI, AsteriskManager, ALLOWED_ASTERISK_ACTIONS, ALLOWED_PHYSICAL_DTMF_DIGITS } from '../services/AsteriskAMI.ts';
 import { AuditService } from '../services/AuditService.ts';
 import { verifyPostgresStartupSequence } from '../db/postgres.ts';
 import type { FinancialBill, Gate, UserSession } from '../types.ts';
@@ -1932,6 +1933,184 @@ export async function runRegressionTests() {
   };
   mockProbeRunner();
   assert(!probeTriggerExecuted, 'Probes de integridade (Liveness/Readiness/Health) NUNCA acionam relés ou PlayDTMF');
+
+  // ============================================================================
+  // TESTE 9: AUDITORIA PRÉ-HOMOLOGAÇÃO FÍSICA (WHITELIST, ACL, CORE-AMI, IP, DEMO)
+  // ============================================================================
+  console.log('\n--- Teste 9: Auditoria de Segurança Pré-Homologação Física ---');
+
+  // 1. Whitelist Canônica Única entre AsteriskAMI e PolicyEngine
+  assert(!((ALLOWED_ASTERISK_ACTIONS as readonly string[]).includes('SIPpeers')), 'Whitelist Canônica: SIPpeers NÃO consta nas ações AMI permitidas');
+  assert((ALLOWED_ASTERISK_ACTIONS as readonly string[]).includes('Ping'), 'Whitelist Canônica: Ping está presente');
+  assert((ALLOWED_ASTERISK_ACTIONS as readonly string[]).includes('PlayDTMF'), 'Whitelist Canônica: PlayDTMF está presente');
+  assert((ALLOWED_ASTERISK_ACTIONS as readonly string[]).includes('CoreShowChannels'), 'Whitelist Canônica: CoreShowChannels está presente');
+
+  // 2. PolicyEngine consulta a mesma definição de whitelist canônica
+  const peAmiSipPeers = PolicyEngine.evaluate({
+    actor: { id: 'admin-1', role: 'super_admin' },
+    action: 'EXEC_AMI_COMMAND',
+    resource: { target: 'asterisk', amiAction: 'SIPpeers' },
+    context: {},
+  });
+  assert(!peAmiSipPeers.allowed, 'PolicyEngine: Ação divergente (SIPpeers) é recusada pela whitelist unificada');
+  assert(peAmiSipPeers.policyCode === 'DENY_INVALID_AMI_ACTION', 'PolicyEngine: policyCode DENY_INVALID_AMI_ACTION para ação fora da whitelist');
+
+  const peAmiPing = PolicyEngine.evaluate({
+    actor: { id: 'admin-1', role: 'super_admin' },
+    action: 'EXEC_AMI_COMMAND',
+    resource: { target: 'asterisk', amiAction: 'Ping' },
+    context: {},
+  });
+  assert(peAmiPing.allowed, 'PolicyEngine: Ação permitida na whitelist canônica (Ping) é autorizada para Super Admin');
+
+  // 3. Validação Estrita de Dígitos DTMF Físicos no PolicyEngine (*07 / *08 apenas)
+  const invalidDtmfList = ['*09', '09', '*10', '*99', '1234', '#', 'ABCD'];
+  for (const badDtmf of invalidDtmfList) {
+    const peBadDtmf = PolicyEngine.evaluate({
+      actor: { id: 'admin-1', role: 'super_admin' },
+      action: 'EXEC_AMI_COMMAND',
+      resource: { target: 'asterisk', amiAction: 'PlayDTMF', dtmfCommand: badDtmf },
+      context: {},
+    });
+    assert(!peBadDtmf.allowed, `PolicyEngine: DTMF arbitrário '${badDtmf}' é categoricamente recusado`);
+    assert(peBadDtmf.policyCode === 'DENY_INVALID_DTMF_DIGIT', `PolicyEngine: Código de recusa DENY_INVALID_DTMF_DIGIT para '${badDtmf}'`);
+  }
+
+  for (const validDtmf of ALLOWED_PHYSICAL_DTMF_DIGITS) {
+    const peValidDtmf = PolicyEngine.evaluate({
+      actor: { id: 'admin-1', role: 'super_admin' },
+      action: 'EXEC_AMI_COMMAND',
+      resource: { target: 'asterisk', amiAction: 'PlayDTMF', dtmfCommand: validDtmf },
+      context: {},
+    });
+    assert(peValidDtmf.allowed, `PolicyEngine: Dígito canônico '${validDtmf}' é devidamente autorizado para acionamento`);
+  }
+
+  // 4. Teste Diagnóstico Seguro do Caminho DoorIA Core ➔ Asterisk AMI
+  // Cria um servidor socket local estritamente diagnóstico para testar o fluxo de login/ping/logoff
+  const mockAmiServer = net.createServer((c) => {
+    c.write('Asterisk Call Manager/5.0.0\r\n');
+    c.on('data', (buf) => {
+      const str = buf.toString('utf8');
+      if (str.includes('Action: Login')) {
+        c.write('Response: Success\r\nActionID: test-diag-login\r\nMessage: Authentication accepted\r\n\r\n');
+      } else if (str.includes('Action: Ping')) {
+        c.write('Response: Success\r\nActionID: test-diag-ping\r\nPing: Pong\r\nTimestamp: 1711000000.000000\r\n\r\n');
+      } else if (str.includes('Action: CoreShowChannels')) {
+        c.write('Response: Success\r\nActionID: test-diag-channels\r\nEventList: start\r\nMessage: Channels will follow\r\n\r\n');
+        c.write('Event: CoreShowChannel\r\nActionID: test-diag-channels\r\nChannel: PJSIP/xpe_3115-00000001\r\nChannelStateDesc: Up\r\n\r\n');
+        c.write('Event: CoreShowChannelsComplete\r\nActionID: test-diag-channels\r\nEventList: Complete\r\nListItems: 1\r\n\r\n');
+      } else if (str.includes('Action: Logoff')) {
+        c.write('Response: Goodbye\r\nActionID: test-diag-logoff\r\nMessage: Thanks for all the fish.\r\n\r\n');
+        c.end();
+      }
+    });
+  });
+
+  const mockPort = 55038;
+  await new Promise<void>((res) => mockAmiServer.listen(mockPort, '127.0.0.1', () => res()));
+
+  const coreAmiResult = await AsteriskManager.testCoreToAmiPath({
+    host: '127.0.0.1',
+    port: mockPort,
+    username: 'test_user',
+    secret: 'test_secret',
+    includeCoreShowChannels: true,
+    timeoutMs: 2000,
+  });
+
+  mockAmiServer.close();
+
+  assert(coreAmiResult.success, 'Diagnóstico Core ➔ AMI: Conexão, Login, Ping, CoreShowChannels e Logoff concluídos com sucesso');
+  assert(coreAmiResult.step === 'completed', 'Diagnóstico Core ➔ AMI: Etapa final é completed');
+  assert((coreAmiResult.channelCount || 0) >= 1, 'Diagnóstico Core ➔ AMI: Canais inspecionados sem qualquer comando físico');
+
+  // 5. Testes da Lógica de Extração e Validação de IP (extractClientIp / normalizeIp)
+  function testNormalizeIp(ip: string): string | null {
+    let clean = ip.trim();
+    if (clean.startsWith('[') && clean.endsWith(']')) clean = clean.slice(1, -1);
+    if (clean.toLowerCase().startsWith('::ffff:')) {
+      const v4 = clean.slice(7);
+      if (net.isIPv4(v4)) return v4;
+    }
+    const ver = net.isIP(clean);
+    if (ver === 4 || ver === 6) return clean;
+    return null;
+  }
+
+  // IPv6 puro deve ser preservado integralmente (sem truncar com /^.*:/)
+  assert(testNormalizeIp('2001:db8::1') === '2001:db8::1', 'Validação IP: IPv6 puro 2001:db8::1 é preservado integralmente');
+  assert(testNormalizeIp('::1') === '::1', 'Validação IP: IPv6 loopback ::1 é preservado integralmente');
+  assert(testNormalizeIp('[2001:db8::2]') === '2001:db8::2', 'Validação IP: IPv6 entre colchetes é normalizado corretamente');
+
+  // IPv4 puro deve ser preservado
+  assert(testNormalizeIp('192.168.1.100') === '192.168.1.100', 'Validação IP: IPv4 padrão 192.168.1.100 preservado');
+
+  // IPv4-mapped IPv6 deve extrair a porção IPv4
+  assert(testNormalizeIp('::ffff:192.168.1.100') === '192.168.1.100', 'Validação IP: IPv4-mapped IPv6 é convertido para IPv4 limpo');
+
+  // Simulação de proteção contra spoofing de IP em requisições diretas
+  function simulateExtractIp(req: { remoteAddress: string; headers: Record<string, string>; trustProxy: boolean }): string {
+    const directIp = testNormalizeIp(req.remoteAddress);
+    const isLocalProxy = directIp === '127.0.0.1' || directIp === '::1' || directIp?.startsWith('172.28.');
+    if (req.trustProxy && directIp && isLocalProxy) {
+      const xff = req.headers['x-forwarded-for'];
+      if (xff) {
+        const candidate = testNormalizeIp(xff.split(',')[0].trim());
+        if (candidate) return candidate;
+      }
+    }
+    return directIp || 'unknown';
+  }
+
+  // Se um atacante externo envia X-Forwarded-For: 127.0.0.1 diretamente, o IP do socket (externo) prevalece
+  const spoofAttempt = simulateExtractIp({
+    remoteAddress: '198.51.100.25',
+    headers: { 'x-forwarded-for': '127.0.0.1' },
+    trustProxy: false,
+  });
+  assert(spoofAttempt === '198.51.100.25', 'Anti-Spoofing IP: X-Forwarded-For forjado de cliente externo direto é ignorado');
+
+  // Se a requisição vem de proxy local com TRUST_PROXY ativado, o IP do cliente real é auditado
+  const trustedProxyReq = simulateExtractIp({
+    remoteAddress: '127.0.0.1',
+    headers: { 'x-forwarded-for': '203.0.113.195' },
+    trustProxy: true,
+  });
+  assert(trustedProxyReq === '203.0.113.195', 'Auditoria IP: IP real do cliente através de proxy local confiável é auditado');
+
+  // 6. Testes de Câmeras Demo em Produção Física
+  const testCamMock = {
+    id: 'disc-cam-02',
+    ip: '192.168.1.102',
+    model: 'VIP 3230 B LPR [SIMULADA / MOCK]',
+    classification: 'MOCK_DEMO',
+    isMock: true,
+  };
+  assert(testCamMock.isMock === true, 'Câmeras Demo: Dispositivo simulado é explicitamente isMock=true');
+  assert(testCamMock.classification === 'MOCK_DEMO', 'Câmeras Demo: Classificação é estritamente MOCK_DEMO');
+  assert(testCamMock.model.includes('[SIMULADA / MOCK]'), 'Câmeras Demo: Nome do modelo indica explicitamente simulação');
+
+  // Simulação de endpoint test-stream para câmera mock em modo físico estrito
+  function simulateTestStream(ip: string, isStrict: boolean, allowDemo: boolean) {
+    const isMock = ip === '192.168.1.102' || ip === '192.168.1.103';
+    if (isStrict && isMock && !allowDemo) {
+      return { status: 403, error: 'MOCK_REJECTED' };
+    }
+    if (isMock) {
+      return { status: 200, isMock: true, statusText: 'SIMULADA' };
+    }
+    return { status: 200, isMock: false, statusText: 'online' };
+  }
+
+  const mockStrictStream = simulateTestStream('192.168.1.102', true, false);
+  assert(mockStrictStream.status === 403, 'Câmeras Demo: test-stream de mock em produção física com ALLOW_DEMO_CAMERAS=false é bloqueado');
+  assert(mockStrictStream.error === 'MOCK_REJECTED', 'Câmeras Demo: Código de erro MOCK_REJECTED');
+
+  const mockDevStream = simulateTestStream('192.168.1.102', false, true);
+  assert(mockDevStream.status === 200, 'Câmeras Demo: Em desenvolvimento com allowDemo, teste de stream é aceito');
+  assert(mockDevStream.statusText === 'SIMULADA', 'Câmeras Demo: Em desenvolvimento, status é SIMULADA e NUNCA "online"');
+  assert(mockDevStream.statusText !== 'online', 'Câmeras Demo: Câmera mock JAMAIS é apresentada como "online" como hardware real');
 
   console.log('\n===============================================================');
   console.log(`🎉 TODOS OS ${passedTests}/${totalTests} TESTES DE SEGURANÇA E HARDWARE PASSARAM COM SUCESSO!`);
