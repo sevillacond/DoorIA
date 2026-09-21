@@ -51,12 +51,14 @@ if [ -z "$AMI_USER" ] || [ -z "$AMI_PASS" ]; then
 fi
 
 if [ -n "$AMI_USER" ] && [ -n "$AMI_PASS" ]; then
-  AMI_PAYLOAD=$(printf "Action: Login\r\nUsername: %s\r\nSecret: %s\r\n\r\nAction: Ping\r\n\r\nAction: Logoff\r\n\r\n" "$AMI_USER" "$AMI_PASS")
+  # Handshake real completo do AMI: Login -> Ping -> CoreShowChannels (diagnóstico de canais) -> Logoff
+  # REGRA DE OURO: O healthcheck JAMAIS deve executar PlayDTMF ou qualquer acionamento de hardware.
+  AMI_PAYLOAD=$(printf "Action: Login\r\nUsername: %s\r\nSecret: %s\r\n\r\nAction: Ping\r\n\r\nAction: CoreShowChannels\r\n\r\nAction: Logoff\r\n\r\n" "$AMI_USER" "$AMI_PASS")
   unset AMI_PASS
 
   AMI_RESPONSE=""
   if command -v nc > /dev/null 2>&1; then
-    AMI_RESPONSE=$(printf "%s" "$AMI_PAYLOAD" | nc -w 3 127.0.0.1 "$AMI_PORT" 2>/dev/null || true)
+    AMI_RESPONSE=$(printf "%s" "$AMI_PAYLOAD" | nc -w 4 127.0.0.1 "$AMI_PORT" 2>/dev/null || true)
   elif (exec 3<>/dev/tcp/127.0.0.1/"$AMI_PORT") 2>/dev/null; then
     printf "%s" "$AMI_PAYLOAD" >&3
     AMI_RESPONSE=$(cat <&3 2>/dev/null || true)
@@ -73,6 +75,13 @@ if [ -n "$AMI_USER" ] && [ -n "$AMI_PASS" ]; then
   if ! echo "$AMI_RESPONSE" | grep -qi 'Ping: Pong'; then
     unset AMI_RESPONSE
     echo "❌ Falha na resposta ao Ping do Asterisk AMI" >&2
+    exit 1
+  fi
+
+  # Valida se o comando de consulta CoreShowChannels foi aceito com sucesso
+  if ! echo "$AMI_RESPONSE" | grep -qi 'CoreShowChannelsComplete\|EventList: Complete\|Response: Success'; then
+    unset AMI_RESPONSE
+    echo "❌ Falha na execução da consulta CoreShowChannels no Asterisk AMI" >&2
     exit 1
   fi
   unset AMI_RESPONSE

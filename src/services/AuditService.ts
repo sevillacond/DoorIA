@@ -6,6 +6,14 @@ import type { AuditLogEntry, UserRole } from '../types.ts';
 // Cache em memória para consulta ultra-rápida na interface
 const memoryAuditLogs: AuditLogEntry[] = [];
 
+/**
+ * TODO [Auditoria / Hardening Fase 2]:
+ * Para eventos de acionamento físico crítico (*07 / *08):
+ * Implementar Transactional Outbox Pattern / Local Durable Queue no disco da guarita
+ * para garantir tolerância total a partições de rede com repasse assíncrono ao PostgreSQL.
+ * Atualmente a persistência ocorre imediatamente no PostgreSQL 16 LTS via Drizzle ORM
+ * com retenção rápida em memoryAuditLogs.
+ */
 export interface CreateAuditLogParams {
   actor: string;
   role: UserRole | string;

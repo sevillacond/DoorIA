@@ -83,8 +83,8 @@ export async function checkPostgresHealth(): Promise<PostgresConnectionStatus> {
       database,
       user,
       error: err.message?.includes('ECONNREFUSED')
-        ? 'PostgreSQL local em standby (porta 5432)'
-        : err.message,
+        ? `ECONNREFUSED: Conexão recusada ao PostgreSQL local na porta ${port}`
+        : err.message || 'Erro de conexão com PostgreSQL',
       lastChecked: new Date().toISOString(),
     };
     return lastStatus;

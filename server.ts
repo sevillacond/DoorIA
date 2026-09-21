@@ -331,8 +331,110 @@ async function startServer() {
   }
 
   // ============================================================================
-  // HEALTHCHECK OFICIAL (POSTGRES / ASTERISK / DOCKER / PROD MONITORING)
+  // LIVENESS & READINESS & HEALTHCHECK OFICIAL
   // ============================================================================
+
+  // 1. Liveness Probe: responde se o processo Node.js está vivo
+  app.get(['/health/live', '/api/v1/health/live'], (req, res) => {
+    res.status(200).json({
+      status: 'alive',
+      service: 'dooria-core',
+      uptimeSeconds: Math.floor(process.uptime()),
+      timestamp: new Date().toISOString(),
+    });
+  });
+
+  // 2. Readiness Probe: só indica pronto quando componentes obrigatórios estão disponíveis
+  // Para physical_guarita e produção: PostgreSQL conectado + AMI autenticado + Config de produção válida
+  // REGRA DE OURO: JAMAIS executa PlayDTMF ou qualquer acionamento físico durante o readiness!
+  app.get(['/health/ready', '/api/v1/health/ready'], async (req, res) => {
+    const deployTarget = (process.env.DEPLOY_TARGET || '').trim();
+    const isPhysicalGuarita = deployTarget === 'physical_guarita' || deployTarget === 'guarita';
+    const isProduction = process.env.NODE_ENV === 'production';
+    const isStrict = isPhysicalGuarita || isProduction || process.env.STRICT_PRODUCTION_AUDIT === 'true';
+
+    // Checagem de Banco de Dados PostgreSQL 16 LTS
+    let dbConnected = false;
+    let dbDetails: any = null;
+    try {
+      const dbHealth = await checkPostgresHealth();
+      dbConnected = !!dbHealth && dbHealth.connected === true;
+      dbDetails = {
+        host: dbHealth?.host,
+        port: dbHealth?.port,
+        latencyMs: dbHealth?.latencyMs,
+        tablesCount: dbHealth?.tablesCount,
+      };
+    } catch (err: any) {
+      dbConnected = false;
+      dbDetails = { error: err.message || 'Falha ao consultar PostgreSQL' };
+    }
+
+    // Checagem de Asterisk AMI (Ping seguro sem acionamento)
+    let amiAuthenticated = false;
+    let amiDetails: any = null;
+    try {
+      const pingRes = await asteriskAmi.ping();
+      amiAuthenticated = pingRes.ok === true && asteriskAmi.isAuthenticated();
+      amiDetails = {
+        authenticated: asteriskAmi.isAuthenticated(),
+        latencyMs: pingRes.latencyMs,
+      };
+    } catch (err: any) {
+      amiAuthenticated = false;
+      amiDetails = { error: 'Asterisk AMI inalcançável ou rejeitado' };
+    }
+
+    // Validação de Configuração de Produção
+    let configValid = true;
+    let configErrors: string[] = [];
+    try {
+      const val = validateProductionConfig(isProduction);
+      configValid = val.valid;
+      configErrors = val.errors;
+    } catch (err: any) {
+      configValid = false;
+      configErrors = [err.message];
+    }
+
+    const allReady = dbConnected && amiAuthenticated && configValid;
+
+    if (isStrict && !allReady) {
+      const failureReasons: string[] = [];
+      if (!dbConnected) failureReasons.push('PostgreSQL local desconectado ou inalcançável.');
+      if (!amiAuthenticated) failureReasons.push('Asterisk AMI não autenticado ou indisponível.');
+      if (!configValid) failureReasons.push(`Configuração de produção inválida: ${configErrors.join('; ')}`);
+
+      return res.status(503).json({
+        ready: false,
+        status: 'not_ready',
+        service: 'dooria-core',
+        deployTarget: deployTarget || 'production',
+        database: dbConnected ? 'connected' : 'unavailable',
+        asteriskAmi: amiAuthenticated ? 'authenticated' : 'unavailable',
+        productionConfig: configValid ? 'valid' : 'invalid',
+        reasons: failureReasons,
+        details: {
+          database: dbDetails,
+          asteriskAmi: amiDetails,
+        },
+        timestamp: new Date().toISOString(),
+      });
+    }
+
+    return res.status(200).json({
+      ready: true,
+      status: 'ready',
+      service: 'dooria-core',
+      deployTarget: deployTarget || (isProduction ? 'production' : 'development'),
+      database: dbConnected ? 'connected' : 'standby',
+      asteriskAmi: amiAuthenticated ? 'authenticated' : 'offline',
+      productionConfig: configValid ? 'valid' : 'warning',
+      timestamp: new Date().toISOString(),
+    });
+  });
+
+  // 3. Healthcheck Geral / Legado (Compatibilidade mantida)
   app.get(['/api/v1/health', '/api/health'], async (req, res) => {
     try {
       const dbHealthy = await checkPostgresHealth();
@@ -353,7 +455,7 @@ async function startServer() {
         service: 'dooria-core',
         timestamp: new Date().toISOString(),
         uptimeSeconds: Math.floor(process.uptime()),
-        database: dbHealthy ? 'connected' : 'standby',
+        database: dbHealthy?.connected ? 'connected' : 'standby',
         asteriskAmi: amiStatus,
       });
     } catch {

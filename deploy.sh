@@ -128,11 +128,13 @@ echo -e "${YELLOW}[4/8] Compilando imagem do DoorIA Core...${NC}"
 $DOCKER_COMPOSE build dooria-app
 
 echo -e "${YELLOW}[5/8] Aplicando migrações do schema relacional (Drizzle ORM)...${NC}"
-# Executa migrações do banco com o container efêmero
-$DOCKER_COMPOSE run --rm -e NODE_ENV=production dooria-app npm run db:migrate || {
-    echo -e "${YELLOW}ℹ️ Migrações de schema concluídas ou dispensadas em modo standby.${NC}"
-}
-echo -e "${GREEN}✔ Migrações estruturais do banco de dados concluídas.${NC}"
+# Executa migrações do banco com o container efêmero com fail-fast estrito
+if ! $DOCKER_COMPOSE run --rm -e NODE_ENV=production dooria-app npm run db:migrate; then
+    echo -e "${RED}❌ ERRO FATAL: Falha ao aplicar migrações do banco de dados (Drizzle ORM).${NC}"
+    echo -e "${RED}O deploy foi sumariamente abortado para proteger a integridade da portaria.${NC}"
+    exit 1
+fi
+echo -e "${GREEN}✔ Migrações estruturais do banco de dados concluídas com sucesso.${NC}"
 echo ""
 
 # -------------------------------------------------------------------------
@@ -141,6 +143,7 @@ echo ""
 echo -e "${YELLOW}[6/8] Inicializando todos os serviços (Core, Asterisk, Go2RTC)...${NC}"
 
 # Provisiona manager.conf dinamicamente com as credenciais reais do .env (sem segredos em git)
+AMI_BINDADDR="${ASTERISK_AMI_BINDADDR:-0.0.0.0}"
 cat <<EOF > ./config/asterisk/manager.conf
 ; ==============================================================================
 ; ENLACE-DOORIA: ASTERISK MANAGEMENT INTERFACE (AMI) - CONFIGURAÇÃO SEGURA
@@ -150,13 +153,29 @@ cat <<EOF > ./config/asterisk/manager.conf
 [general]
 enabled = yes
 port = 5038
-bindaddr = 127.0.0.1
+bindaddr = ${AMI_BINDADDR}
 displayconnects = no
 
 [${ASTERISK_AMI_USERNAME}]
 secret = ${ASTERISK_AMI_SECRET}
 deny = 0.0.0.0/0.0.0.0
 permit = 127.0.0.1/255.255.255.255
+permit = 172.16.0.0/255.240.0.0
+EOF
+
+if [ -n "$LOCAL_SERVER_IP" ] && [ "$LOCAL_SERVER_IP" != "127.0.0.1" ]; then
+    echo "permit = ${LOCAL_SERVER_IP}/255.255.255.255" >> ./config/asterisk/manager.conf
+fi
+
+if [ -n "$ASTERISK_HOST" ] && [ "$ASTERISK_HOST" != "127.0.0.1" ] && [ "$ASTERISK_HOST" != "$LOCAL_SERVER_IP" ]; then
+    echo "permit = ${ASTERISK_HOST}/255.255.255.255" >> ./config/asterisk/manager.conf
+fi
+
+if [ -n "$ASTERISK_AMI_PERMIT" ] && [ "$ASTERISK_AMI_PERMIT" != "0.0.0.0/0.0.0.0" ] && [ "$ASTERISK_AMI_PERMIT" != "0.0.0.0/0" ]; then
+    echo "permit = ${ASTERISK_AMI_PERMIT}" >> ./config/asterisk/manager.conf
+fi
+
+cat <<EOF >> ./config/asterisk/manager.conf
 read = system,call,log,verbose,command,agent,user,config,dtmf,reporting,cdr,dialplan
 write = system,call,command,agent,user,originate
 EOF
@@ -167,7 +186,7 @@ echo -e "${GREEN}✔ Serviços orquestrados e em execução.${NC}"
 echo ""
 
 # -------------------------------------------------------------------------
-# ETAPA 7: VALIDAR QUE /api/v1/health RESPONDE 200
+# ETAPA 7: VALIDAR QUE /api/v1/health RESPONDE 200 (FAIL-FAST)
 # -------------------------------------------------------------------------
 echo -e "${YELLOW}[7/8] Verificando integridade da API (/api/v1/health)...${NC}"
 API_HEALTHY=false
@@ -185,7 +204,9 @@ done
 if [ "$API_HEALTHY" = true ]; then
     echo -e "${GREEN}✔ API DoorIA Core respondendo com sucesso (HTTP 200 OK)!${NC}"
 else
-    echo -e "${YELLOW}⚠️ Aviso: A API não respondeu HTTP 200 dentro do tempo limite. Verifique os logs do container.${NC}"
+    echo -e "${RED}❌ ERRO FATAL: A API DoorIA Core não respondeu HTTP 200 dentro do tempo limite (/api/v1/health).${NC}"
+    echo -e "${RED}O deploy foi abortado. Verifique os logs dos containers com: $DOCKER_COMPOSE logs dooria-app${NC}"
+    exit 1
 fi
 echo ""
 

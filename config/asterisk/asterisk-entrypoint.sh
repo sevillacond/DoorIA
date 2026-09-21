@@ -6,7 +6,15 @@ set -e
 # Injeta credenciais seguras do AMI a partir das variáveis de ambiente
 # ==============================================================================
 
+AMI_BINDADDR="${ASTERISK_AMI_BINDADDR:-0.0.0.0}"
+
 if [ -n "$ASTERISK_AMI_USERNAME" ] && [ -n "$ASTERISK_AMI_SECRET" ]; then
+  # Validação estrita de segurança: impede categoricamente exposição pública do AMI
+  if [ "$ASTERISK_AMI_PERMIT" = "0.0.0.0/0.0.0.0" ] || [ "$ASTERISK_AMI_PERMIT" = "0.0.0.0/0" ]; then
+    echo "❌ [Asterisk Entrypoint] ERRO DE SEGURANÇA: ASTERISK_AMI_PERMIT não pode permitir 0.0.0.0/0.0.0.0 (exposição pública proibida)." >&2
+    exit 1
+  fi
+
   cat <<EOF > /etc/asterisk/manager.conf
 ; ==============================================================================
 ; ENLACE-DOORIA: ASTERISK MANAGEMENT INTERFACE (AMI) - CONFIGURAÇÃO SEGURA
@@ -16,17 +24,37 @@ if [ -n "$ASTERISK_AMI_USERNAME" ] && [ -n "$ASTERISK_AMI_SECRET" ]; then
 [general]
 enabled = yes
 port = 5038
-bindaddr = 127.0.0.1
+bindaddr = ${AMI_BINDADDR}
 displayconnects = no
 
 [${ASTERISK_AMI_USERNAME}]
 secret = ${ASTERISK_AMI_SECRET}
 deny = 0.0.0.0/0.0.0.0
 permit = 127.0.0.1/255.255.255.255
-read = system,call,log,verbose,command,agent,user,config,dtmf,reporting,cdr,dialplan
-write = system,call,log,verbose,command,agent,user,config,dtmf,reporting,cdr,dialplan
+permit = 172.16.0.0/255.240.0.0
 EOF
-  echo "✔ [Asterisk Entrypoint] manager.conf configurado dinamicamente para o usuário '${ASTERISK_AMI_USERNAME}'."
+
+  # Permite conexão da interface do servidor local caso configurado
+  if [ -n "$LOCAL_SERVER_IP" ] && [ "$LOCAL_SERVER_IP" != "127.0.0.1" ]; then
+    echo "permit = ${LOCAL_SERVER_IP}/255.255.255.255" >> /etc/asterisk/manager.conf
+  fi
+
+  # Permite conexão através do ASTERISK_HOST caso configurado e distinto
+  if [ -n "$ASTERISK_HOST" ] && [ "$ASTERISK_HOST" != "127.0.0.1" ] && [ "$ASTERISK_HOST" != "$LOCAL_SERVER_IP" ]; then
+    echo "permit = ${ASTERISK_HOST}/255.255.255.255" >> /etc/asterisk/manager.conf
+  fi
+
+  # Permite subnet ou IP específico configurado por ASTERISK_AMI_PERMIT
+  if [ -n "$ASTERISK_AMI_PERMIT" ]; then
+    echo "permit = ${ASTERISK_AMI_PERMIT}" >> /etc/asterisk/manager.conf
+  fi
+
+  cat <<EOF >> /etc/asterisk/manager.conf
+read = system,call,log,verbose,command,agent,user,config,dtmf,reporting,cdr,dialplan
+write = system,call,command,agent,user,originate
+EOF
+
+  echo "✔ [Asterisk Entrypoint] manager.conf configurado dinamicamente para o usuário '${ASTERISK_AMI_USERNAME}' com bindaddr '${AMI_BINDADDR}' e regras de permit restritivas."
 fi
 
 # Garante permissões de execução no healthcheck

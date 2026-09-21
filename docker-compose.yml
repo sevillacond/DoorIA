@@ -100,6 +100,10 @@ services:
     environment:
       ASTERISK_AMI_USERNAME: "${ASTERISK_AMI_USERNAME:?Erro de Seguranca - ASTERISK_AMI_USERNAME e obrigatorio}"
       ASTERISK_AMI_SECRET: "${ASTERISK_AMI_SECRET:?Erro de Seguranca - ASTERISK_AMI_SECRET e obrigatorio}"
+      ASTERISK_AMI_BINDADDR: "${ASTERISK_AMI_BINDADDR:-0.0.0.0}"
+      ASTERISK_AMI_PERMIT: "${ASTERISK_AMI_PERMIT:-}"
+      LOCAL_SERVER_IP: "${LOCAL_SERVER_IP:-}"
+      ASTERISK_HOST: "${ASTERISK_HOST:-}"
     healthcheck:
       test: ["CMD-SHELL", "/etc/asterisk/healthcheck.sh || exit 1"]
       interval: 10s

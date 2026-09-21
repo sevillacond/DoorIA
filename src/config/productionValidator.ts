@@ -191,6 +191,11 @@ export function validateProductionConfig(isProduction = process.env.NODE_ENV ===
       errors.push('[CRÍTICO] ASTERISK_SIP_PORT deve ser uma porta SIP válida em produção (ex: 5060).');
     }
 
+    const asteriskAmiPermit = (process.env.ASTERISK_AMI_PERMIT || '').trim();
+    if (asteriskAmiPermit === '0.0.0.0/0.0.0.0' || asteriskAmiPermit === '0.0.0.0/0' || asteriskAmiPermit === '0.0.0.0') {
+      errors.push('[CRÍTICO] ASTERISK_AMI_PERMIT não pode permitir 0.0.0.0/0.0.0.0 (exposição pública do AMI proibida).');
+    }
+
     // 7. BLOQUEIO DE BYPASS HTTP CGI NO MODO FÍSICO DA GUARITA
     const deployTarget = (process.env.DEPLOY_TARGET || '').trim();
     const isPhysicalGuarita = deployTarget === 'physical_guarita' || deployTarget === 'guarita';
