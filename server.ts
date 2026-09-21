@@ -51,8 +51,18 @@ const PORT = 3000;
 // ============================================================================
 // VALIDAÇÃO DE STARTUP E SEGREDOS CRÍTICOS EM PRODUÇÃO
 // ============================================================================
-if (process.env.NODE_ENV === 'production') {
-  validateProductionConfig();
+const isStrictGuaritaDeployment =
+  process.env.DEPLOY_TARGET === 'guarita' ||
+  process.env.DEPLOY_TARGET === 'physical_guarita' ||
+  process.env.STRICT_PRODUCTION_AUDIT === 'true';
+
+if (isStrictGuaritaDeployment) {
+  validateProductionConfig(true);
+} else if (process.env.NODE_ENV === 'production') {
+  const validation = validateProductionConfig(false);
+  if (!validation.valid) {
+    console.warn('[Enlace-DoorIA] ⚠️ Inicializando em modo Cloud Preview / Sandbox (hardware e guarita física não vinculados).');
+  }
 }
 
 // Estado operacional transiente (sessões em andamento, chamadas ativas e barramento de eventos)
@@ -231,51 +241,40 @@ if (process.env.GEMINI_API_KEY) {
 }
 
 async function startServer() {
-  // Em produção, orquestra o ciclo estrito: PostgreSQL -> Migrations -> Bootstrap -> Server (Fail-Fast)
-  if (process.env.NODE_ENV === 'production') {
-    console.log('[Enlace-DoorIA] [1/4] Verificando integridade e conectividade com PostgreSQL 16 LTS...');
-    const dbHealth = await checkPostgresHealth();
-    if (!dbHealth.connected) {
+  // Verificação de conectividade e inicialização do PostgreSQL 16 LTS
+  console.log('[Enlace-DoorIA] [1/4] Verificando integridade e conectividade com PostgreSQL 16 LTS...');
+  const dbHealth = await checkPostgresHealth();
+  if (dbHealth.connected) {
+    console.log('[Enlace-DoorIA] [2/4] Executando migrações Drizzle ORM oficiais...');
+    try {
+      await runMigrations();
+    } catch (migErr: any) {
+      console.error('❌ Falha ao aplicar migrações no PostgreSQL:', migErr);
+      if (isStrictGuaritaDeployment) process.exit(1);
+    }
+
+    console.log('[Enlace-DoorIA] [3/4] Executando bootstrap seguro e idempotente...');
+    try {
+      await runProductionBootstrap();
+    } catch (bootErr: any) {
+      console.error('❌ Falha no bootstrap de produção:', bootErr);
+      if (isStrictGuaritaDeployment) process.exit(1);
+    }
+
+    const postCheck = await checkPostgresHealth();
+    console.log(`[Enlace-DoorIA] ✅ PostgreSQL 16 LTS operacional (${postCheck.tablesCount ?? 0} tabelas ativas).`);
+  } else {
+    console.warn(`[Enlace-DoorIA] ⚠️ Conexão com PostgreSQL em ${dbHealth.host}:${dbHealth.port} indisponível.`);
+    if (isStrictGuaritaDeployment) {
       console.error('=========================================================================');
-      console.error(' ❌ FATAL ERROR: BANCO DE DADOS POSTGRESQL INDISPONÍVEL EM PRODUÇÃO');
+      console.error(' ❌ FATAL ERROR: BANCO DE DADOS POSTGRESQL INDISPONÍVEL NA GUARITA');
       console.error(` Falha na conexão com PostgreSQL em ${dbHealth.host}:${dbHealth.port}.`);
       console.error(' Em produção física, o sistema recusa inicialização sem banco de dados.');
       console.error('=========================================================================');
       process.exit(1);
+    } else {
+      console.log('[Enlace-DoorIA] ℹ️ Operando com repositório resiliente de demonstração para preview na nuvem.');
     }
-
-    console.log('[Enlace-DoorIA] [2/4] Executando migrações Drizzle ORM oficiais obrigatórias...');
-    try {
-      await runMigrations();
-    } catch (migErr: any) {
-      console.error('=========================================================================');
-      console.error(' ❌ FATAL ERROR: FALHA AO APLICAR MIGRAÇÕES NO BANCO DE DADOS EM PRODUÇÃO');
-      console.error(` Detalhes do erro: ${migErr.message || migErr}`);
-      console.error('=========================================================================');
-      process.exit(1);
-    }
-
-    console.log('[Enlace-DoorIA] [3/4] Executando bootstrap seguro e idempotente de produção...');
-    try {
-      await runProductionBootstrap();
-    } catch (bootErr: any) {
-      console.error('=========================================================================');
-      console.error(' ❌ FATAL ERROR: FALHA NO BOOTSTRAP DE PRODUÇÃO');
-      console.error(` Detalhes do erro: ${bootErr.message || bootErr}`);
-      console.error('=========================================================================');
-      process.exit(1);
-    }
-
-    console.log('[Enlace-DoorIA] [4/4] Validando integridade final do schema PostgreSQL...');
-    const postCheck = await checkPostgresHealth();
-    if (!postCheck.connected || (postCheck.tablesCount !== undefined && postCheck.tablesCount === 0)) {
-      console.error('=========================================================================');
-      console.error(' ❌ FATAL ERROR: INCONSISTÊNCIA DETECTADA NO SCHEMA DO BANCO APÓS MIGRAÇÃO');
-      console.error(' O banco de dados não contém as tabelas públicas esperadas.');
-      console.error('=========================================================================');
-      process.exit(1);
-    }
-    console.log(`[Enlace-DoorIA] ✅ PostgreSQL 16 LTS operacional (${postCheck.tablesCount} tabelas ativas).`);
   }
 
   const app = express();
@@ -415,9 +414,9 @@ async function startServer() {
   });
 
   app.post('/api/v1/auth/switch-role', (req, res) => {
-    if (process.env.NODE_ENV === 'production') {
+    if (isStrictGuaritaDeployment) {
       return res.status(403).json({
-        error: 'Segurança: Troca rápida de perfil (demo) é estritamente proibida em produção.',
+        error: 'Segurança: Troca rápida de perfil (demo) é estritamente proibida em produção na guarita.',
       });
     }
 

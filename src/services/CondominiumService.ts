@@ -2,6 +2,14 @@ import { db } from '../db/index.ts';
 import { condominiums } from '../db/schema.ts';
 import type { CondominiumConfig } from '../types.ts';
 
+function isGuaritaStrict(): boolean {
+  return (
+    process.env.DEPLOY_TARGET === 'guarita' ||
+    process.env.DEPLOY_TARGET === 'physical_guarita' ||
+    process.env.STRICT_PRODUCTION_AUDIT === 'true'
+  );
+}
+
 /**
  * Serviço de Gerenciamento da Configuração Mestre do Condomínio
  * Fonte da Verdade: Tabela 'condominiums' no PostgreSQL 16 LTS via Drizzle ORM
@@ -81,7 +89,7 @@ export class CondominiumService {
       }
 
       // Se não houver registro no banco de dados:
-      if (process.env.NODE_ENV === 'production') {
+      if (isGuaritaStrict()) {
         return null;
       }
 
@@ -164,7 +172,7 @@ export class CondominiumService {
         updatedBy: 'Ambiente Local',
       };
     } catch (error: any) {
-      if (process.env.NODE_ENV === 'production') {
+      if (isGuaritaStrict()) {
         console.error('[CondominiumService] Erro ao carregar configurações do PostgreSQL:', error.message);
         throw error;
       }

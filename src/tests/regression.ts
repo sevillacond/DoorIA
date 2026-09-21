@@ -1294,6 +1294,43 @@ export async function runRegressionTests() {
   assert(rejectedA1Spurious, 'Matriz DTMF: código arbitrário *99 rejeitado');
   assert(matrixPlayDtmfCount === 0, 'Matriz DTMF: código arbitrário NUNCA chega ao PlayDTMF');
 
+  // A.2.1 Rejeição explícita de *10, 10, foo, vazio
+  let rejectedA1Star10 = false;
+  try {
+    await matrixAmi.injectDtmf('PJSIP/xpe_3115-00000999', '*10');
+  } catch {
+    rejectedA1Star10 = true;
+  }
+  assert(rejectedA1Star10, 'Matriz DTMF: *10 rejeitado obrigatoriamente');
+  assert(matrixPlayDtmfCount === 0, 'Matriz DTMF: *10 NUNCA chega ao PlayDTMF');
+
+  let rejectedA110 = false;
+  try {
+    await matrixAmi.injectDtmf('PJSIP/xpe_3115-00000999', '10');
+  } catch {
+    rejectedA110 = true;
+  }
+  assert(rejectedA110, 'Matriz DTMF: 10 rejeitado obrigatoriamente');
+  assert(matrixPlayDtmfCount === 0, 'Matriz DTMF: 10 NUNCA chega ao PlayDTMF');
+
+  let rejectedA1Foo = false;
+  try {
+    await matrixAmi.injectDtmf('PJSIP/xpe_3115-00000999', 'foo');
+  } catch {
+    rejectedA1Foo = true;
+  }
+  assert(rejectedA1Foo, 'Matriz DTMF: "foo" rejeitado obrigatoriamente');
+  assert(matrixPlayDtmfCount === 0, 'Matriz DTMF: "foo" NUNCA chega ao PlayDTMF');
+
+  let rejectedA1Empty = false;
+  try {
+    await matrixAmi.injectDtmf('PJSIP/xpe_3115-00000999', '');
+  } catch {
+    rejectedA1Empty = true;
+  }
+  assert(rejectedA1Empty, 'Matriz DTMF: vazio ("") rejeitado obrigatoriamente');
+  assert(matrixPlayDtmfCount === 0, 'Matriz DTMF: vazio NUNCA chega ao PlayDTMF');
+
   // A.3 Autorização de *07, 07, *08, 08
   matrixPlayDtmfCount = 0;
   const resA3Star07 = await matrixAmi.injectDtmf('PJSIP/xpe_3115-00000999', '*07');
@@ -1579,6 +1616,38 @@ export async function runRegressionTests() {
   assert(resF2.success === true, 'Matriz Físico: Comando aceito com sensor físico');
   assert(resF2.commandStatus === 'HARDWARE_CONFIRMED', 'Matriz Físico: Sensor físico em estado aberto -> HARDWARE_CONFIRMED');
   assert(resF2.hasPhysicalFeedbackSensor === true, 'Matriz Físico: hasPhysicalFeedbackSensor é true');
+
+  // F.3 PlayDTMF Success + sensor físico real = 'fechado' -> COMMAND_SENT (NUNCA HARDWARE_CONFIRMED)
+  const adapterWithSensorClosed = new RealHardwareAdapter();
+  (adapterWithSensorClosed as any).ami = amiFeedback;
+  (adapterWithSensorClosed as any).sensorReader = {
+    readSensor: async () => ({
+      hasPhysicalSensor: true,
+      state: 'fechado' as const,
+      source: 'reed_switch' as const,
+      measuredAt: new Date().toISOString(),
+      pinNumber: 1,
+    }),
+  };
+  const resF3 = await adapterWithSensorClosed.triggerRelay(testGate, 1);
+  assert(resF3.success === true, 'Matriz Físico: Comando aceito pelo Asterisk com sensor fechado');
+  assert(resF3.commandStatus === 'COMMAND_SENT', 'Matriz Físico: Sensor físico em estado fechado -> estritamente COMMAND_SENT');
+  assert(resF3.commandStatus !== 'HARDWARE_CONFIRMED', 'Matriz Físico: Sensor físico em estado fechado -> NUNCA HARDWARE_CONFIRMED');
+  assert(resF3.physicalSensorState === 'fechado', 'Matriz Físico: physicalSensorState preservado como fechado');
+
+  // F.4 PlayDTMF Success + falha de leitura do sensor (exceção/erro) -> HARDWARE_FAILURE (NUNCA HARDWARE_CONFIRMED)
+  const adapterSensorFail = new RealHardwareAdapter();
+  (adapterSensorFail as any).ami = amiFeedback;
+  (adapterSensorFail as any).sensorReader = {
+    readSensor: async () => {
+      throw new Error('Falha de timeout no barramento I2C/GPIO do sensor');
+    },
+  };
+  const resF4 = await adapterSensorFail.triggerRelay(testGate, 1);
+  assert(resF4.success === false, 'Matriz Físico: Falha no sensor retorna success: false');
+  assert(resF4.commandStatus === 'HARDWARE_FAILURE', 'Matriz Físico: Falha de leitura do sensor -> estritamente HARDWARE_FAILURE');
+  assert(resF4.commandStatus !== 'HARDWARE_CONFIRMED', 'Matriz Físico: Falha de leitura do sensor -> NUNCA HARDWARE_CONFIRMED');
+  assert(resF4.hasPhysicalFeedbackSensor === false, 'Matriz Físico: hasPhysicalFeedbackSensor é false em falha de leitura');
 
   console.log('\n===============================================================');
   console.log(`🎉 TODOS OS ${passedTests}/${totalTests} TESTES DE SEGURANÇA E HARDWARE PASSARAM COM SUCESSO!`);

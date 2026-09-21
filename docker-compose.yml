@@ -38,6 +38,8 @@ services:
         condition: service_healthy
     environment:
       NODE_ENV: production
+      DEPLOY_TARGET: physical_guarita
+      STRICT_PRODUCTION_AUDIT: "true"
       SESSION_SECRET: ${SESSION_SECRET:?Erro de Seguranca: SESSION_SECRET e estritamente obrigatorio e deve ser configurado no arquivo .env}
       CONDO_ID: ${CONDO_ID:-condo-master}
       CONDO_CNPJ: ${CONDO_CNPJ:?Erro de Seguranca: CONDO_CNPJ e estritamente obrigatorio em producao}
