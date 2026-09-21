@@ -12,6 +12,7 @@ import { sanitizeRtspUrl, sanitizeCameraForClient } from '../utils/rtspSanitizer
 import { validateProductionConfig } from '../config/productionValidator.ts';
 import { AsteriskAMI } from '../services/AsteriskAMI.ts';
 import { AuditService } from '../services/AuditService.ts';
+import { verifyPostgresStartupSequence } from '../db/postgres.ts';
 import type { FinancialBill, Gate, UserSession } from '../types.ts';
 
 let passedTests = 0;
@@ -1072,9 +1073,26 @@ export async function runRegressionTests() {
     } catch (err: any) {
       failedGuaritaHttpCgi = true;
       assert(err.message.includes('STARTUP FAILURE'), 'Cenário 4.6: Startup cancelado para physical_guarita + http_cgi');
-      assert(err.message.includes('TRIGGER_METHOD=http_cgi é estritamente proibido'), 'Cenário 4.6: Erro explícito de bloqueio do bypass HTTP CGI no modo físico');
+      assert(
+        err.message.includes('TRIGGER_METHOD=http_cgi is not permitted when DEPLOY_TARGET=physical_guarita') ||
+          err.message.includes('TRIGGER_METHOD=http_cgi'),
+        'Cenário 4.6: Erro explícito de bloqueio do bypass HTTP CGI no modo físico'
+      );
     }
     assert(failedGuaritaHttpCgi, 'Cenário 4.6: Falha obrigatória se DEPLOY_TARGET=physical_guarita tentar usar TRIGGER_METHOD=http_cgi');
+
+    // 4.7 PERMITIDO FORA DO MODO FÍSICO: DEPLOY_TARGET=demo + TRIGGER_METHOD=http_cgi -> NÃO bloqueado por regra de guarita
+    const envDemoHttpCgi = { ...baseValidProdEnv, DEPLOY_TARGET: 'demo', TRIGGER_METHOD: 'http_cgi' };
+    process.env = envDemoHttpCgi as any;
+    let allowedDemoHttpCgi = true;
+    try {
+      validateProductionConfig(true);
+    } catch (err: any) {
+      if (err.message.includes('TRIGGER_METHOD=http_cgi is not permitted')) {
+        allowedDemoHttpCgi = false;
+      }
+    }
+    assert(allowedDemoHttpCgi, 'Cenário 4.7: CGI permitido fora do modo físico da guarita (DEPLOY_TARGET=demo)');
   } finally {
     process.env = backupProdEnv;
   }
@@ -1297,7 +1315,7 @@ export async function runRegressionTests() {
   assert(rejectedA109, 'Matriz DTMF: 09 rejeitado obrigatoriamente por injectDtmf');
   assert(matrixPlayDtmfCount === 0, 'Matriz DTMF: 09 NUNCA chega ao PlayDTMF');
 
-  // A.2 Rejeição de códigos espúrios (*99, 123, etc)
+  // A.2 Rejeição de códigos espúrios (*99, 99, 123, etc)
   let rejectedA1Spurious = false;
   try {
     await matrixAmi.injectDtmf('PJSIP/xpe_3115-00000999', '*99');
@@ -1306,6 +1324,15 @@ export async function runRegressionTests() {
   }
   assert(rejectedA1Spurious, 'Matriz DTMF: código arbitrário *99 rejeitado');
   assert(matrixPlayDtmfCount === 0, 'Matriz DTMF: código arbitrário NUNCA chega ao PlayDTMF');
+
+  let rejectedA199 = false;
+  try {
+    await matrixAmi.injectDtmf('PJSIP/xpe_3115-00000999', '99');
+  } catch {
+    rejectedA199 = true;
+  }
+  assert(rejectedA199, 'Matriz DTMF: código arbitrário 99 rejeitado');
+  assert(matrixPlayDtmfCount === 0, 'Matriz DTMF: código arbitrário 99 NUNCA chega ao PlayDTMF');
 
   // A.2.1 Rejeição explícita de *10, 10, foo, vazio
   let rejectedA1Star10 = false;
@@ -1679,6 +1706,86 @@ export async function runRegressionTests() {
     process.env.DEPLOY_TARGET = prevDeployTarget;
     process.env.TRIGGER_METHOD = prevTriggerMethod;
   }
+
+  // F.6 CGI permitido fora do modo físico da guarita (DEPLOY_TARGET=cloud_demo)
+  try {
+    process.env.DEPLOY_TARGET = 'cloud_demo';
+    process.env.TRIGGER_METHOD = 'http_cgi';
+
+    const adapterCgiDemo = new RealHardwareAdapter();
+    const gateHttpCgi: Gate = {
+      ...testGate,
+      relayIp: '127.0.0.1',
+    };
+    // Fora de physical_guarita, o adapter não bloqueia preventivamente com 403
+    const resF6 = await adapterCgiDemo.triggerRelay(gateHttpCgi, 1);
+    assert(resF6.statusCode !== 403, 'Matriz Físico: Modo fora da guarita (cloud_demo) NÃO é bloqueado com 403');
+  } finally {
+    process.env.DEPLOY_TARGET = prevDeployTarget;
+    process.env.TRIGGER_METHOD = prevTriggerMethod;
+  }
+
+  // --- CENÁRIO G: VALIDAÇÃO FINAL DO POSTGRESQL (postCheck fatal) ---
+  // G.1: postCheck.connected !== true -> Lança STARTUP FAILURE obrigatoriamente
+  let postCheckFailedFatal = false;
+  try {
+    let callCount = 0;
+    await verifyPostgresStartupSequence({
+      checkHealth: async () => {
+        callCount++;
+        if (callCount === 1) {
+          // 1º check (inicial): conectado com sucesso
+          return {
+            connected: true,
+            host: '127.0.0.1',
+            port: 5432,
+            database: 'dooria_db',
+            user: 'dooria',
+            latencyMs: 1,
+            tablesCount: 8,
+            lastChecked: new Date().toISOString(),
+          };
+        }
+        // 2º check (pós-bootstrap / postCheck): banco desconectou inesperadamente
+        return {
+          connected: false,
+          host: '127.0.0.1',
+          port: 5432,
+          database: 'dooria_db',
+          user: 'dooria',
+          error: 'Conexão recusada após migrações',
+          lastChecked: new Date().toISOString(),
+        };
+      },
+      runMigrations: async () => {},
+      runBootstrap: async () => {},
+      isStrict: true,
+    });
+  } catch (err: any) {
+    postCheckFailedFatal = true;
+    assert(err.message.includes('STARTUP FAILURE'), 'Matriz PostgreSQL: Falha no postCheck dispara STARTUP FAILURE');
+    assert(err.message.includes('postCheck.connected !== true'), 'Matriz PostgreSQL: Mensagem segura indicando falha na validação final');
+  }
+  assert(postCheckFailedFatal, 'Matriz PostgreSQL: postCheck desconectado impede obrigatoriamente a inicialização do servidor HTTP');
+
+  // G.2: postCheck.connected === true -> Sucesso comprovado
+  const healthyStartup = await verifyPostgresStartupSequence({
+    checkHealth: async () => ({
+      connected: true,
+      host: '127.0.0.1',
+      port: 5432,
+      database: 'dooria_db',
+      user: 'dooria',
+      latencyMs: 1,
+      tablesCount: 14,
+      lastChecked: new Date().toISOString(),
+    }),
+    runMigrations: async () => {},
+    runBootstrap: async () => {},
+    isStrict: true,
+  });
+  assert(healthyStartup.success === true, 'Matriz PostgreSQL: postCheck com sucesso permite inicialização');
+  assert(healthyStartup.tablesCount === 14, 'Matriz PostgreSQL: Contagem de tabelas preservada');
 
   console.log('\n===============================================================');
   console.log(`🎉 TODOS OS ${passedTests}/${totalTests} TESTES DE SEGURANÇA E HARDWARE PASSARAM COM SUCESSO!`);

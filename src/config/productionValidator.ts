@@ -198,14 +198,17 @@ export function validateProductionConfig(isProduction = process.env.NODE_ENV ===
 
     if (isPhysicalGuarita && triggerMethod === 'http_cgi') {
       errors.push(
-        `[CRÍTICO] TRIGGER_METHOD=http_cgi é estritamente proibido quando DEPLOY_TARGET=${deployTarget}. O modo físico da guarita exige obrigatoriamente o fluxo canônico oficial via XPE 3115-IP / PJSIP / Asterisk AMI PlayDTMF (*07/*08). Bypass HTTP CGI rejeitado.`
+        `[CRÍTICO] TRIGGER_METHOD=http_cgi is not permitted when DEPLOY_TARGET=${deployTarget}. Use Asterisk AMI + PJSIP PlayDTMF (*07/*08). Bypass HTTP CGI rejeitado.`
       );
     }
   }
 
   const valid = errors.length === 0;
 
-  if (!valid && isProduction) {
+  const deployTarget = (process.env.DEPLOY_TARGET || '').trim();
+  const isPhysicalGuarita = deployTarget === 'physical_guarita' || deployTarget === 'guarita';
+
+  if (!valid && (isProduction || isPhysicalGuarita)) {
     const errorLog = [
       '=========================================================================',
       ' ❌ FATAL STARTUP ERROR: FALHA NA VALIDAÇÃO DE CONFIGURAÇÃO DE PRODUÇÃO',

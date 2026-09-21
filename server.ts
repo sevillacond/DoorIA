@@ -30,7 +30,7 @@ import type {
   CondominiumConfig,
   XpeConfig,
 } from './src/types.ts';
-import { checkPostgresHealth } from './src/db/postgres.ts';
+import { checkPostgresHealth, verifyPostgresStartupSequence } from './src/db/postgres.ts';
 import { AuditService } from './src/services/AuditService.ts';
 import { PolicyEngine } from './src/services/PolicyEngine.ts';
 import { GateControlService } from './src/services/GateControlService.ts';
@@ -243,38 +243,26 @@ if (process.env.GEMINI_API_KEY) {
 async function startServer() {
   // Verificação de conectividade e inicialização do PostgreSQL 16 LTS
   console.log('[Enlace-DoorIA] [1/4] Verificando integridade e conectividade com PostgreSQL 16 LTS...');
-  const dbHealth = await checkPostgresHealth();
-  if (dbHealth.connected) {
-    console.log('[Enlace-DoorIA] [2/4] Executando migrações Drizzle ORM oficiais...');
-    try {
-      await runMigrations();
-    } catch (migErr: any) {
-      console.error('❌ Falha ao aplicar migrações no PostgreSQL:', migErr);
-      if (isStrictGuaritaDeployment) process.exit(1);
-    }
+  try {
+    const startupResult = await verifyPostgresStartupSequence({
+      checkHealth: checkPostgresHealth,
+      runMigrations,
+      runBootstrap: runProductionBootstrap,
+      isStrict: isStrictGuaritaDeployment || process.env.NODE_ENV === 'production',
+    });
 
-    console.log('[Enlace-DoorIA] [3/4] Executando bootstrap seguro e idempotente...');
-    try {
-      await runProductionBootstrap();
-    } catch (bootErr: any) {
-      console.error('❌ Falha no bootstrap de produção:', bootErr);
-      if (isStrictGuaritaDeployment) process.exit(1);
-    }
-
-    const postCheck = await checkPostgresHealth();
-    console.log(`[Enlace-DoorIA] ✅ PostgreSQL 16 LTS operacional (${postCheck.tablesCount ?? 0} tabelas ativas).`);
-  } else {
-    console.warn(`[Enlace-DoorIA] ⚠️ Conexão com PostgreSQL em ${dbHealth.host}:${dbHealth.port} indisponível.`);
-    if (isStrictGuaritaDeployment) {
-      console.error('=========================================================================');
-      console.error(' ❌ FATAL ERROR: BANCO DE DADOS POSTGRESQL INDISPONÍVEL NA GUARITA');
-      console.error(` Falha na conexão com PostgreSQL em ${dbHealth.host}:${dbHealth.port}.`);
-      console.error(' Em produção física, o sistema recusa inicialização sem banco de dados.');
-      console.error('=========================================================================');
-      process.exit(1);
+    if (startupResult.success) {
+      console.log(`[Enlace-DoorIA] ✅ PostgreSQL 16 LTS operacional (${startupResult.tablesCount ?? 0} tabelas ativas).`);
     } else {
       console.log('[Enlace-DoorIA] ℹ️ Operando com repositório resiliente de demonstração para preview na nuvem.');
     }
+  } catch (dbFatalErr: any) {
+    console.error('=========================================================================');
+    console.error(' ❌ FATAL ERROR: FALHA NO STARTUP DO POSTGRESQL (STARTUP FAILURE)');
+    console.error(` ${dbFatalErr.message}`);
+    console.error(' O servidor HTTP NÃO será iniciado para proteger a integridade dos dados.');
+    console.error('=========================================================================');
+    process.exit(1);
   }
 
   const app = express();
