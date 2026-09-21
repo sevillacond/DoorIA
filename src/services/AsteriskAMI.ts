@@ -428,15 +428,7 @@ export class AsteriskManager extends EventEmitter {
    * Regra Absoluta: Falha de conexão AMI ou falha de CoreShowChannels -> Retorna [] -> findActiveChannelForXpe retorna null -> HARDWARE_FAILURE.
    */
   public async getActiveChannelsForPhysicalAction(): Promise<ActiveChannelInfo[]> {
-    // Suporte a mock de testes em getActiveChannels onde não há simulação de falha de CoreShowChannels
-    if (
-      Object.prototype.hasOwnProperty.call(this, 'getActiveChannels') &&
-      !Object.prototype.hasOwnProperty.call(this, 'getActiveChannelsForPhysicalAction')
-    ) {
-      return (this as any).getActiveChannels();
-    }
-
-    // 1. Verificar conexão AMI e autenticação
+    // 1. Exigir AMI conectado e autenticado
     if (!this.isConnected() || !this.isAuthenticated()) {
       const ok = await this.connect();
       if (!ok || !this.isConnected() || !this.isAuthenticated()) {
@@ -450,15 +442,15 @@ export class AsteriskManager extends EventEmitter {
       const res = await this.executeSafeAction('CoreShowChannels');
       // 3. Exigir resposta estritamente válida
       if (res.success && res.response && Array.isArray(res.response.channels)) {
-        // 4. Usar somente os canais retornados nessa consulta em tempo real
+        // 4. Usar somente os canais retornados pela consulta atual
         return res.response.channels;
       }
       console.warn('[Asterisk AMI Security] ❌ Resposta inválida ou incompleta em CoreShowChannels para ação física. Cache sumariamente ignorado.');
-      // 5. NUNCA fazer fallback para cache local 'activeChannels'
+      // 5. NUNCA consultar "activeChannels" nem "getActiveChannels()" como fallback
       return [];
     } catch (err: any) {
       console.warn(`[Asterisk AMI Security] ❌ Falha na execução de CoreShowChannels: ${err.message}. Cache sumariamente ignorado.`);
-      // 6. Falhar com segurança se a consulta não puder ser realizada
+      // 6. Retorna lista vazia em caso de erro na consulta
       return [];
     }
   }
@@ -762,6 +754,20 @@ export class AsteriskManager extends EventEmitter {
       throw new Error(`[Asterisk AMI Security] Ação não permitida na Whitelist: ${action}`);
     }
 
+    // 1.1 Se a ação for PlayDTMF, validação estrita dos dígitos permitidos (*07, *08, 07, 08).
+    // Rejeição sumária de *09, 09 ou dígitos não homologados.
+    if (action === 'PlayDTMF') {
+      const allowedDigits = ['07', '08', '*07', '*08'];
+      const rawDigit = (params.Digit || '').trim();
+      if (!allowedDigits.includes(rawDigit)) {
+        console.warn(`[Asterisk AMI Security] ❌ PlayDTMF com dígito '${rawDigit}' rejeitado. Permitidos: ${allowedDigits.join(', ')}`);
+        return {
+          success: false,
+          message: `Dígito DTMF '${rawDigit}' não autorizado para acionamento de portão físico.`,
+        };
+      }
+    }
+
     // 2. Se não estiver conectado, tenta estabelecer conexão real
     if (!this.isConnected()) {
       const ok = await this.connect();
@@ -858,16 +864,22 @@ export class AsteriskManager extends EventEmitter {
       throw new Error(`[Asterisk AMI Security] Canal inválido para PlayDTMF: deve ser um canal PJSIP real ativo identificado dinamicamente (recebido: '${sipChannel || 'indefinido'}')`);
     }
 
-    // Códigos permitidos para acionamento de portão e relé no DoorIA
-    const allowedGateDtmf = ['*07', '*08', '07', '08', '*09', '09'];
+    // Códigos permitidos para acionamento de portão e relé no DoorIA (*07 pedestre, *08 garagem)
+    const allowedGateDtmf = ['*07', '*08', '07', '08'];
     if (!allowedGateDtmf.includes(digit)) {
       throw new Error(`[Asterisk AMI Security] Dígito DTMF não autorizado para acionamento de portão: ${digit}. Permitidos: *07 (pedestre) ou *08 (garagem).`);
+    }
+
+    // Validação Anti-Bypass: O canal deve ser comprovadamente correlacionado à chamada ativa do XPE em tempo real
+    const validatedChannel = await this.findActiveChannelForXpe({ preferredChannel: trimmedChannel });
+    if (!validatedChannel) {
+      throw new Error(`[Asterisk AMI Security] Canal PJSIP '${trimmedChannel}' não comprovado como pertencente à chamada ativa do XPE no Asterisk. PlayDTMF recusado.`);
     }
 
     // No Asterisk AMI PlayDTMF, o parâmetro Digit recebe '07' ou '08'
     const cleanDigit = digit.replace('*', '');
     const result = await this.executeSafeAction('PlayDTMF', {
-      Channel: trimmedChannel,
+      Channel: validatedChannel,
       Digit: cleanDigit,
       Duration: '500',
     });

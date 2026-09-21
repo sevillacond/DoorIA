@@ -89,6 +89,32 @@ export class RealHardwareAdapter implements HardwareAdapter {
     try {
       console.log(`[REAL_HARDWARE] [${correlationId || 'N/A'}] Disparando pulso elétrico para relé pino ${gate.relayPin} em ${relayIp} (DTMF: ${gate.dtmfCode})...`);
 
+      // Validação estrita do código DTMF de portão físico (*07, *08, 07, 08).
+      // Códigos como *09 e 09 são estritamente proibidos e resultam em HARDWARE_FAILURE imediato sem acionar PlayDTMF.
+      const allowedGateDtmf = ['*07', '*08', '07', '08'];
+      const normalizedDtmf = (gate.dtmfCode || '').trim();
+      if (!allowedGateDtmf.includes(normalizedDtmf)) {
+        const errDetail = `Código DTMF '${gate.dtmfCode}' não autorizado para acionamento de portão físico (permitidos apenas *07/*08).`;
+        console.warn(`[REAL_HARDWARE] [${correlationId || 'N/A'}] ❌ ${errDetail} PlayDTMF abortado.`);
+        return {
+          success: false,
+          executed: false,
+          isSimulated: false,
+          hardwareMode: 'real_hardware',
+          commandStatus: 'HARDWARE_FAILURE',
+          message: `Falha de segurança: ${errDetail}`,
+          statusCode: 400,
+          relayPin: gate.relayPin,
+          relayIp: relayIp || '',
+          pulseDurationMs: 0,
+          timestamp,
+          hasPhysicalFeedbackSensor: false,
+          physicalSensorState: 'desconhecido',
+          correlationId,
+          failureDetails: errDetail,
+        };
+      }
+
       let commandExecuted = false;
       let commandMethod = '';
       const failureReasons: string[] = [];

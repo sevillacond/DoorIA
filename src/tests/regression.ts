@@ -49,6 +49,38 @@ function simulateRoleMiddleware(user: UserSession | undefined, allowedRoles: str
   return { status: 200 };
 }
 
+/**
+ * Configura um mock fiel e estrito de sessão AsteriskAMI para canais em tempo real (CoreShowChannels).
+ * Garante que getActiveChannelsForPhysicalAction() execute a validação real de CoreShowChannels
+ * sem que nenhum atalho ou exceção precise existir no código de produção de AsteriskAMI.ts.
+ */
+function setAmiLiveChannels(
+  ami: AsteriskAMI,
+  channels: any[],
+  customActionHandler?: (action: string, params?: any) => any
+) {
+  (ami as any).connect = async () => true;
+  (ami as any).isConnected = () => true;
+  (ami as any).isAuthenticated = () => true;
+  const originalExecute = (ami as any).executeSafeAction?.bind(ami);
+  (ami as any).executeSafeAction = async (action: string, params?: any) => {
+    if (action === 'CoreShowChannels') {
+      return { success: true, response: { channels } };
+    }
+    if (customActionHandler) {
+      const customRes = await customActionHandler(action, params);
+      if (customRes !== undefined) return customRes;
+    }
+    if (action === 'PlayDTMF') {
+      return { success: true, message: 'PlayDTMF simulated' };
+    }
+    if (originalExecute) {
+      return originalExecute(action, params);
+    }
+    return { success: true, message: 'Action executed' };
+  };
+}
+
 export async function runRegressionTests() {
   console.log('===============================================================');
   console.log('🧪 INICIANDO SUÍTE DE TESTES DE REGRESSÃO E SEGURANÇA (DOORIA)');
@@ -395,25 +427,25 @@ export async function runRegressionTests() {
 
   // 8.1 Validação rigorosa de canal preferencial (Requisito 5)
   const testAmi = new AsteriskAMI('127.0.0.1', 5038, 'test', 'test');
-  (testAmi as any).getActiveChannels = async () => [
+  setAmiLiveChannels(testAmi, [
     { channel: 'PJSIP/xpe_3115-0000001a', state: 'Up', channelStateDesc: 'Up', callerIdNum: '8000', connectedLineNum: '101', linkedid: 'link-101' },
     { channel: 'PJSIP/ramal_101-0000001b', state: 'Up', channelStateDesc: 'Up', callerIdNum: '101', connectedLineNum: '8000', linkedid: 'link-101' },
-  ];
+  ]);
 
   // Canal preferencial legítimo que realmente existe no Asterisk e pertence à chamada
   const resolvedValidPreferred = await testAmi.findActiveChannelForXpe({ preferredChannel: 'PJSIP/xpe_3115-0000001a' });
   assert(resolvedValidPreferred === 'PJSIP/xpe_3115-0000001a', 'Canal preferencial existente e ativo é validado com sucesso');
 
   // Canal preferencial forjado/inexistente NÃO é aceito cegamente
-  (testAmi as any).getActiveChannels = async () => [];
+  setAmiLiveChannels(testAmi, []);
   const resolvedFakePreferred = await testAmi.findActiveChannelForXpe({ preferredChannel: 'PJSIP/custom_trunk_fantasma' });
   assert(resolvedFakePreferred === null, 'Canal preferencial inexistente no Asterisk é rejeitado (Anti-Bypass)');
 
   // Restaura canais do XPE para os próximos testes
-  (testAmi as any).getActiveChannels = async () => [
+  setAmiLiveChannels(testAmi, [
     { channel: 'PJSIP/xpe_3115-0000001a', state: 'Up', channelStateDesc: 'Up', callerIdNum: '8000', connectedLineNum: '101', linkedid: 'link-101' },
     { channel: 'PJSIP/ramal_202-0000001b', state: 'Ring', channelStateDesc: 'Ring', callerIdNum: '202', connectedLineNum: '8000', linkedid: 'link-202' },
-  ];
+  ]);
 
   // 8.2 Resolução por identificador do XPE
   const resolvedByXpe = await testAmi.findActiveChannelForXpe({ xpeIdentifier: '8000' });
@@ -424,12 +456,15 @@ export async function runRegressionTests() {
   assert(resolvedByTarget === 'PJSIP/xpe_3115-0000001a', 'Roteamento dinâmico pelo número do apartamento em chamada');
 
   // 8.4 Ausência de canal ativo retorna null (sem inventar canais fictícios)
-  (testAmi as any).getActiveChannels = async () => [];
+  setAmiLiveChannels(testAmi, []);
   const resolvedNull = await testAmi.findActiveChannelForXpe();
   assert(resolvedNull === null, 'Sem chamada ativa retorna null (Anti-Invenção de canais)');
 
   // 8.5 Teste do Ping AMI seguro (mockando resposta Ping/Pong)
-  (testAmi as any).executeSafeAction = async () => ({ success: true, message: 'Pong' });
+  (testAmi as any).executeSafeAction = async (action: string) => {
+    if (action === 'Ping') return { success: true, message: 'Pong' };
+    return { success: true };
+  };
   const pingResult = await testAmi.ping();
   assert(pingResult.ok === true, 'Ping AMI reporta status booleano ok: true quando Asterisk responde Pong');
   assert(typeof pingResult.latencyMs === 'number' && pingResult.latencyMs >= 0, 'Ping AMI calcula tempo de resposta (latência em ms)');
@@ -480,14 +515,13 @@ export async function runRegressionTests() {
 
   // CASO 1: Canal PJSIP válido e ativo -> PlayDTMF executado -> Retorno COMMAND_SENT
   const case1Ami = new AsteriskAMI('127.0.0.1', 5038, 'admin', 'secret');
-  (case1Ami as any).getActiveChannels = async () => [
-    { channel: 'PJSIP/xpe_3115-0000004f', state: 'Up', channelStateDesc: 'Up', callerIdNum: '8000', connectedLineNum: '101', linkedid: 'link-4f' },
-  ];
   let case1CapturedAction: any = null;
-  (case1Ami as any).executeSafeAction = async (action: string, params: any) => {
+  setAmiLiveChannels(case1Ami, [
+    { channel: 'PJSIP/xpe_3115-0000004f', state: 'Up', channelStateDesc: 'Up', callerIdNum: '8000', connectedLineNum: '101', linkedid: 'link-4f' },
+  ], (action: string, params: any) => {
     case1CapturedAction = { action, params };
     return { success: true, message: 'DTMF successfully queued' };
-  };
+  });
 
   const case1Adapter = new RealHardwareAdapter();
   (case1Adapter as any).ami = case1Ami;
@@ -511,12 +545,11 @@ export async function runRegressionTests() {
 
   // CASO 2: Canal preferencial inexistente -> NÃO enviar PlayDTMF -> HARDWARE_FAILURE
   const case2Ami = new AsteriskAMI('127.0.0.1', 5038, 'admin', 'secret');
-  (case2Ami as any).getActiveChannels = async () => []; // Nenhum canal ativo no Asterisk
   let case2PlayDtmfCalled = false;
-  (case2Ami as any).executeSafeAction = async (action: string) => {
+  setAmiLiveChannels(case2Ami, [], (action: string) => {
     if (action === 'PlayDTMF') case2PlayDtmfCalled = true;
     return { success: true };
-  };
+  });
 
   const case2Adapter = new RealHardwareAdapter();
   (case2Adapter as any).ami = case2Ami;
@@ -537,16 +570,14 @@ export async function runRegressionTests() {
 
   // CASO 3: Nenhuma chamada XPE ativa (somente ramais terceiros) -> NÃO escolher aleatório -> HARDWARE_FAILURE
   const case3Ami = new AsteriskAMI('127.0.0.1', 5038, 'admin', 'secret');
-  // Canais ativos entre moradores (ramal 201 falando com 202, NENHUM XPE)
-  (case3Ami as any).getActiveChannels = async () => [
+  let case3PlayDtmfCalled = false;
+  setAmiLiveChannels(case3Ami, [
     { channel: 'PJSIP/ramal_201-000000aa', state: 'Up', channelStateDesc: 'Up', callerIdNum: '201', connectedLineNum: '202' },
     { channel: 'PJSIP/ramal_202-000000bb', state: 'Up', channelStateDesc: 'Up', callerIdNum: '202', connectedLineNum: '201' },
-  ];
-  let case3PlayDtmfCalled = false;
-  (case3Ami as any).executeSafeAction = async (action: string) => {
+  ], (action: string) => {
     if (action === 'PlayDTMF') case3PlayDtmfCalled = true;
     return { success: true };
-  };
+  });
 
   const case3Adapter = new RealHardwareAdapter();
   (case3Adapter as any).ami = case3Ami;
@@ -566,10 +597,9 @@ export async function runRegressionTests() {
 
   // CASO 4: Sensor físico inexistente -> COMMAND_SENT e nunca HARDWARE_CONFIRMED
   const case4Ami = new AsteriskAMI('127.0.0.1', 5038, 'admin', 'secret');
-  (case4Ami as any).getActiveChannels = async () => [
+  setAmiLiveChannels(case4Ami, [
     { channel: 'PJSIP/xpe_3115-00000055', state: 'Up', channelStateDesc: 'Up', callerIdNum: '8000', connectedLineNum: '102' },
-  ];
-  (case4Ami as any).executeSafeAction = async () => ({ success: true, message: 'OK' });
+  ]);
 
   const case4Adapter = new RealHardwareAdapter();
   (case4Adapter as any).ami = case4Ami;
@@ -592,10 +622,9 @@ export async function runRegressionTests() {
 
   // CASO 5: Sensor físico realmente confirma abertura -> HARDWARE_CONFIRMED
   const case5Ami = new AsteriskAMI('127.0.0.1', 5038, 'admin', 'secret');
-  (case5Ami as any).getActiveChannels = async () => [
+  setAmiLiveChannels(case5Ami, [
     { channel: 'PJSIP/xpe_3115-00000055', state: 'Up', channelStateDesc: 'Up', callerIdNum: '8000', connectedLineNum: '102' },
-  ];
-  (case5Ami as any).executeSafeAction = async () => ({ success: true, message: 'OK' });
+  ]);
 
   const case5Adapter = new RealHardwareAdapter();
   (case5Adapter as any).ami = case5Ami;
@@ -651,7 +680,7 @@ export async function runRegressionTests() {
 
   // Teste 2: Correlação Estrita de UniqueID e LinkedID no AsteriskAMI
   const amiCorrelationTest = new AsteriskAMI('127.0.0.1', 5038, 'admin', 'secret');
-  (amiCorrelationTest as any).getActiveChannels = async () => [
+  setAmiLiveChannels(amiCorrelationTest, [
     {
       channel: 'PJSIP/xpe_3115-00000088',
       state: 'Up',
@@ -670,7 +699,7 @@ export async function runRegressionTests() {
       uniqueId: 'ast-unique-88888.999',
       linkedId: 'ast-unique-88888.999',
     },
-  ];
+  ]);
 
   const matchedByUniqueId = await amiCorrelationTest.findActiveChannelForXpe({
     uniqueId: 'ast-unique-12345.678',
@@ -711,7 +740,7 @@ export async function runRegressionTests() {
   const suiteAmi = new AsteriskAMI('127.0.0.1', 5038, 'admin', 'secret');
 
   // TESTE 1: Chamada XPE com UniqueID / LinkedID -> Canal PJSIP correto identificado -> PlayDTMF permitido
-  (suiteAmi as any).getActiveChannels = async () => [
+  setAmiLiveChannels(suiteAmi, [
     {
       channel: 'PJSIP/xpe_3115-00000101',
       channelStateDesc: 'Up',
@@ -728,7 +757,7 @@ export async function runRegressionTests() {
       uniqueId: 'uid-morador-101',
       linkedId: 'lid-call-101',
     },
-  ];
+  ]);
 
   const t1ByUnique = await suiteAmi.findActiveChannelForXpe({ uniqueId: 'uid-xpe-101' });
   assert(t1ByUnique === 'PJSIP/xpe_3115-00000101', 'TESTE 1 (UniqueID): Canal PJSIP correto identificado via UniqueID inequívoco');
@@ -737,7 +766,7 @@ export async function runRegressionTests() {
   assert(t1ByLinked === 'PJSIP/xpe_3115-00000101', 'TESTE 1 (LinkedID): Canal PJSIP correto identificado via LinkedID compartilhado');
 
   // TESTE 2: Dois canais PJSIP ativos, somente um pertence à chamada XPE -> Canal correto selecionado, o outro não afetado
-  (suiteAmi as any).getActiveChannels = async () => [
+  setAmiLiveChannels(suiteAmi, [
     {
       channel: 'PJSIP/ramal_201-00000201',
       channelStateDesc: 'Up',
@@ -754,13 +783,13 @@ export async function runRegressionTests() {
       uniqueId: 'uid-xpe-202',
       linkedId: 'lid-xpe-202',
     },
-  ];
+  ]);
 
   const t2Result = await suiteAmi.findActiveChannelForXpe();
   assert(t2Result === 'PJSIP/xpe_3115-00000202', 'TESTE 2: Apenas o canal do XPE é selecionado; ramal terceiro 201 é totalmente ignorado');
 
   // TESTE 3: Dois canais que aparentam ser XPE sem correlação inequívoca -> HARDWARE_FAILURE (SEM activeXpeChannels[0] e SEM upChannel)
-  (suiteAmi as any).getActiveChannels = async () => [
+  setAmiLiveChannels(suiteAmi, [
     {
       channel: 'PJSIP/xpe_3115-00000301',
       channelStateDesc: 'Up',
@@ -775,7 +804,7 @@ export async function runRegressionTests() {
       uniqueId: 'uid-xpe-ambig-2',
       linkedId: 'lid-xpe-ambig-2',
     },
-  ];
+  ]);
 
   const t3Result = await suiteAmi.findActiveChannelForXpe();
   assert(
@@ -795,7 +824,7 @@ export async function runRegressionTests() {
   );
 
   // TESTE 4: Existe canal PJSIP ativo, mas nenhum pertence à chamada XPE -> PlayDTMF não é enviado -> HARDWARE_FAILURE
-  (suiteAmi as any).getActiveChannels = async () => [
+  setAmiLiveChannels(suiteAmi, [
     {
       channel: 'PJSIP/ramal_301-00000401',
       channelStateDesc: 'Up',
@@ -808,7 +837,7 @@ export async function runRegressionTests() {
       callerIdNum: '302',
       connectedLineNum: '301',
     },
-  ];
+  ]);
 
   const t4Result = await suiteAmi.findActiveChannelForXpe();
   assert(t4Result === null, 'TESTE 4: Nenhum canal pertence ao XPE -> Retorna null (Zero invasão de chamadas alheias)');
@@ -819,7 +848,7 @@ export async function runRegressionTests() {
   assert(t4GateResult.commandStatus === 'HARDWARE_FAILURE', 'TESTE 4: Retorno é estritamente HARDWARE_FAILURE e nenhum PlayDTMF enviado');
 
   // TESTE 5: "preferredChannel" pertence a outra chamada -> PlayDTMF não enviado -> Não tenta fallback -> HARDWARE_FAILURE
-  (suiteAmi as any).getActiveChannels = async () => [
+  setAmiLiveChannels(suiteAmi, [
     {
       channel: 'PJSIP/ramal_401-00000501',
       channelStateDesc: 'Up',
@@ -836,7 +865,7 @@ export async function runRegressionTests() {
       uniqueId: 'uid-xpe-502',
       linkedId: 'lid-xpe-502',
     },
-  ];
+  ]);
 
   // Fornecendo preferredChannel apontando para a chamada alheia (ramal 401)
   const t5Result = await suiteAmi.findActiveChannelForXpe({
@@ -850,7 +879,7 @@ export async function runRegressionTests() {
   assert(t5GateResult.commandStatus === 'HARDWARE_FAILURE', 'TESTE 5: RealHardwareAdapter retorna HARDWARE_FAILURE e aborta PlayDTMF');
 
   // TESTE 6: Chamada XPE encerrada (sem canais ativos) -> PlayDTMF não enviado -> Retorna HARDWARE_FAILURE
-  (suiteAmi as any).getActiveChannels = async () => [];
+  setAmiLiveChannels(suiteAmi, []);
 
   const t6Result = await suiteAmi.findActiveChannelForXpe({ preferredChannel: 'PJSIP/xpe_3115-00000101' });
   assert(t6Result === null, 'TESTE 6: Chamada encerrada / nenhum canal ativo retorna null');
@@ -1068,6 +1097,142 @@ export async function runRegressionTests() {
     details: { realIp: true },
   });
   assert(auditEntryRealIp.ipAddress === '10.0.4.15', 'Cenário 5: AuditService preserva rigorosamente o IP real recebido');
+
+  // ==========================================================================
+  // [13/13] HOMOLOGAÇÃO FÍSICA: REJEIÇÃO DE *09/09, AUTORIZAÇÃO DE *07/07/*08/08 E ANTI-BYPASS
+  // ==========================================================================
+  console.log('\n--- [13/13] Homologação Física: DTMF (*07, 07, *08, 08 vs *09, 09), Anti-Bypass e Validações Estritas ---');
+
+  const dtmfTestAmi = new AsteriskAMI('127.0.0.1', 5038, 'admin_sec', 'SecretSeguro2026!');
+  let dtmfPlaySent = false;
+  let dtmfCapturedParams: any = null;
+  setAmiLiveChannels(dtmfTestAmi, [
+    {
+      channel: 'PJSIP/xpe_3115-00000777',
+      channelStateDesc: 'Up',
+      callerIdNum: '8000',
+      connectedLineNum: '101',
+      uniqueId: 'uid-homolog-777',
+      linkedId: 'lid-homolog-777',
+    },
+  ], (action: string, params: any) => {
+    if (action === 'PlayDTMF') {
+      dtmfPlaySent = true;
+      dtmfCapturedParams = params;
+      return { success: true, message: 'PlayDTMF queued' };
+    }
+    return { success: true };
+  });
+
+  // 1. Rejeição imediata de *09 e 09 antes de PlayDTMF
+  // 1.1 Tentar injetar *09
+  dtmfPlaySent = false;
+  let rejectedStar09 = false;
+  try {
+    await dtmfTestAmi.injectDtmf('PJSIP/xpe_3115-00000777', '*09');
+  } catch (err: any) {
+    rejectedStar09 = true;
+    assert(err.message.includes('não autorizado'), 'DTMF *09 rejeitado com erro de código não autorizado');
+  }
+  assert(rejectedStar09, 'Rejeição obrigatória do código *09 antes de PlayDTMF');
+  assert(!dtmfPlaySent, 'Nenhum PlayDTMF enviado ao solicitar *09');
+
+  // 1.2 Tentar injetar 09
+  dtmfPlaySent = false;
+  let rejected09 = false;
+  try {
+    await dtmfTestAmi.injectDtmf('PJSIP/xpe_3115-00000777', '09');
+  } catch (err: any) {
+    rejected09 = true;
+    assert(err.message.includes('não autorizado'), 'DTMF 09 rejeitado com erro de código não autorizado');
+  }
+  assert(rejected09, 'Rejeição obrigatória do código 09 antes de PlayDTMF');
+  assert(!dtmfPlaySent, 'Nenhum PlayDTMF enviado ao solicitar 09');
+
+  // 2. Autorização estrita de *07, 07, *08, 08
+  // 2.1 *07 (pedestre/social)
+  dtmfPlaySent = false;
+  dtmfCapturedParams = null;
+  const resStar07 = await dtmfTestAmi.injectDtmf('PJSIP/xpe_3115-00000777', '*07');
+  assert(resStar07.status === 'Success', 'Código *07 autorizado com sucesso');
+  assert(dtmfPlaySent, 'PlayDTMF enviado com sucesso para *07');
+  assert(dtmfCapturedParams?.Digit === '07', 'Digit transmitido ao Asterisk para *07 é "07"');
+
+  // 2.2 07 (pedestre/social sem asterisco)
+  dtmfPlaySent = false;
+  dtmfCapturedParams = null;
+  const res07 = await dtmfTestAmi.injectDtmf('PJSIP/xpe_3115-00000777', '07');
+  assert(res07.status === 'Success', 'Código 07 autorizado com sucesso');
+  assert(dtmfPlaySent, 'PlayDTMF enviado com sucesso para 07');
+  assert(dtmfCapturedParams?.Digit === '07', 'Digit transmitido ao Asterisk para 07 é "07"');
+
+  // 2.3 *08 (garagem)
+  dtmfPlaySent = false;
+  dtmfCapturedParams = null;
+  const resStar08 = await dtmfTestAmi.injectDtmf('PJSIP/xpe_3115-00000777', '*08');
+  assert(resStar08.status === 'Success', 'Código *08 autorizado com sucesso');
+  assert(dtmfPlaySent, 'PlayDTMF enviado com sucesso para *08');
+  assert(dtmfCapturedParams?.Digit === '08', 'Digit transmitido ao Asterisk para *08 é "08"');
+
+  // 2.4 08 (garagem sem asterisco)
+  dtmfPlaySent = false;
+  dtmfCapturedParams = null;
+  const res08 = await dtmfTestAmi.injectDtmf('PJSIP/xpe_3115-00000777', '08');
+  assert(res08.status === 'Success', 'Código 08 autorizado com sucesso');
+  assert(dtmfPlaySent, 'PlayDTMF enviado com sucesso para 08');
+  assert(dtmfCapturedParams?.Digit === '08', 'Digit transmitido ao Asterisk para 08 é "08"');
+
+  // 3. Anti-Bypass em injectDtmf(): canal arbitrário ou não comprovado do XPE é rejeitado antes de PlayDTMF
+  dtmfPlaySent = false;
+  let rejectedBypass = false;
+  try {
+    await dtmfTestAmi.injectDtmf('PJSIP/ramal_invasor-00000999', '*07');
+  } catch (err: any) {
+    rejectedBypass = true;
+    assert(
+      err.message.includes('não comprovado como pertencente à chamada ativa'),
+      'injectDtmf rejeita canal não comprovado do XPE'
+    );
+  }
+  assert(rejectedBypass, 'Anti-Bypass: injectDtmf recusa canal que não pertence à chamada do XPE');
+  assert(!dtmfPlaySent, 'Anti-Bypass: Nenhum PlayDTMF enviado para canal não comprovado');
+
+  // 4. RealHardwareAdapter com portão configurado para *09 ou 09 -> HARDWARE_FAILURE
+  const adapterDtmf = new RealHardwareAdapter();
+  (adapterDtmf as any).ami = dtmfTestAmi;
+  const badDtmfGate1: Gate = { ...testGate, dtmfCode: '*09' as any };
+  const badDtmfResult1 = await adapterDtmf.triggerRelay(badDtmfGate1, 1);
+  assert(badDtmfResult1.commandStatus === 'HARDWARE_FAILURE', 'RealHardwareAdapter com *09 retorna HARDWARE_FAILURE');
+
+  const badDtmfGate2: Gate = { ...testGate, dtmfCode: '09' as any };
+  const badDtmfResult2 = await adapterDtmf.triggerRelay(badDtmfGate2, 1);
+  assert(badDtmfResult2.commandStatus === 'HARDWARE_FAILURE', 'RealHardwareAdapter com 09 retorna HARDWARE_FAILURE');
+
+  // 5. getActiveChannelsForPhysicalAction() com AMI desconectado retorna [] estrito
+  const disconnectedPhysicalAmi = new AsteriskAMI('127.0.0.1', 5038, 'admin_sec', 'SecretSeguro2026!');
+  (disconnectedPhysicalAmi as any).isConnected = () => false;
+  (disconnectedPhysicalAmi as any).connect = async () => false;
+  const disconnectedChannels = await disconnectedPhysicalAmi.getActiveChannelsForPhysicalAction();
+  assert(Array.isArray(disconnectedChannels) && disconnectedChannels.length === 0, 'getActiveChannelsForPhysicalAction com AMI desconectado retorna []');
+
+  // 6. getActiveChannelsForPhysicalAction() com CoreShowChannels falhando não usa cache e retorna [] estrito
+  const failingCoreShowAmi = new AsteriskAMI('127.0.0.1', 5038, 'admin_sec', 'SecretSeguro2026!');
+  (failingCoreShowAmi as any).isConnected = () => true;
+  (failingCoreShowAmi as any).isAuthenticated = () => true;
+  (failingCoreShowAmi as any).connect = async () => true;
+  (failingCoreShowAmi as any).activeChannels.set('PJSIP/xpe_3115-cache-fantasma', {
+    channel: 'PJSIP/xpe_3115-cache-fantasma',
+    channelStateDesc: 'Up',
+    callerIdNum: '8000',
+  });
+  (failingCoreShowAmi as any).executeSafeAction = async (action: string) => {
+    if (action === 'CoreShowChannels') {
+      return { success: false, message: 'CoreShowChannels error' };
+    }
+    return { success: true };
+  };
+  const failingChannels = await failingCoreShowAmi.getActiveChannelsForPhysicalAction();
+  assert(Array.isArray(failingChannels) && failingChannels.length === 0, 'getActiveChannelsForPhysicalAction com CoreShowChannels falhando NÃO usa cache e retorna []');
 
   console.log('\n===============================================================');
   console.log(`🎉 TODOS OS ${passedTests}/${totalTests} TESTES DE SEGURANÇA E HARDWARE PASSARAM COM SUCESSO!`);
