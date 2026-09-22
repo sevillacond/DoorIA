@@ -106,7 +106,9 @@ O repositório conta com guias especializados:
 
 | Documento | Descrição |
 |---|---|
-| 📖 **[`DEPLOY.md`](./DEPLOY.md)** | Manual completo de implantação em produção (Mini PC com Docker Compose, PostgreSQL Local e Checklist) |
+| 🚀 **[`DEPLOY.md`](./DEPLOY.md)** | Manual oficial de implantação em VM Ubuntu 24.04 LTS (Docker, Compose, PostgreSQL 16 e Rede) |
+| 🔬 **[`HOMOLOGACAO.md`](./HOMOLOGACAO.md)** | Guia oficial de homologação física, bancada de testes, matriz de falhas e validação E2E |
+| 🛠️ **[`TROUBLESHOOTING.md`](./TROUBLESHOOTING.md)** | Manual de diagnóstico, resolução de problemas e testes de Asterisk, AMI, RTSP, go2rtc e WebRTC |
 | 📱 **[`DOCS_APK_BUILD.md`](./DOCS_APK_BUILD.md)** | Guia passo a passo para gerar o instalador nativo Android (`.apk` / `.aab`) via Capacitor 6+ |
 | 🛡️ **[`AGENTS.md`](./AGENTS.md)** | Regras arquiteturais, idioma estrito (pt-BR), segurança física e diretrizes de desenvolvimento |
 
