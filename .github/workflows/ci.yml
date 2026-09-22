@@ -57,4 +57,10 @@ jobs:
           XPE_RTSP_USERNAME: "admin"
           XPE_RTSP_PASSWORD: "ci_xpe_rtsp_password"
           RELAY_CONTROLLER_IP: "192.168.1.160"
+          CAMERA_PORTARIA_ENABLED: "true"
+          CAMERA_GARAGEM_ENABLED: "false"
+          CAMERA_HALL_ENABLED: "false"
+          CAMERA_GOURMET_ENABLED: "false"
+          GO2RTC_CAMERA_PORTARIA_URL: "rtsp://ci_user:ci_pass@192.168.1.150:554/live"
+          GO2RTC_API_URL: "http://172.28.0.1:1984"
         run: docker compose config

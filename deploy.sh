@@ -98,7 +98,38 @@ if [ ${#MISSING_VARS[@]} -ne 0 ]; then
     exit 1
 fi
 
-echo -e "${GREEN}✔ Todas as ${#REQUIRED_VARS[@]} variáveis críticas de produção foram validadas.${NC}"
+# Validação estrita de Câmeras Habilitadas
+CAMERA_ERRORS=()
+if [ "${CAMERA_PORTARIA_ENABLED:-true}" != "false" ]; then
+    if [ -z "$GO2RTC_CAMERA_PORTARIA_URL" ] || [ "$GO2RTC_CAMERA_PORTARIA_URL" = "rtsp://" ]; then
+        CAMERA_ERRORS+=("CAMERA_PORTARIA_ENABLED=true exige GO2RTC_CAMERA_PORTARIA_URL válida (formato: rtsp://user:pass@ip:554/path)")
+    fi
+fi
+if [ "${CAMERA_GARAGEM_ENABLED:-false}" = "true" ]; then
+    if [ -z "$GO2RTC_CAMERA_GARAGEM_URL" ] || [ "$GO2RTC_CAMERA_GARAGEM_URL" = "rtsp://" ]; then
+        CAMERA_ERRORS+=("CAMERA_GARAGEM_ENABLED=true exige GO2RTC_CAMERA_GARAGEM_URL válida")
+    fi
+fi
+if [ "${CAMERA_HALL_ENABLED:-false}" = "true" ]; then
+    if [ -z "$GO2RTC_CAMERA_HALL_URL" ] || [ "$GO2RTC_CAMERA_HALL_URL" = "rtsp://" ]; then
+        CAMERA_ERRORS+=("CAMERA_HALL_ENABLED=true exige GO2RTC_CAMERA_HALL_URL válida")
+    fi
+fi
+if [ "${CAMERA_GOURMET_ENABLED:-false}" = "true" ]; then
+    if [ -z "$GO2RTC_CAMERA_GOURMET_URL" ] || [ "$GO2RTC_CAMERA_GOURMET_URL" = "rtsp://" ]; then
+        CAMERA_ERRORS+=("CAMERA_GOURMET_ENABLED=true exige GO2RTC_CAMERA_GOURMET_URL válida")
+    fi
+fi
+
+if [ ${#CAMERA_ERRORS[@]} -ne 0 ]; then
+    echo -e "${RED}❌ ERRO FATAL: Falha na validação de câmeras para produção:${NC}"
+    for cam_err in "${CAMERA_ERRORS[@]}"; do
+        echo -e "   -> ${RED}$cam_err${NC}"
+    done
+    exit 1
+fi
+
+echo -e "${GREEN}✔ Todas as ${#REQUIRED_VARS[@]} variáveis críticas e validação de câmeras foram aprovadas.${NC}"
 echo ""
 
 # -------------------------------------------------------------------------
@@ -180,6 +211,68 @@ cat <<EOF >> ./config/asterisk/manager.conf
 read = system,call,log,verbose,command,agent,user,config,dtmf,reporting,cdr,dialplan
 write = system,call,command,agent,user,originate
 EOF
+
+# Provisiona go2rtc.yaml dinamicamente com apenas as câmeras ativadas
+GO2RTC_LOCAL_IP="${LOCAL_SERVER_IP:-127.0.0.1}"
+cat <<EOF > ./config/go2rtc.yaml
+# ==============================================================================
+# ENLACE-DOORIA: GO2RTC GATEWAY DE VÍDEO CFTV
+# Configuração Endurecida para Rede Local Segura (LAN / Guarita Física)
+# Gerado dinamicamente pelo deploy.sh com apenas câmeras habilitadas
+# Versão: go2rtc v1.9.4
+# ==============================================================================
+
+api:
+  listen: ":1984"
+  origin: ""
+
+webrtc:
+  listen: ":8555/tcp"
+  candidates:
+    - "${GO2RTC_LOCAL_IP}:8555"
+
+rtsp:
+  listen: "127.0.0.1:8554"
+
+streams:
+EOF
+
+if [ "${CAMERA_PORTARIA_ENABLED:-true}" != "false" ] && [ -n "$GO2RTC_CAMERA_PORTARIA_URL" ]; then
+cat <<EOF >> ./config/go2rtc.yaml
+  # Totem Portaria Social (Intelbras XPE 3115 IP)
+  camera_portaria:
+    - "${GO2RTC_CAMERA_PORTARIA_URL}"
+    - "ffmpeg:camera_portaria#video=copy#audio=opus"
+
+EOF
+fi
+
+if [ "${CAMERA_GARAGEM_ENABLED:-false}" = "true" ] && [ -n "$GO2RTC_CAMERA_GARAGEM_URL" ]; then
+cat <<EOF >> ./config/go2rtc.yaml
+  # Portão Garagem LPR (Intelbras VIP 3230 B)
+  camera_garagem:
+    - "${GO2RTC_CAMERA_GARAGEM_URL}"
+
+EOF
+fi
+
+if [ "${CAMERA_HALL_ENABLED:-false}" = "true" ] && [ -n "$GO2RTC_CAMERA_HALL_URL" ]; then
+cat <<EOF >> ./config/go2rtc.yaml
+  # Hall de Entrada Social (Hikvision DS-2CD1123G0-I)
+  camera_hall:
+    - "${GO2RTC_CAMERA_HALL_URL}"
+
+EOF
+fi
+
+if [ "${CAMERA_GOURMET_ENABLED:-false}" = "true" ] && [ -n "$GO2RTC_CAMERA_GOURMET_URL" ]; then
+cat <<EOF >> ./config/go2rtc.yaml
+  # Espaço Gourmet (Dahua IPC-HDBW1230E)
+  camera_gourmet:
+    - "${GO2RTC_CAMERA_GOURMET_URL}"
+
+EOF
+fi
 
 $DOCKER_COMPOSE up -d
 

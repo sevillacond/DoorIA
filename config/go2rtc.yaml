@@ -22,19 +22,14 @@ rtsp:
   listen: "127.0.0.1:8554"
 
 streams:
-  # Câmera 1: Totem da Portaria Social (Intelbras XPE 3115 IP)
+  # Câmera 1: Totem da Portaria Social (Intelbras XPE 3115 IP) - Principal Obrigatória
   camera_portaria:
     - "${GO2RTC_CAMERA_PORTARIA_URL}"
     - "ffmpeg:camera_portaria#video=copy#audio=opus"
 
-  # Câmera 2: Portão Garagem LPR (Intelbras VIP 3230 B)
-  camera_garagem:
-    - "${GO2RTC_CAMERA_GARAGEM_URL}"
+  # Câmeras adicionais (Garagem, Hall, Gourmet):
+  # Não são incluídas como streams vazias no go2rtc quando não utilizadas.
+  # São provisionadas dinamicamente pelo deploy.sh e syncGo2rtcConfigFile
+  # apenas quando explicitamente habilitadas (ex: CAMERA_GARAGEM_ENABLED=true)
+  # e com URL RTSP válida configurada no ambiente.
 
-  # Câmera 3: Hall de Entrada Social (Hikvision DS-2CD1123G0-I)
-  camera_hall:
-    - "${GO2RTC_CAMERA_HALL_URL}"
-
-  # Câmera 4: Espaço Gourmet (Dahua IPC-HDBW1230E)
-  camera_gourmet:
-    - "${GO2RTC_CAMERA_GOURMET_URL}"

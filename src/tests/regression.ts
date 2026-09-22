@@ -11,6 +11,7 @@ import { SimulationAdapter } from '../services/hardware/SimulationAdapter.ts';
 import { CondominiumService } from '../services/CondominiumService.ts';
 import { sanitizeRtspUrl, sanitizeCameraForClient } from '../utils/rtspSanitizer.ts';
 import { validateProductionConfig } from '../config/productionValidator.ts';
+import { generateGo2rtcYaml, isValidRtspFormat } from '../config/go2rtcConfigGenerator.ts';
 import net from 'net';
 import http from 'http';
 import { AsteriskAMI, AsteriskManager, ALLOWED_ASTERISK_ACTIONS, ALLOWED_PHYSICAL_DTMF_DIGITS } from '../services/AsteriskAMI.ts';
@@ -502,6 +503,8 @@ export async function runRegressionTests() {
     ASTERISK_SIP_SERVER: '192.168.1.220',
     ASTERISK_SIP_PORT: '5060',
     GO2RTC_API_URL: 'http://172.28.0.1:1984',
+    CAMERA_PORTARIA_ENABLED: 'true',
+    GO2RTC_CAMERA_PORTARIA_URL: 'rtsp://synthetic_xpe_user:synthetic_xpe_pass@192.168.1.200:554/live',
   };
 
   const backupEnv = { ...process.env };
@@ -1130,6 +1133,103 @@ export async function runRegressionTests() {
     process.env = envGuaritaValidGo2rtc as any;
     const resGuaritaValidGo2rtc = validateProductionConfig(true);
     assert(resGuaritaValidGo2rtc.valid, 'Cenário 4.10: GO2RTC_API_URL com IP do gateway Docker (172.28.0.1) é validada com sucesso');
+
+    // 4.11 CÂMERA HABILITADA SEM URL RTSP (OU STRING VAZIA) -> STARTUP FAILURE
+    const envCameraEmptyUrl = { ...baseValidProdEnv, GO2RTC_CAMERA_PORTARIA_URL: '' };
+    process.env = envCameraEmptyUrl as any;
+    let failedCameraEmptyUrl = false;
+    try {
+      validateProductionConfig(true);
+    } catch (err: any) {
+      failedCameraEmptyUrl = true;
+      assert(err.message.includes('STARTUP FAILURE'), 'Cenário 4.11: Startup cancelado quando câmera habilitada não tem URL');
+      assert(err.message.includes('camera_portaria'), 'Cenário 4.11: Mensagem explícita identificando a câmera com falha');
+    }
+    assert(failedCameraEmptyUrl, 'Cenário 4.11: Câmera habilitada sem URL dispara STARTUP FAILURE');
+
+    // 4.12 CÂMERA HABILITADA COM "rtsp://" VAZIO OU INVÁLIDO -> STARTUP FAILURE
+    const envCameraRtspOnly = { ...baseValidProdEnv, GO2RTC_CAMERA_PORTARIA_URL: 'rtsp://' };
+    process.env = envCameraRtspOnly as any;
+    let failedCameraRtspOnly = false;
+    try {
+      validateProductionConfig(true);
+    } catch (err: any) {
+      failedCameraRtspOnly = true;
+      assert(err.message.includes('STARTUP FAILURE'), 'Cenário 4.12: Startup cancelado para URL de câmera "rtsp://" incompleta');
+    }
+    assert(failedCameraRtspOnly, 'Cenário 4.12: URL incompleta "rtsp://" é estritamente rejeitada');
+
+    // 4.13 CÂMERA HABILITADA COM "null" OU "undefined" -> STARTUP FAILURE
+    const envCameraNullString = { ...baseValidProdEnv, GO2RTC_CAMERA_PORTARIA_URL: 'null' };
+    process.env = envCameraNullString as any;
+    let failedCameraNullString = false;
+    try {
+      validateProductionConfig(true);
+    } catch (err: any) {
+      failedCameraNullString = true;
+      assert(err.message.includes('STARTUP FAILURE'), 'Cenário 4.13: Startup cancelado para string literal "null" como URL de câmera');
+    }
+    assert(failedCameraNullString, 'Cenário 4.13: String "null" como URL dispara STARTUP FAILURE');
+
+    // 4.14 CÂMERA SECUNDÁRIA HABILITADA SEM URL -> STARTUP FAILURE
+    const envGaragemEnabledNoUrl = {
+      ...baseValidProdEnv,
+      CAMERA_GARAGEM_ENABLED: 'true',
+      GO2RTC_CAMERA_GARAGEM_URL: '',
+    };
+    process.env = envGaragemEnabledNoUrl as any;
+    let failedGaragemNoUrl = false;
+    try {
+      validateProductionConfig(true);
+    } catch (err: any) {
+      failedGaragemNoUrl = true;
+      assert(err.message.includes('camera_garagem'), 'Cenário 4.14: Mensagem de erro aponta explicitamente para camera_garagem');
+    }
+    assert(failedGaragemNoUrl, 'Cenário 4.14: Câmera secundária habilitada sem URL dispara STARTUP FAILURE');
+
+    // 4.15 CÂMERA SECUNDÁRIA DESABILITADA SEM URL -> APROVADO SEM ERROS
+    const envGaragemDisabledNoUrl = {
+      ...baseValidProdEnv,
+      CAMERA_GARAGEM_ENABLED: 'false',
+      GO2RTC_CAMERA_GARAGEM_URL: '',
+      CAMERA_HALL_ENABLED: 'false',
+      GO2RTC_CAMERA_HALL_URL: '',
+      CAMERA_GOURMET_ENABLED: 'false',
+      GO2RTC_CAMERA_GOURMET_URL: '',
+    };
+    process.env = envGaragemDisabledNoUrl as any;
+    const resGaragemDisabled = validateProductionConfig(true);
+    assert(resGaragemDisabled.valid, 'Cenário 4.15: Câmeras não utilizadas/desabilitadas não causam erro de validação');
+
+    // 4.16 CÂMERA SECUNDÁRIA HABILITADA COM URL RTSP VÁLIDA -> APROVADO
+    const envGaragemEnabledValidUrl = {
+      ...baseValidProdEnv,
+      CAMERA_GARAGEM_ENABLED: 'true',
+      GO2RTC_CAMERA_GARAGEM_URL: 'rtsp://lpr_user:lpr_pass@192.168.1.155:554/cam/realmonitor?channel=1&subtype=0',
+    };
+    process.env = envGaragemEnabledValidUrl as any;
+    const resGaragemEnabledValid = validateProductionConfig(true);
+    assert(resGaragemEnabledValid.valid, 'Cenário 4.16: Câmera secundária com URL RTSP válida é aprovada com sucesso');
+
+    // 4.17 GERADOR DE CONFIGURAÇÃO GO2RTC: NÃO INCLUI CÂMERAS DESABILITADAS OU SEM URL
+    const mockEnvOnlyPortaria: NodeJS.ProcessEnv = {
+      LOCAL_SERVER_IP: '192.168.1.100',
+      CAMERA_PORTARIA_ENABLED: 'true',
+      GO2RTC_CAMERA_PORTARIA_URL: 'rtsp://admin:pass@192.168.1.150:554/live',
+      CAMERA_GARAGEM_ENABLED: 'false',
+      CAMERA_HALL_ENABLED: 'false',
+      CAMERA_GOURMET_ENABLED: 'false',
+    };
+    const generatedYaml = generateGo2rtcYaml(mockEnvOnlyPortaria);
+    assert(generatedYaml.includes('camera_portaria:'), 'Cenário 4.17: Câmera portaria está presente no YAML');
+    assert(!generatedYaml.includes('camera_garagem:'), 'Cenário 4.17: Câmera garagem desabilitada NÃO existe no YAML');
+    assert(!generatedYaml.includes('camera_hall:'), 'Cenário 4.17: Câmera hall desabilitada NÃO existe no YAML');
+    assert(!generatedYaml.includes('camera_gourmet:'), 'Cenário 4.17: Câmera gourmet desabilitada NÃO existe no YAML');
+    assert(!/^\s*origin:\s*"\*"/m.test(generatedYaml), 'Cenário 4.17: go2rtc.yaml gerado não possui origin: "*"');
+    assert(generatedYaml.includes('origin: ""'), 'Cenário 4.17: go2rtc.yaml gerado possui origin restrito vazio');
+    assert(isValidRtspFormat('rtsp://admin:pass@192.168.1.150:554/live'), 'Cenário 4.17: Helper isValidRtspFormat valida RTSP correto');
+    assert(!isValidRtspFormat('rtsp://'), 'Cenário 4.17: Helper isValidRtspFormat rejeita rtsp:// sem host');
+    assert(!isValidRtspFormat(''), 'Cenário 4.17: Helper isValidRtspFormat rejeita string vazia');
   } finally {
     process.env = backupProdEnv;
   }
@@ -1856,6 +1956,8 @@ export async function runRegressionTests() {
     process.env.ASTERISK_SIP_SERVER = '192.168.1.100';
     process.env.ASTERISK_SIP_PORT = '5060';
     process.env.GO2RTC_API_URL = 'http://172.28.0.1:1984';
+    process.env.CAMERA_PORTARIA_ENABLED = 'true';
+    process.env.GO2RTC_CAMERA_PORTARIA_URL = 'rtsp://synthetic_xpe:synthetic_pass@192.168.1.100:554/live';
 
     // Caso de violação: ASTERISK_AMI_PERMIT aberto para o mundo (0.0.0.0/0.0.0.0)
     process.env.ASTERISK_AMI_PERMIT = '0.0.0.0/0.0.0.0';

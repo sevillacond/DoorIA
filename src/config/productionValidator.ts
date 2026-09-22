@@ -224,6 +224,76 @@ export function validateProductionConfig(isProduction = process.env.NODE_ENV ===
         errors.push('[CRÍTICO] GO2RTC_API_URL deve ser uma URL válida (ex: http://192.168.1.100:1984 ou http://172.28.0.1:1984).');
       }
     }
+
+    // 9. VALIDAÇÃO DETERMINÍSTICA DE CÂMERAS HABILITADAS E URLS RTSP
+    // Toda câmera cadastrada/ativada para produção deve possuir uma URL RTSP válida.
+    // Não são aceitos silenciosamente: "", null, undefined, "rtsp://", ou formatos sem host.
+    const isValidRtsp = (url: string | undefined | null): boolean => {
+      if (!url || typeof url !== 'string') return false;
+      const trimmed = url.trim();
+      if (!trimmed || trimmed === 'null' || trimmed === 'undefined') return false;
+      if (trimmed === 'rtsp://' || trimmed === 'rtsp:///' || !trimmed.startsWith('rtsp://')) return false;
+      const regex = /^rtsp:\/\/(?:([^:@\s]+)(?::([^@\s]+))?@)?([a-zA-Z0-9.-]+)(?::(\d+))?(\/[^\s]*)?$/;
+      if (!regex.test(trimmed)) return false;
+      try {
+        const parsed = new URL(trimmed);
+        return parsed.protocol === 'rtsp:' && parsed.hostname.length > 0;
+      } catch {
+        return false;
+      }
+    };
+
+    // 9.1 Câmera Portaria (Totem Social XPE 3115 IP) - Habilitada por padrão na guarita
+    const isPortariaEnabled = process.env.CAMERA_PORTARIA_ENABLED !== 'false';
+    const portariaRtspUrl = process.env.GO2RTC_CAMERA_PORTARIA_URL;
+    if (isPortariaEnabled) {
+      if (!portariaRtspUrl || !isValidRtsp(portariaRtspUrl)) {
+        errors.push(
+          `[CRÍTICO] A câmera "camera_portaria" está habilitada mas GO2RTC_CAMERA_PORTARIA_URL é inválida ou ausente (recebido: "${portariaRtspUrl || ''}"). Em produção, toda câmera habilitada exige uma URL RTSP válida.`
+        );
+      }
+    } else if (portariaRtspUrl && portariaRtspUrl.trim() !== '' && !isValidRtsp(portariaRtspUrl)) {
+      errors.push(`[CRÍTICO] GO2RTC_CAMERA_PORTARIA_URL informada é inválida (recebido: "${portariaRtspUrl}").`);
+    }
+
+    // 9.2 Câmera Garagem (LPR VIP 3230 B)
+    const isGaragemEnabled = process.env.CAMERA_GARAGEM_ENABLED === 'true';
+    const garagemRtspUrl = process.env.GO2RTC_CAMERA_GARAGEM_URL;
+    if (isGaragemEnabled) {
+      if (!garagemRtspUrl || !isValidRtsp(garagemRtspUrl)) {
+        errors.push(
+          `[CRÍTICO] A câmera "camera_garagem" está habilitada (CAMERA_GARAGEM_ENABLED=true) mas GO2RTC_CAMERA_GARAGEM_URL é inválida ou ausente (recebido: "${garagemRtspUrl || ''}").`
+        );
+      }
+    } else if (garagemRtspUrl && garagemRtspUrl.trim() !== '' && !isValidRtsp(garagemRtspUrl)) {
+      errors.push(`[CRÍTICO] GO2RTC_CAMERA_GARAGEM_URL informada é inválida (recebido: "${garagemRtspUrl}").`);
+    }
+
+    // 9.3 Câmera Hall de Entrada Social
+    const isHallEnabled = process.env.CAMERA_HALL_ENABLED === 'true';
+    const hallRtspUrl = process.env.GO2RTC_CAMERA_HALL_URL;
+    if (isHallEnabled) {
+      if (!hallRtspUrl || !isValidRtsp(hallRtspUrl)) {
+        errors.push(
+          `[CRÍTICO] A câmera "camera_hall" está habilitada (CAMERA_HALL_ENABLED=true) mas GO2RTC_CAMERA_HALL_URL é inválida ou ausente (recebido: "${hallRtspUrl || ''}").`
+        );
+      }
+    } else if (hallRtspUrl && hallRtspUrl.trim() !== '' && !isValidRtsp(hallRtspUrl)) {
+      errors.push(`[CRÍTICO] GO2RTC_CAMERA_HALL_URL informada é inválida (recebido: "${hallRtspUrl}").`);
+    }
+
+    // 9.4 Câmera Espaço Gourmet
+    const isGourmetEnabled = process.env.CAMERA_GOURMET_ENABLED === 'true';
+    const gourmetRtspUrl = process.env.GO2RTC_CAMERA_GOURMET_URL;
+    if (isGourmetEnabled) {
+      if (!gourmetRtspUrl || !isValidRtsp(gourmetRtspUrl)) {
+        errors.push(
+          `[CRÍTICO] A câmera "camera_gourmet" está habilitada (CAMERA_GOURMET_ENABLED=true) mas GO2RTC_CAMERA_GOURMET_URL é inválida ou ausente (recebido: "${gourmetRtspUrl || ''}").`
+        );
+      }
+    } else if (gourmetRtspUrl && gourmetRtspUrl.trim() !== '' && !isValidRtsp(gourmetRtspUrl)) {
+      errors.push(`[CRÍTICO] GO2RTC_CAMERA_GOURMET_URL informada é inválida (recebido: "${gourmetRtspUrl}").`);
+    }
   }
 
   const valid = errors.length === 0;
