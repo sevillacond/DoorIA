@@ -1,4 +1,5 @@
 import 'dotenv/config';
+import crypto from 'crypto';
 import { AuthService } from '../services/AuthService.ts';
 import { PolicyEngine } from '../services/PolicyEngine.ts';
 import { GateControlService } from '../services/GateControlService.ts';
@@ -2407,9 +2408,10 @@ export async function runRegressionTests() {
       isStrict: true,
       allowDemo: false,
     });
-    assert(noVideoRes.success === true, 'Teste 8: DESCRIBE 200 sem vídeo ainda é RTSP válido');
-    assert(noVideoRes.classification === 'REAL_HARDWARE', 'Teste 8: É REAL_HARDWARE com RTSP comprovado');
-    assert(noVideoRes.detailedStatus === 'RTSP_VALIDATED', 'Teste 8: detailedStatus é RTSP_VALIDATED (não STREAM_VALIDATED)');
+    assert(noVideoRes.success === false, 'Teste 8: DESCRIBE 200 sem vídeo NUNCA tem success: true');
+    assert(noVideoRes.status === 'FAILED', 'Teste 8: DESCRIBE 200 sem vídeo tem status: FAILED');
+    assert(noVideoRes.classification !== 'REAL_HARDWARE', 'Teste 8: DESCRIBE 200 sem vídeo NUNCA pode ser REAL_HARDWARE');
+    assert(noVideoRes.detailedStatus === 'RTSP_VALIDATED', 'Teste 8: detailedStatus é RTSP_VALIDATED');
     assert(noVideoRes.streamValidated === false, 'Teste 8: streamValidated é false');
     assert(noVideoRes.detectedCodec === undefined, 'Teste 8: detectedCodec é undefined');
   } finally {
@@ -2500,6 +2502,198 @@ export async function runRegressionTests() {
     mockCamValidationDev.status === 'PENDING',
     'Teste 12: Mock em sandbox é MOCK_DEMO com status PENDING e nunca REAL_HARDWARE'
   );
+
+  // Teste 13: DESCRIBE 401 com novo challenge e retry autenticado controlado (OPTIONS 200 -> DESCRIBE 401 -> DESCRIBE Auth 200 -> STREAM_VALIDATED)
+  const describeRetryState = { initialDescribeReceived: false, authDescribeReceived: false };
+  const describeRetryServer = net.createServer((socket) => {
+    socket.on('data', (data) => {
+      const str = data.toString('utf8');
+      if (str.startsWith('OPTIONS')) {
+        socket.write('RTSP/1.0 200 OK\r\nCSeq: 1\r\nPublic: OPTIONS, DESCRIBE\r\n\r\n');
+      } else if (str.startsWith('DESCRIBE') && !str.includes('Authorization:')) {
+        describeRetryState.initialDescribeReceived = true;
+        socket.write('RTSP/1.0 401 Unauthorized\r\nCSeq: 2\r\nWWW-Authenticate: Digest realm="DoorIA-Describe-Realm", nonce="descNonce999", qop="auth"\r\n\r\n');
+      } else if (str.startsWith('DESCRIBE') && str.includes('Authorization:')) {
+        describeRetryState.authDescribeReceived = true;
+        const sdp = 'v=0\r\no=- 1 1 IN IP4 127.0.0.1\r\ns=Test\r\nt=0 0\r\nm=video 0 RTP/AVP 96\r\na=rtpmap:96 H264/90000\r\n';
+        socket.write(`RTSP/1.0 200 OK\r\nCSeq: 3\r\nContent-Type: application/sdp\r\nContent-Length: ${sdp.length}\r\n\r\n${sdp}`);
+      }
+    });
+  });
+  const describeRetryPort = 55489;
+  await new Promise<void>((resolve) => describeRetryServer.listen(describeRetryPort, '127.0.0.1', () => resolve()));
+  try {
+    const retryRes = await CameraValidationService.validateDevice({
+      ip: '127.0.0.1',
+      rtspPort: describeRetryPort,
+      username: 'admin',
+      password: 'senha_correta_123',
+      timeoutMs: 1000,
+      isStrict: true,
+      allowDemo: false,
+    });
+    assert(describeRetryState.initialDescribeReceived === true, 'Teste 13: DESCRIBE inicial sem auth foi enviado');
+    assert(describeRetryState.authDescribeReceived === true, 'Teste 13: DESCRIBE autenticado após 401 foi enviado com sucesso');
+    assert(retryRes.success === true, 'Teste 13: Retry controlado de DESCRIBE 401 resulta em success: true');
+    assert(retryRes.status === 'VALIDATED', 'Teste 13: Status final é VALIDATED');
+    assert(retryRes.classification === 'REAL_HARDWARE', 'Teste 13: Equipamento autenticado após retry é REAL_HARDWARE');
+    assert(retryRes.detailedStatus === 'STREAM_VALIDATED', 'Teste 13: detailedStatus é STREAM_VALIDATED');
+    assert(retryRes.streamValidated === true, 'Teste 13: streamValidated é true');
+    assert(retryRes.detectedCodec === 'H.264', 'Teste 13: Codec H.264 extraído com sucesso');
+  } finally {
+    describeRetryServer.close();
+  }
+
+  // Teste 14: OPTIONS somente (Servidor responde 200 no OPTIONS mas fecha a conexão antes do DESCRIBE -> FAILED, NUNCA REAL_HARDWARE)
+  const optionsOnlyServer = net.createServer((socket) => {
+    socket.on('data', (data) => {
+      const str = data.toString('utf8');
+      if (str.startsWith('OPTIONS')) {
+        socket.write('RTSP/1.0 200 OK\r\nCSeq: 1\r\nPublic: OPTIONS, DESCRIBE\r\n\r\n');
+      } else if (str.startsWith('DESCRIBE')) {
+        // Encerra imediatamente sem responder
+        socket.destroy();
+      }
+    });
+  });
+  const optionsOnlyPort = 55490;
+  await new Promise<void>((resolve) => optionsOnlyServer.listen(optionsOnlyPort, '127.0.0.1', () => resolve()));
+  try {
+    const optOnlyRes = await CameraValidationService.validateDevice({
+      ip: '127.0.0.1',
+      rtspPort: optionsOnlyPort,
+      timeoutMs: 1000,
+      isStrict: true,
+      allowDemo: false,
+    });
+    assert(optOnlyRes.success === false, 'Teste 14: OPTIONS respondido mas DESCRIBE fechado resulta em success: false');
+    assert(optOnlyRes.status === 'FAILED', 'Teste 14: Status é FAILED');
+    assert(optOnlyRes.classification !== 'REAL_HARDWARE', 'Teste 14: OPTIONS isolado NUNCA é REAL_HARDWARE');
+    assert(optOnlyRes.streamValidated === false, 'Teste 14: streamValidated é false');
+  } finally {
+    optionsOnlyServer.close();
+  }
+
+  // Teste 15: Challenge com qop="auth-int" exclusivo em rede (Rejeição explícita, NUNCA tratado como auth)
+  const authIntNetServer = net.createServer((socket) => {
+    socket.on('data', () => {
+      socket.write('RTSP/1.0 401 Unauthorized\r\nCSeq: 1\r\nWWW-Authenticate: Digest realm="DoorIA-Int", nonce="nonceInt123", qop="auth-int"\r\n\r\n');
+    });
+  });
+  const authIntNetPort = 55491;
+  await new Promise<void>((resolve) => authIntNetServer.listen(authIntNetPort, '127.0.0.1', () => resolve()));
+  try {
+    const authIntNetRes = await CameraValidationService.validateDevice({
+      ip: '127.0.0.1',
+      rtspPort: authIntNetPort,
+      username: 'admin',
+      password: 'password123',
+      timeoutMs: 1000,
+      isStrict: true,
+      allowDemo: false,
+    });
+    assert(authIntNetRes.success === false, 'Teste 15: qop=auth-int exclusivo resulta em success: false');
+    assert(authIntNetRes.status === 'FAILED', 'Teste 15: Status é FAILED');
+    assert(authIntNetRes.classification !== 'REAL_HARDWARE', 'Teste 15: qop=auth-int NUNCA resulta em REAL_HARDWARE');
+    assert(authIntNetRes.detailedStatus === 'RTSP_AUTH_REQUIRED', 'Teste 15: detailedStatus é RTSP_AUTH_REQUIRED');
+    assert(authIntNetRes.error?.includes('RTSP_AUTH_UNSUPPORTED_QOP'), 'Teste 15: Mensagem de erro explicita RTSP_AUTH_UNSUPPORTED_QOP');
+  } finally {
+    authIntNetServer.close();
+  }
+
+  // Teste 16: Testes Unitários de Autenticação Digest (RFC 2617 / RFC 2068)
+  // 16.1: MD5 padrão com qop="auth" -> Verificação da fórmula RFC 2617
+  const md5AuthHeader = CameraValidationService.generateAuthHeader(
+    'Digest realm="DoorIA-Unit", nonce="unitNonce123", qop="auth"',
+    'admin',
+    'secretPass123',
+    'DESCRIBE',
+    'rtsp://10.0.0.50:554/live'
+  );
+  assert(md5AuthHeader !== null, 'Teste 16.1: Header MD5 com qop="auth" não é null');
+  assert(md5AuthHeader!.includes('qop=auth'), 'Teste 16.1: Header contém qop=auth');
+  assert(md5AuthHeader!.includes('nc=00000001'), 'Teste 16.1: Header contém nc=00000001');
+  const cnonceMatch = md5AuthHeader!.match(/cnonce="([^"]+)"/);
+  assert(cnonceMatch !== null, 'Teste 16.1: cnonce gerado está presente');
+  const cnonce = cnonceMatch![1];
+  const responseMatch = md5AuthHeader!.match(/response="([^"]+)"/);
+  assert(responseMatch !== null, 'Teste 16.1: response gerado está presente');
+  const actualResponse = responseMatch![1];
+
+  // Cálculo de referência RFC 2617
+  const expectedHa1Md5 = crypto.createHash('md5').update('admin:DoorIA-Unit:secretPass123').digest('hex');
+  const expectedHa2Md5 = crypto.createHash('md5').update('DESCRIBE:rtsp://10.0.0.50:554/live').digest('hex');
+  const expectedResponseMd5 = crypto.createHash('md5').update(`${expectedHa1Md5}:unitNonce123:00000001:${cnonce}:auth:${expectedHa2Md5}`).digest('hex');
+  assert(actualResponse === expectedResponseMd5, 'Teste 16.1: Cálculo do response para MD5 e qop="auth" segue perfeitamente a RFC 2617');
+
+  // 16.2: MD5-sess com qop="auth" -> Verificação da derivação HA1 = MD5( MD5(user:realm:pass) : nonce : cnonce )
+  const md5SessHeader = CameraValidationService.generateAuthHeader(
+    'Digest realm="DoorIA-Unit", nonce="unitNonce123", qop="auth", algorithm=MD5-sess',
+    'admin',
+    'secretPass123',
+    'DESCRIBE',
+    'rtsp://10.0.0.50:554/live'
+  );
+  assert(md5SessHeader !== null, 'Teste 16.2: Header MD5-sess com qop="auth" não é null');
+  assert(md5SessHeader!.toLowerCase().includes('algorithm=md5-sess'), 'Teste 16.2: Header contém algorithm=MD5-sess');
+  const cnonceSessMatch = md5SessHeader!.match(/cnonce="([^"]+)"/);
+  assert(cnonceSessMatch !== null, 'Teste 16.2: cnonce para MD5-sess está presente');
+  const cnonceSess = cnonceSessMatch![1];
+  const responseSessMatch = md5SessHeader!.match(/response="([^"]+)"/);
+  assert(responseSessMatch !== null, 'Teste 16.2: response para MD5-sess está presente');
+  const actualSessResponse = responseSessMatch![1];
+
+  // Cálculo de referência RFC 2617 Seção 3.2.2.2 para MD5-sess
+  const userPassHash = crypto.createHash('md5').update('admin:DoorIA-Unit:secretPass123').digest('hex');
+  const expectedHa1Md5Sess = crypto.createHash('md5').update(`${userPassHash}:unitNonce123:${cnonceSess}`).digest('hex');
+  const expectedResponseMd5Sess = crypto.createHash('md5').update(`${expectedHa1Md5Sess}:unitNonce123:00000001:${cnonceSess}:auth:${expectedHa2Md5}`).digest('hex');
+  assert(actualSessResponse === expectedResponseMd5Sess, 'Teste 16.2: Cálculo do response para MD5-sess segue perfeitamente a RFC 2617 Seção 3.2.2.2');
+  assert(expectedHa1Md5Sess !== expectedHa1Md5, 'Teste 16.2: HA1 do MD5-sess é matematicamente distinto do HA1 do MD5 simples');
+
+  // 16.3: Rejeição explícita de qop="auth-int" exclusivo (NUNCA tratado como auth)
+  const authIntHeader = CameraValidationService.generateAuthHeader(
+    'Digest realm="DoorIA-Unit", nonce="unitNonce123", qop="auth-int"',
+    'admin',
+    'secretPass123',
+    'DESCRIBE',
+    'rtsp://10.0.0.50:554/live'
+  );
+  assert(authIntHeader === null, 'Teste 16.3: Challenge com qop="auth-int" exclusivo é REJEITADO EXPLICITAMENTE (retorna null)');
+
+  // 16.4: Challenge com múltiplos qop ("auth, auth-int") seleciona com segurança "auth"
+  const multiQopHeader = CameraValidationService.generateAuthHeader(
+    'Digest realm="DoorIA-Unit", nonce="unitNonce123", qop="auth, auth-int"',
+    'admin',
+    'secretPass123',
+    'DESCRIBE',
+    'rtsp://10.0.0.50:554/live'
+  );
+  assert(multiQopHeader !== null, 'Teste 16.4: Challenge com "auth, auth-int" é suportado via seleção de "auth"');
+  assert(multiQopHeader!.includes('qop=auth'), 'Teste 16.4: Header selecionou qop=auth');
+
+  // 16.5: MD5 legado RFC 2068 (sem qop)
+  const legacyHeader = CameraValidationService.generateAuthHeader(
+    'Digest realm="DoorIA-Unit", nonce="unitNonce123"',
+    'admin',
+    'secretPass123',
+    'OPTIONS',
+    'rtsp://10.0.0.50:554/'
+  );
+  assert(legacyHeader !== null, 'Teste 16.5: Header legado sem qop gerado com sucesso');
+  assert(!legacyHeader!.includes('qop='), 'Teste 16.5: Header legado não inclui qop');
+  const expectedHa2Options = crypto.createHash('md5').update('OPTIONS:rtsp://10.0.0.50:554/').digest('hex');
+  const expectedLegacyResponse = crypto.createHash('md5').update(`${expectedHa1Md5}:unitNonce123:${expectedHa2Options}`).digest('hex');
+  assert(legacyHeader!.includes(`response="${expectedLegacyResponse}"`), 'Teste 16.5: Cálculo legado RFC 2068 segue HA1:nonce:HA2');
+
+  // 16.6: Algoritmo desconhecido (ex: SHA-256) é recusado com segurança
+  const unknownAlgoHeader = CameraValidationService.generateAuthHeader(
+    'Digest realm="DoorIA-Unit", nonce="unitNonce123", algorithm=SHA-256',
+    'admin',
+    'secretPass123',
+    'OPTIONS',
+    'rtsp://10.0.0.50:554/'
+  );
+  assert(unknownAlgoHeader === null, 'Teste 16.6: Algoritmo não suportado retorna null');
 
   // 10.9: Cache e Deduplicação do CameraValidationService
   CameraValidationService.setRecord({
