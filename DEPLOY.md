@@ -1,9 +1,11 @@
 # Manual de Implantação e Deploy em Produção (Enlace-DoorIA)
 
-Este guia documenta os passos completos para implantar o sistema **Enlace-DoorIA** em dois cenários principais:
-1. **Ambiente Local-First (Mini PC / Servidor Físico na Guarita)**
-2. **Ambiente em Nuvem (Google Cloud Run com Firebase Firestore)**
-3. **Geração do Aplicativo Android (APK / AAB via Capacitor)**
+Este guia documenta os passos completos para implantar o sistema **Enlace-DoorIA** no ambiente operacional da guarita:
+1. **Ambiente Local-First (Mini PC / Servidor Físico na Guarita com Docker Compose)**
+2. **Banco de Dados Relacional Puro Local (PostgreSQL 16 LTS & Drizzle ORM)**
+3. **Telefonia IP Local PJSIP e Interfonia Autônoma (Asterisk 20 LTS & AMI)**
+4. **Gateway de Re-streaming de Vídeo (go2rtc v1.9.4)**
+5. **Geração do Aplicativo Android (APK / AAB via Capacitor 8+)**
 
 ---
 
@@ -22,10 +24,10 @@ Este guia documenta os passos completos para implantar o sistema **Enlace-DoorIA
 | **5060** | UDP | Asterisk PJSIP | Sinalização SIP dos totens e ramais |
 | **8089** | TCP | Asterisk WSS | WebPhone WebRTC via WebSocket Seguro |
 | **10000-20000** | UDP | Asterisk RTP | Fluxo de áudio e voz em tempo real |
-| **1984** | TCP | go2rtc Web/API | Painel de controle e WebSocket do go2rtc |
-| **8555** | TCP/UDP | go2rtc WebRTC | Streaming de vídeo para os navegadores |
+| **1984** | TCP | go2rtc Web/API | Painel de controle e API REST/WebSocket do go2rtc |
+| **8555** | TCP/UDP | go2rtc WebRTC | Streaming de vídeo WebRTC sub-50ms para os navegadores |
 | **554** | TCP/UDP | RTSP | Câmeras IP e totem Intelbras XPE 3115-IP |
-| **5038** | TCP | Asterisk AMI | Interface de Gerenciamento do Asterisk |
+| **5038** | TCP | Asterisk AMI | Interface de Gerenciamento do Asterisk (Loopback / Subnet Restrita) |
 
 ---
 
@@ -210,7 +212,7 @@ docker exec -i dooria-postgres psql -U dooria dooria_db < backup_dooria_YYYYMMDD
 
 ## 5. Compilação do Aplicativo Android (APK / AAB)
 
-O projeto está integrado com o **Capacitor 6+**:
+O projeto está integrado nativamente com o **Capacitor 8+** (`@capacitor/core` e `@capacitor/android` v8.5+):
 
 ```bash
 # 1. Compilar os assets web para o diretório dist

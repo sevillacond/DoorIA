@@ -27,6 +27,8 @@ export type CameraDetailedStatus =
   | 'RTSP_AUTH_REQUIRED'
   | 'ONVIF_VALIDATED'
   | 'STREAM_VALIDATED'
+  | 'GO2RTC_GATEWAY_REACHABLE'
+  | 'GO2RTC_STREAM_REGISTERED'
   | 'WEBRTC_VALIDATED'
   | 'MOCK_DEMO'
   | 'FAILED';
@@ -103,9 +105,11 @@ export class CameraValidationService {
 
   /**
    * Valida a camada de gateway WebRTC (ex: go2rtc)
-   * REGRA DE OURO: Jamais confunde RTSP com WebRTC.
-   * A validação RTSP comprova STREAM_VALIDATED da câmera;
-   * A validação de WebRTC comprova a ponte de streaming do go2rtc para o PWA/navegador.
+   * REGRA DE OURO: Jamais confunde RTSP com WebRTC, nem consulta de streams HTTP com WebRTC real.
+   * - A validação RTSP comprova STREAM_VALIDATED da câmera;
+   * - A consulta à API do go2rtc (/api/streams) comprova apenas GO2RTC_GATEWAY_REACHABLE ou GO2RTC_STREAM_REGISTERED;
+   * - WEBRTC_VALIDATED é estritamente reservado para validação ponta a ponta com PeerConnection SDP real e vídeo recebido no browser.
+   * - Portanto, webrtcValidated permanece FALSE nesta sondagem HTTP para NUNCA gerar falso positivo.
    */
   public static async validateWebRtcGateway(options: {
     go2rtcApiUrl?: string;
@@ -114,6 +118,8 @@ export class CameraValidationService {
   } = {}): Promise<{
     success: boolean;
     detailedStatus: CameraDetailedStatus;
+    gatewayReachable: boolean;
+    streamRegistered: boolean;
     webrtcValidated: boolean;
     latencyMs?: number;
     error?: string;
@@ -138,6 +144,8 @@ export class CameraValidationService {
         return {
           success: false,
           detailedStatus: 'FAILED',
+          gatewayReachable: false,
+          streamRegistered: false,
           webrtcValidated: false,
           error: `Gateway go2rtc respondeu com HTTP ${resp.status} (${resp.statusText})`,
         };
@@ -147,21 +155,41 @@ export class CameraValidationService {
       const data = await resp.json().catch(() => ({}));
       const streamsCount = typeof data === 'object' && data !== null ? Object.keys(data).length : 0;
 
-      if (options.streamName && data && !data[options.streamName]) {
+      if (options.streamName) {
+        const isRegistered = Boolean(data && data[options.streamName]);
+        if (!isRegistered) {
+          return {
+            success: false,
+            detailedStatus: 'GO2RTC_GATEWAY_REACHABLE',
+            gatewayReachable: true,
+            streamRegistered: false,
+            webrtcValidated: false,
+            latencyMs,
+            streamsCount,
+            error: `Stream '${options.streamName}' não está registrado no gateway go2rtc.`,
+          };
+        }
+
+        // Stream registrada no go2rtc!
+        // REGRA DE OURO: Produz GO2RTC_STREAM_REGISTERED, mas NÃO WEBRTC_VALIDATED.
         return {
-          success: false,
-          detailedStatus: 'FAILED',
+          success: true,
+          detailedStatus: 'GO2RTC_STREAM_REGISTERED',
+          gatewayReachable: true,
+          streamRegistered: true,
           webrtcValidated: false,
           latencyMs,
           streamsCount,
-          error: `Stream '${options.streamName}' não está registrado no gateway go2rtc.`,
         };
       }
 
+      // Gateway go2rtc online e respondendo /api/streams sem filtro de stream específico
       return {
         success: true,
-        detailedStatus: 'WEBRTC_VALIDATED',
-        webrtcValidated: true,
+        detailedStatus: 'GO2RTC_GATEWAY_REACHABLE',
+        gatewayReachable: true,
+        streamRegistered: false,
+        webrtcValidated: false,
         latencyMs,
         streamsCount,
       };
@@ -169,6 +197,8 @@ export class CameraValidationService {
       return {
         success: false,
         detailedStatus: 'FAILED',
+        gatewayReachable: false,
+        streamRegistered: false,
         webrtcValidated: false,
         error: `Falha de comunicação com gateway go2rtc (${apiUrl}): ${err.message || 'Erro de conexão'}`,
       };

@@ -2777,24 +2777,28 @@ export async function runRegressionTests() {
   await new Promise<void>((resolve) => mockGo2rtcServer.listen(mockGo2rtcPort, '127.0.0.1', () => resolve()));
 
   try {
-    // 17.3: Gateway go2rtc online com streams válidos
+    // 17.3: Gateway go2rtc online sem stream específica
     const onlineWebRtcRes = await CameraValidationService.validateWebRtcGateway({
       go2rtcApiUrl: `http://127.0.0.1:${mockGo2rtcPort}`,
       timeoutMs: 1000,
     });
     assert(onlineWebRtcRes.success === true, 'WebRTC Gateway: Gateway online retorna success: true');
-    assert(onlineWebRtcRes.webrtcValidated === true, 'WebRTC Gateway: Gateway online retorna webrtcValidated: true');
-    assert(onlineWebRtcRes.detailedStatus === 'WEBRTC_VALIDATED', 'WebRTC Gateway: detailedStatus é WEBRTC_VALIDATED');
+    assert(onlineWebRtcRes.gatewayReachable === true, 'WebRTC Gateway: Gateway online retorna gatewayReachable: true');
+    assert(onlineWebRtcRes.detailedStatus === 'GO2RTC_GATEWAY_REACHABLE', 'WebRTC Gateway: detailedStatus é GO2RTC_GATEWAY_REACHABLE');
+    assert(onlineWebRtcRes.webrtcValidated === false, 'WebRTC Gateway: webrtcValidated é estritamente false (sem falso positivo via HTTP)');
     assert(onlineWebRtcRes.streamsCount === 2, 'WebRTC Gateway: Retorna contagem real de streams');
 
-    // 17.4: Validação de stream específico registrado
+    // 17.4: Validação de stream específico registrado no go2rtc
     const streamRegisteredRes = await CameraValidationService.validateWebRtcGateway({
       go2rtcApiUrl: `http://127.0.0.1:${mockGo2rtcPort}`,
       streamName: 'cam_portaria',
       timeoutMs: 1000,
     });
     assert(streamRegisteredRes.success === true, 'WebRTC Gateway: Stream registrado retorna success: true');
-    assert(streamRegisteredRes.webrtcValidated === true, 'WebRTC Gateway: Stream registrado confirma webrtcValidated: true');
+    assert(streamRegisteredRes.gatewayReachable === true, 'WebRTC Gateway: Stream registrado confirma gatewayReachable: true');
+    assert(streamRegisteredRes.streamRegistered === true, 'WebRTC Gateway: Stream registrado confirma streamRegistered: true');
+    assert(streamRegisteredRes.detailedStatus === 'GO2RTC_STREAM_REGISTERED', 'WebRTC Gateway: detailedStatus é GO2RTC_STREAM_REGISTERED e NÃO WEBRTC_VALIDATED');
+    assert(streamRegisteredRes.webrtcValidated === false, 'WebRTC Gateway: webrtcValidated permanece false (HTTP probe não forja WebRTC real)');
 
     // 17.5: Validação de stream inexistente no gateway
     const streamMissingRes = await CameraValidationService.validateWebRtcGateway({
@@ -2803,7 +2807,10 @@ export async function runRegressionTests() {
       timeoutMs: 1000,
     });
     assert(streamMissingRes.success === false, 'WebRTC Gateway: Stream inexistente retorna success: false');
-    assert(streamMissingRes.webrtcValidated === false, 'WebRTC Gateway: Stream inexistente retorna webrtcValidated: false');
+    assert(streamMissingRes.gatewayReachable === true, 'WebRTC Gateway: Gateway continua acessível (gatewayReachable: true)');
+    assert(streamMissingRes.streamRegistered === false, 'WebRTC Gateway: streamRegistered é false');
+    assert(streamMissingRes.detailedStatus === 'GO2RTC_GATEWAY_REACHABLE', 'WebRTC Gateway: detailedStatus é GO2RTC_GATEWAY_REACHABLE');
+    assert(streamMissingRes.webrtcValidated === false, 'WebRTC Gateway: Stream inexistente tem webrtcValidated: false');
     assert(streamMissingRes.error?.includes('não está registrado'), 'WebRTC Gateway: Mensagem de erro indica stream não registrado');
   } finally {
     await new Promise<void>((resolve) => mockGo2rtcServer.close(() => resolve()));
