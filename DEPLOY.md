@@ -160,7 +160,7 @@ services:
 
   # 4. GO2RTC (STREAMING WEBRTC RTSP SUB-50MS)
   go2rtc:
-    image: alexxit/go2rtc:latest
+    image: alexxit/go2rtc:v1.9.4
     container_name: dooria-go2rtc
     restart: always
     network_mode: host

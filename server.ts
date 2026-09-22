@@ -1613,11 +1613,13 @@ async function startServer() {
     CameraValidationService.setRecord({
       ip: targetIp,
       status: valResult.status,
+      detailedStatus: valResult.detailedStatus,
       classification: valResult.classification,
       isMock: valResult.isMock,
       validatedAt: Date.now(),
       latencyMs: valResult.latencyMs,
       detectedCodec: valResult.detectedCodec,
+      streamValidated: valResult.streamValidated,
       error: valResult.error,
     });
 
@@ -1709,7 +1711,13 @@ async function startServer() {
 
     // 3. Validação real prévia ou em tempo real
     let record = CameraValidationService.getRecord(targetIp);
-    const isRecentlyValidated = record && record.status === 'VALIDATED' && record.classification === 'REAL_HARDWARE' && (Date.now() - record.validatedAt < 5 * 60 * 1000);
+    const isRecentlyValidated =
+      record &&
+      record.status === 'VALIDATED' &&
+      record.classification === 'REAL_HARDWARE' &&
+      record.streamValidated === true &&
+      !record.isMock &&
+      Date.now() - record.validatedAt < 5 * 60 * 1000;
 
     if (!isRecentlyValidated) {
       const val = await CameraValidationService.validateDevice({

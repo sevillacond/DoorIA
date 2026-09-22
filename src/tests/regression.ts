@@ -12,6 +12,7 @@ import { CondominiumService } from '../services/CondominiumService.ts';
 import { sanitizeRtspUrl, sanitizeCameraForClient } from '../utils/rtspSanitizer.ts';
 import { validateProductionConfig } from '../config/productionValidator.ts';
 import net from 'net';
+import http from 'http';
 import { AsteriskAMI, AsteriskManager, ALLOWED_ASTERISK_ACTIONS, ALLOWED_PHYSICAL_DTMF_DIGITS } from '../services/AsteriskAMI.ts';
 import { AuditService } from '../services/AuditService.ts';
 import { verifyPostgresStartupSequence } from '../db/postgres.ts';
@@ -2695,12 +2696,13 @@ export async function runRegressionTests() {
   );
   assert(unknownAlgoHeader === null, 'Teste 16.6: Algoritmo não suportado retorna null');
 
-  // 10.9: Cache e Deduplicação do CameraValidationService
+  // 10.9: Cache e Deduplicação do CameraValidationService com streamValidated obrigatório
   CameraValidationService.setRecord({
     ip: '127.0.0.1',
     status: 'VALIDATED',
     classification: 'REAL_HARDWARE',
     isMock: false,
+    streamValidated: true,
     validatedAt: Date.now(),
     latencyMs: 15,
     detectedCodec: 'H.264',
@@ -2709,6 +2711,17 @@ export async function runRegressionTests() {
   const cachedRecord = CameraValidationService.getRecord('127.0.0.1');
   assert(cachedRecord?.classification === 'REAL_HARDWARE', 'CameraValidationService: getRecord recupera registro em cache');
 
+  // 10.9.1: Registro sem streamValidated comprovado (false) NUNCA é aceito por isIpValidated
+  CameraValidationService.setRecord({
+    ip: '10.0.0.88',
+    status: 'VALIDATED',
+    classification: 'REAL_HARDWARE',
+    isMock: false,
+    streamValidated: false, // Sem m=video comprovado
+    validatedAt: Date.now(),
+  });
+  assert(!CameraValidationService.isIpValidated('10.0.0.88'), 'CameraValidationService: isIpValidated retorna FALSE se streamValidated não for true');
+
   // 10.10: Importação no backend sem validação física prévia vs com validação
   function simulateImportEndpoint(targetIp: string, isStrict: boolean, allowDemo: boolean) {
     const isMock = targetIp.includes('192.168.1.102') || targetIp.includes('mock');
@@ -2716,7 +2729,7 @@ export async function runRegressionTests() {
       return { status: 403, error: 'MOCK_REJECTED' };
     }
     const record = CameraValidationService.getRecord(targetIp);
-    if (!record || record.status !== 'VALIDATED' || record.classification !== 'REAL_HARDWARE') {
+    if (!record || record.status !== 'VALIDATED' || record.classification !== 'REAL_HARDWARE' || record.streamValidated !== true) {
       return { status: 422, error: 'VALIDATION_REQUIRED' };
     }
     return { status: 200, success: true, classification: 'REAL_HARDWARE' };
@@ -2724,14 +2737,77 @@ export async function runRegressionTests() {
 
   assert(simulateImportEndpoint('192.168.1.102', true, false).status === 403, 'Importação: Mock em produção física é recusado com HTTP 403');
   assert(simulateImportEndpoint('10.0.0.99', true, false).status === 422, 'Importação: IP não validado é recusado com HTTP 422');
+  assert(simulateImportEndpoint('10.0.0.88', true, false).status === 422, 'Importação: IP sem streamValidated=true é recusado com HTTP 422');
   CameraValidationService.setRecord({
     ip: '10.0.0.99',
     status: 'VALIDATED',
     classification: 'REAL_HARDWARE',
     isMock: false,
+    streamValidated: true,
     validatedAt: Date.now(),
   });
-  assert(simulateImportEndpoint('10.0.0.99', true, false).status === 200, 'Importação: IP validado como REAL_HARDWARE é aceito com HTTP 200');
+  assert(simulateImportEndpoint('10.0.0.99', true, false).status === 200, 'Importação: IP validado com streamValidated=true é aceito com HTTP 200');
+
+  // 10.11: Separação Estrita de Camadas: RTSP vs go2rtc WebRTC
+  console.log('\n--- [17/17] Validação Protocolar da Camada WebRTC vs RTSP (go2rtc Gateway) ---');
+  // 17.1: Gateway go2rtc offline (porta fechada) -> Falha real de conexão (webrtcValidated: false)
+  const offlineWebRtcRes = await CameraValidationService.validateWebRtcGateway({
+    go2rtcApiUrl: 'http://127.0.0.1:19855', // Porta sabidamente fechada
+    timeoutMs: 500,
+  });
+  assert(offlineWebRtcRes.success === false, 'WebRTC Gateway: Gateway offline retorna success: false');
+  assert(offlineWebRtcRes.webrtcValidated === false, 'WebRTC Gateway: Gateway offline retorna webrtcValidated: false');
+  assert(offlineWebRtcRes.detailedStatus === 'FAILED', 'WebRTC Gateway: Gateway offline tem detailedStatus FAILED');
+
+  // 17.2: Servidor mock de go2rtc respondendo /api/streams
+  const mockGo2rtcPort = 19854;
+  const mockGo2rtcServer = http.createServer((req, res) => {
+    if (req.url === '/api/streams') {
+      res.writeHead(200, { 'Content-Type': 'application/json' });
+      res.end(JSON.stringify({
+        'cam_portaria': { producers: [{ url: 'rtsp://10.0.0.10:554/live' }] },
+        'cam_garagem': { producers: [{ url: 'rtsp://10.0.0.11:554/live' }] },
+      }));
+    } else {
+      res.writeHead(404);
+      res.end();
+    }
+  });
+
+  await new Promise<void>((resolve) => mockGo2rtcServer.listen(mockGo2rtcPort, '127.0.0.1', () => resolve()));
+
+  try {
+    // 17.3: Gateway go2rtc online com streams válidos
+    const onlineWebRtcRes = await CameraValidationService.validateWebRtcGateway({
+      go2rtcApiUrl: `http://127.0.0.1:${mockGo2rtcPort}`,
+      timeoutMs: 1000,
+    });
+    assert(onlineWebRtcRes.success === true, 'WebRTC Gateway: Gateway online retorna success: true');
+    assert(onlineWebRtcRes.webrtcValidated === true, 'WebRTC Gateway: Gateway online retorna webrtcValidated: true');
+    assert(onlineWebRtcRes.detailedStatus === 'WEBRTC_VALIDATED', 'WebRTC Gateway: detailedStatus é WEBRTC_VALIDATED');
+    assert(onlineWebRtcRes.streamsCount === 2, 'WebRTC Gateway: Retorna contagem real de streams');
+
+    // 17.4: Validação de stream específico registrado
+    const streamRegisteredRes = await CameraValidationService.validateWebRtcGateway({
+      go2rtcApiUrl: `http://127.0.0.1:${mockGo2rtcPort}`,
+      streamName: 'cam_portaria',
+      timeoutMs: 1000,
+    });
+    assert(streamRegisteredRes.success === true, 'WebRTC Gateway: Stream registrado retorna success: true');
+    assert(streamRegisteredRes.webrtcValidated === true, 'WebRTC Gateway: Stream registrado confirma webrtcValidated: true');
+
+    // 17.5: Validação de stream inexistente no gateway
+    const streamMissingRes = await CameraValidationService.validateWebRtcGateway({
+      go2rtcApiUrl: `http://127.0.0.1:${mockGo2rtcPort}`,
+      streamName: 'cam_inexistente_99',
+      timeoutMs: 1000,
+    });
+    assert(streamMissingRes.success === false, 'WebRTC Gateway: Stream inexistente retorna success: false');
+    assert(streamMissingRes.webrtcValidated === false, 'WebRTC Gateway: Stream inexistente retorna webrtcValidated: false');
+    assert(streamMissingRes.error?.includes('não está registrado'), 'WebRTC Gateway: Mensagem de erro indica stream não registrado');
+  } finally {
+    await new Promise<void>((resolve) => mockGo2rtcServer.close(() => resolve()));
+  }
 
   // 10.6: LPR Hardening - Bloqueio estrito em DEPLOY_TARGET=physical_guarita
   function simulateLprEndpoint(body: { plate: string; isStrictProduction: boolean }) {

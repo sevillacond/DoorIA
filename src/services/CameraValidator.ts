@@ -27,6 +27,7 @@ export type CameraDetailedStatus =
   | 'RTSP_AUTH_REQUIRED'
   | 'ONVIF_VALIDATED'
   | 'STREAM_VALIDATED'
+  | 'WEBRTC_VALIDATED'
   | 'MOCK_DEMO'
   | 'FAILED';
 
@@ -44,6 +45,7 @@ export interface CameraValidationResult {
   streamProtocol?: 'webrtc';
   streamEndpoint?: string;
   streamValidated?: boolean;
+  webrtcValidated?: boolean;
   authRequired?: boolean;
   authSuccess?: boolean;
   error?: string;
@@ -89,6 +91,7 @@ export class CameraValidationService {
     if (!record) return false;
     if (record.status !== 'VALIDATED') return false;
     if (record.classification !== 'REAL_HARDWARE') return false;
+    if (record.streamValidated !== true) return false;
     if (record.isMock) return false;
     if (Date.now() - record.validatedAt > maxAgeMs) return false;
     return true;
@@ -96,6 +99,80 @@ export class CameraValidationService {
 
   public static clear(): void {
     this.registry.clear();
+  }
+
+  /**
+   * Valida a camada de gateway WebRTC (ex: go2rtc)
+   * REGRA DE OURO: Jamais confunde RTSP com WebRTC.
+   * A validação RTSP comprova STREAM_VALIDATED da câmera;
+   * A validação de WebRTC comprova a ponte de streaming do go2rtc para o PWA/navegador.
+   */
+  public static async validateWebRtcGateway(options: {
+    go2rtcApiUrl?: string;
+    streamName?: string;
+    timeoutMs?: number;
+  } = {}): Promise<{
+    success: boolean;
+    detailedStatus: CameraDetailedStatus;
+    webrtcValidated: boolean;
+    latencyMs?: number;
+    error?: string;
+    streamsCount?: number;
+  }> {
+    const apiUrl = options.go2rtcApiUrl || process.env.GO2RTC_API_URL || 'http://127.0.0.1:1984';
+    const timeoutMs = options.timeoutMs ?? 2000;
+    const start = Date.now();
+
+    try {
+      const url = new URL('/api/streams', apiUrl);
+      const controller = new AbortController();
+      const timer = setTimeout(() => controller.abort(), timeoutMs);
+
+      const resp = await fetch(url.toString(), {
+        signal: controller.signal,
+        headers: { 'Accept': 'application/json' },
+      });
+      clearTimeout(timer);
+
+      if (!resp.ok) {
+        return {
+          success: false,
+          detailedStatus: 'FAILED',
+          webrtcValidated: false,
+          error: `Gateway go2rtc respondeu com HTTP ${resp.status} (${resp.statusText})`,
+        };
+      }
+
+      const latencyMs = Date.now() - start;
+      const data = await resp.json().catch(() => ({}));
+      const streamsCount = typeof data === 'object' && data !== null ? Object.keys(data).length : 0;
+
+      if (options.streamName && data && !data[options.streamName]) {
+        return {
+          success: false,
+          detailedStatus: 'FAILED',
+          webrtcValidated: false,
+          latencyMs,
+          streamsCount,
+          error: `Stream '${options.streamName}' não está registrado no gateway go2rtc.`,
+        };
+      }
+
+      return {
+        success: true,
+        detailedStatus: 'WEBRTC_VALIDATED',
+        webrtcValidated: true,
+        latencyMs,
+        streamsCount,
+      };
+    } catch (err: any) {
+      return {
+        success: false,
+        detailedStatus: 'FAILED',
+        webrtcValidated: false,
+        error: `Falha de comunicação com gateway go2rtc (${apiUrl}): ${err.message || 'Erro de conexão'}`,
+      };
+    }
   }
 
   /**
