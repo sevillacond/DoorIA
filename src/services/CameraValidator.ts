@@ -24,6 +24,7 @@ export type CameraDetailedStatus =
   | 'DISCOVERED'
   | 'TCP_REACHABLE'
   | 'RTSP_VALIDATED'
+  | 'RTSP_AUTH_REQUIRED'
   | 'ONVIF_VALIDATED'
   | 'STREAM_VALIDATED'
   | 'MOCK_DEMO'
@@ -166,20 +167,25 @@ export class CameraValidationService {
         if (codecRaw === 'H264' || codecRaw === 'AVC') return 'H.264';
         if (codecRaw === 'H265' || codecRaw === 'HEVC') return 'H.265';
         if (codecRaw === 'JPEG' || codecRaw === 'MJPEG') return 'MJPEG';
-        return codecRaw;
+        if (codecRaw === 'VP8') return 'VP8';
+        if (codecRaw === 'VP9') return 'VP9';
+        if (codecRaw === 'AV1') return 'AV1';
+        return undefined; // Não inventar codec se for formato não reconhecido
       }
     }
 
-    // Busca textual secundária caso rtpmap esteja em formato simplificado
-    if (sdp.includes('H264') || sdp.includes('h264')) return 'H.264';
-    if (sdp.includes('H265') || sdp.includes('h265')) return 'H.265';
-    if (sdp.includes('MJPEG') || sdp.includes('mjpeg')) return 'MJPEG';
+    // Busca textual secundária caso rtpmap esteja ausente mas haja identificador explícito de vídeo
+    if (/\b(H264|H\.264|AVC)\b/i.test(sdp)) return 'H.264';
+    if (/\b(H265|H\.265|HEVC)\b/i.test(sdp)) return 'H.265';
+    if (/\b(MJPEG|M-JPEG)\b/i.test(sdp)) return 'MJPEG';
 
     return undefined;
   }
 
   /**
-   * Gera header de autorização Digest ou Basic
+   * Gera header de autorização Digest (RFC 2617 / RFC 2068) ou Basic
+   * Trata parâmetros: realm, nonce, qop, opaque, algorithm, nc, cnonce.
+   * Não loga credenciais ou cabeçalhos Authorization.
    */
   private static generateAuthHeader(
     authHeaderValue: string,
@@ -188,25 +194,59 @@ export class CameraValidationService {
     method: string,
     uri: string
   ): string | null {
-    if (!authHeaderValue) return null;
+    if (!authHeaderValue || !username) return null;
 
     // 1. Digest Authentication (RFC 2617 / RFC 2068)
     if (authHeaderValue.toLowerCase().startsWith('digest')) {
       const getParam = (paramName: string): string => {
-        const match = authHeaderValue.match(new RegExp(`${paramName}="([^"]+)"`, 'i'));
-        return match ? match[1] : '';
+        const match = authHeaderValue.match(new RegExp(`${paramName}="([^"]+)"`, 'i')) ||
+                      authHeaderValue.match(new RegExp(`${paramName}=([^,\\s]+)`, 'i'));
+        return match ? match[1].replace(/"/g, '') : '';
       };
 
       const realm = getParam('realm');
       const nonce = getParam('nonce');
+      const qop = getParam('qop');
+      const opaque = getParam('opaque');
+      const algorithm = (getParam('algorithm') || 'MD5').toUpperCase();
 
       if (!realm || !nonce) return null;
 
+      // Se o algoritmo for uma variante não suportada, recusa com segurança (nunca REAL_HARDWARE)
+      if (algorithm !== 'MD5' && algorithm !== 'MD5-SESS') {
+        return null;
+      }
+
       const ha1 = crypto.createHash('md5').update(`${username}:${realm}:${password}`).digest('hex');
       const ha2 = crypto.createHash('md5').update(`${method}:${uri}`).digest('hex');
-      const response = crypto.createHash('md5').update(`${ha1}:${nonce}:${ha2}`).digest('hex');
 
-      return `Authorization: Digest username="${username}", realm="${realm}", nonce="${nonce}", uri="${uri}", response="${response}"`;
+      let response: string;
+      let headerStr = `Authorization: Digest username="${username}", realm="${realm}", nonce="${nonce}", uri="${uri}"`;
+
+      if (qop) {
+        // Suporte para qop=auth (RFC 2617)
+        const qopList = qop.split(',').map((s) => s.trim().toLowerCase());
+        const selectedQop = qopList.includes('auth') ? 'auth' : qopList[0];
+        const nc = '00000001';
+        const cnonce = crypto.randomBytes(4).toString('hex');
+
+        response = crypto.createHash('md5').update(`${ha1}:${nonce}:${nc}:${cnonce}:${selectedQop}:${ha2}`).digest('hex');
+        headerStr += `, response="${response}", qop=${selectedQop}, nc=${nc}, cnonce="${cnonce}"`;
+      } else {
+        // RFC 2068 legado (sem qop)
+        response = crypto.createHash('md5').update(`${ha1}:${nonce}:${ha2}`).digest('hex');
+        headerStr += `, response="${response}"`;
+      }
+
+      if (opaque) {
+        headerStr += `, opaque="${opaque}"`;
+      }
+
+      if (algorithm) {
+        headerStr += `, algorithm=${algorithm}`;
+      }
+
+      return headerStr;
     }
 
     // 2. Basic Authentication
@@ -403,14 +443,15 @@ export class CameraValidationService {
             }
 
             // Se não forneceu credenciais, mas o dispositivo respondeu 401 com cabeçalhos RTSP:
-            // O protocolo RTSP físico está comprovado, mas exige credenciais.
+            // Comprovou apenas TCP + RTSP + Auth exigida. NÃO comprovou DESCRIBE + SDP + mídia.
+            // REGRA OBRIGATÓRIA: classification !== 'REAL_HARDWARE' e status !== 'VALIDATED'.
             return finish({
-              success: true,
-              status: 'VALIDATED',
-              detailedStatus: 'RTSP_VALIDATED',
-              classification: 'REAL_HARDWARE',
+              success: false,
+              status: 'FAILED',
+              detailedStatus: 'RTSP_AUTH_REQUIRED',
+              classification: 'FAILED',
               isMock: false,
-              step: 'completed',
+              step: 'auth_check',
               latencyMs: measuredLatency,
               detectedCodec: undefined, // Nunca inventar!
               streamProtocol: 'webrtc',
@@ -418,10 +459,11 @@ export class CameraValidationService {
               streamValidated: false,
               authRequired: true,
               authSuccess: false,
+              error: 'Dispositivo RTSP requer autenticação. Credenciais não fornecidas ou incompletas.',
               details: {
                 statusCode: 401,
                 authScheme: wwwAuth ? wwwAuth.split(' ')[0] : 'Unknown',
-                message: 'Protocolo RTSP comprovado. Dispositivo requer autenticação com credenciais.',
+                message: 'Protocolo RTSP comprovado, mas dispositivo requer autenticação válida.',
               },
             });
           }
@@ -495,11 +537,55 @@ export class CameraValidationService {
 
         // Trata passo rtsp_describe
         if (currentStep === 'rtsp_describe') {
+          // Se o DESCRIBE inicial retornou 401 e o usuário forneceu credenciais, tenta autenticar o DESCRIBE
+          if (parsed.statusCode === 401 && username && password && !authHeaderUsed && parsed.headers['www-authenticate']) {
+            const uri = `rtsp://${targetIp}:${portToTest}/`;
+            authHeaderUsed = CameraValidationService.generateAuthHeader(
+              parsed.headers['www-authenticate'],
+              username,
+              password,
+              'DESCRIBE',
+              uri
+            );
+            if (authHeaderUsed) {
+              buffer = '';
+              cseq++;
+              const describeReq = `DESCRIBE ${uri} RTSP/1.0\r\nCSeq: ${cseq}\r\nAccept: application/sdp\r\nUser-Agent: DoorIA-CameraValidator/2.0\r\n${authHeaderUsed}\r\n\r\n`;
+              socket.write(describeReq);
+              return;
+            }
+          }
+
+          // REGRA OBRIGATÓRIA: Qualquer resposta não-2xx do DESCRIBE (401, 403, 404, 500, etc.) resulta em FAILED
+          // NUNCA retornar success: true ou classification: REAL_HARDWARE para um DESCRIBE que falhou!
+          if (parsed.statusCode < 200 || parsed.statusCode >= 300) {
+            return finish({
+              success: false,
+              status: 'FAILED',
+              detailedStatus: parsed.statusCode === 401 ? 'RTSP_AUTH_REQUIRED' : 'FAILED',
+              classification: 'FAILED',
+              isMock: false,
+              step: 'rtsp_describe',
+              latencyMs: measuredLatency,
+              detectedCodec: undefined,
+              streamValidated: false,
+              authRequired: parsed.statusCode === 401,
+              authSuccess: false,
+              error: `Comando RTSP DESCRIBE falhou com código ${parsed.statusCode} ${parsed.statusMessage || ''}.`,
+              details: {
+                statusCode: parsed.statusCode,
+                statusMessage: parsed.statusMessage,
+              },
+            });
+          }
+
+          // DESCRIBE retornou 200 OK!
+          const hasVideoTrack = parsed.body.includes('m=video');
           let detectedCodec: string | undefined = undefined;
           let isStreamValidated = false;
 
-          // Se o DESCRIBE retornou 200 OK com SDP contendo mídia
-          if (parsed.statusCode === 200 && (parsed.body.includes('m=video') || parsed.headers['content-type']?.includes('sdp'))) {
+          // Se o DESCRIBE retornou 200 OK com SDP contendo mídia de vídeo
+          if (hasVideoTrack) {
             detectedCodec = CameraValidationService.extractCodecFromSdp(parsed.body);
             isStreamValidated = true;
           }
@@ -523,6 +609,7 @@ export class CameraValidationService {
               optionsStatus: optionsResponse?.statusCode,
               describeStatus: parsed.statusCode,
               publicMethods: optionsResponse?.headers['public'] || optionsResponse?.headers['server'],
+              hasVideoTrack,
             },
           });
         }

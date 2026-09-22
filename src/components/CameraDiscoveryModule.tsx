@@ -128,6 +128,17 @@ export const CameraDiscoveryModule: React.FC<CameraDiscoveryModuleProps> = ({ on
             isMock: true,
           },
         }));
+      } else if (data.detailedStatus === 'RTSP_AUTH_REQUIRED' || data.authRequired) {
+        setTestResults((prev) => ({
+          ...prev,
+          [cam.ip]: {
+            latency: typeof data.latencyMs === 'number' ? data.latencyMs : undefined,
+            codec: undefined,
+            status: 'Requer Autenticação (RTSP 401)',
+            isFailed: true,
+            isMock: false,
+          },
+        }));
       } else {
         setTestResults((prev) => ({
           ...prev,
