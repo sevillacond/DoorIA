@@ -39,11 +39,14 @@ export function isValidRtspFormat(url: string | undefined | null): boolean {
 }
 
 export function getActiveCamerasConfig(env: NodeJS.ProcessEnv = process.env): CameraConfigItem[] {
-  // Portaria é habilitada por padrão a menos que explicitamente desligada
-  const isPortariaEnabled = env.CAMERA_PORTARIA_ENABLED !== 'false';
-  const isGaragemEnabled = env.CAMERA_GARAGEM_ENABLED === 'true' || Boolean(env.GO2RTC_CAMERA_GARAGEM_URL && env.GO2RTC_CAMERA_GARAGEM_URL.trim());
-  const isHallEnabled = env.CAMERA_HALL_ENABLED === 'true' || Boolean(env.GO2RTC_CAMERA_HALL_URL && env.GO2RTC_CAMERA_HALL_URL.trim());
-  const isGourmetEnabled = env.CAMERA_GOURMET_ENABLED === 'true' || Boolean(env.GO2RTC_CAMERA_GOURMET_URL && env.GO2RTC_CAMERA_GOURMET_URL.trim());
+  // Controle explícito: toda câmera exige CAMERA_<ID>_ENABLED === 'true'
+  // Para portaria: habilitada por padrão (CAMERA_PORTARIA_ENABLED !== 'false') a menos que explicitamente desabilitada ('false' ou '0')
+  // Para secundárias (garagem, hall, gourmet): estritamente CAMERA_<ID>_ENABLED === 'true'
+  // A presença isolada de uma URL RTSP NUNCA habilita a câmera se ENABLED for false
+  const isPortariaEnabled = env.CAMERA_PORTARIA_ENABLED !== 'false' && env.CAMERA_PORTARIA_ENABLED !== '0';
+  const isGaragemEnabled = env.CAMERA_GARAGEM_ENABLED === 'true';
+  const isHallEnabled = env.CAMERA_HALL_ENABLED === 'true';
+  const isGourmetEnabled = env.CAMERA_GOURMET_ENABLED === 'true';
 
   const cameras: CameraConfigItem[] = [];
 
@@ -91,10 +94,19 @@ export function generateGo2rtcYaml(env: NodeJS.ProcessEnv = process.env): string
   const localServerIp = env.LOCAL_SERVER_IP?.trim() || '127.0.0.1';
   const activeCameras = getActiveCamerasConfig(env);
 
-  // Apenas as câmeras ativas com URL configurada são incluídas sob streams:
-  const configuredStreams = activeCameras.filter((cam) => cam.rtspUrl && isValidRtspFormat(cam.rtspUrl));
+  // FAIL-FAST Mandatório:
+  // Toda câmera explicitamente habilitada DEVE possuir configuração RTSP válida.
+  // Se estiver habilitada sem URL válida: disparar erro crítico imediatamente.
+  // Não gerar stream vazia. Não criar configuração parcialmente válida.
+  for (const cam of activeCameras) {
+    if (!cam.rtspUrl || !isValidRtspFormat(cam.rtspUrl)) {
+      throw new Error(
+        `[Go2RTC Config FAIL-FAST] A câmera "${cam.id}" está habilitada (${cam.id.toUpperCase()}_ENABLED=true) mas a URL RTSP é inválida ou ausente (recebido: "${cam.rtspUrl || ''}"). Nenhuma stream vazia ou configuração parcialmente válida é permitida.`
+      );
+    }
+  }
 
-  const streamsYaml = configuredStreams
+  const streamsYaml = activeCameras
     .map((cam) => {
       const lines = [`  # ${cam.name}`, `  ${cam.id}:`, `    - "${cam.rtspUrl}"`];
       if (cam.useOpusAudio) {
