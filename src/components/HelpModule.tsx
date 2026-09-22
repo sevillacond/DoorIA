@@ -705,7 +705,7 @@ webrtc:
                   <span>Método 2: Compilação em APK com Capacitor</span>
                 </h3>
                 <p className="text-xs text-slate-600 dark:text-slate-300">
-                  O projeto já conta com o diretório <code>/android</code> pré-configurado com Gradle 8.4 e Capacitor 6+.
+                  O projeto já conta com o diretório <code>/android</code> pré-configurado com Gradle 8.4 e Capacitor 8.x.
                 </p>
                 <div className="space-y-1.5 font-mono text-[11px] bg-[#070d18] text-slate-300 p-3 rounded-xl border border-slate-800">
                   <div>npm run build</div>

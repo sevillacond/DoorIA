@@ -28,4 +28,4 @@
 ## 6. PWA Mobile e Aplicativo Android
 - **PWA Instalável:** Manifesto Web com suporte a instalação em tela cheia (Add to Home Screen) no Android e iOS.
 - **Notificações Push:** Suporte a notificações de chamadas de interfone e encomendas.
-- **APK Android:** Empacotamento direto via Capacitor 6+ localizado no diretório `/android`.
+- **APK Android:** Empacotamento direto via Capacitor 8.x localizado no diretório `/android`.

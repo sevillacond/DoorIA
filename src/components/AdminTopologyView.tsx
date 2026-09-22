@@ -672,7 +672,7 @@ export const AdminTopologyView: React.FC<AdminTopologyViewProps> = ({
                 <span>5. PWA Mobile, Notificações Push & Compilação em APK Android</span>
               </div>
               <p className="text-[#5a6a85] dark:text-slate-300">
-                O DoorIA foi desenvolvido como uma <strong className="text-[#0d1b35] dark:text-white">Progressive Web App (PWA) instalável</strong> com cache offline Workbox, suporte a WebRTC e Notificações Push nativas. Caso o condomínio necessite distribuir um aplicativo nativo Android (.APK) via sideload ou Google Play, utilize o <strong className="text-[#0d1b35] dark:text-white">Capacitor 6+</strong>:
+                O DoorIA foi desenvolvido como uma <strong className="text-[#0d1b35] dark:text-white">Progressive Web App (PWA) instalável</strong> com cache offline Workbox, suporte a WebRTC e Notificações Push nativas. Caso o condomínio necessite distribuir um aplicativo nativo Android (.APK) via sideload ou Google Play, utilize o <strong className="text-[#0d1b35] dark:text-white">Capacitor 8.x</strong>:
               </p>
 
               {/* Guia Rápido de Compilação do APK */}
