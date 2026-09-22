@@ -2155,48 +2155,181 @@ export async function runRegressionTests() {
   assert(closedPortValidation.success === false, 'CameraValidationService: Porta fechada resulta em success: false');
   assert(closedPortValidation.classification === 'FAILED', 'CameraValidationService: Classificação para porta fechada é FAILED');
   assert(closedPortValidation.status === 'FAILED', 'CameraValidationService: Status para porta fechada é FAILED');
+  assert(closedPortValidation.latencyMs === undefined, 'CameraValidationService: Latência é undefined em caso de falha de conexão');
 
-  // 10.4: CameraValidationService - Conectividade TCP RTSP real bem-sucedida (Hardware Real)
-  const mockRtspServer = net.createServer((socket) => {
-    socket.on('data', (data) => {
-      // Simula resposta mínima RTSP Options
-      socket.write('RTSP/1.0 200 OK\r\nCSeq: 1\r\nPublic: OPTIONS, DESCRIBE, SETUP, TEARDOWN, PLAY\r\n\r\n');
+  // 10.4: CameraValidationService - TCP sem RTSP (porta aberta, mas resposta texto inválido)
+  const invalidTcpServer = net.createServer((socket) => {
+    socket.on('data', () => {
+      socket.write('HELLO_PLAIN_TCP_SERVICE_NOT_RTSP\r\n\r\n');
     });
   });
-
-  const rtspTestPort = 55498;
-  await new Promise<void>((resolve) => mockRtspServer.listen(rtspTestPort, '127.0.0.1', () => resolve()));
-
+  const invalidTcpPort = 55491;
+  await new Promise<void>((resolve) => invalidTcpServer.listen(invalidTcpPort, '127.0.0.1', () => resolve()));
   try {
-    const realCamValidation = await CameraValidationService.validateDevice({
+    const invalidTcpRes = await CameraValidationService.validateDevice({
       ip: '127.0.0.1',
-      rtspPort: rtspTestPort,
+      rtspPort: invalidTcpPort,
       timeoutMs: 1000,
       isStrict: true,
       allowDemo: false,
     });
-    assert(realCamValidation.success === true, 'CameraValidationService: Conexão real com porta RTSP retorna success: true');
-    assert(realCamValidation.isMock === false, 'CameraValidationService: Dispositivo real tem isMock: false');
-    assert(realCamValidation.classification === 'REAL_HARDWARE', 'CameraValidationService: Classificado como REAL_HARDWARE');
-    assert(realCamValidation.status === 'VALIDATED', 'CameraValidationService: Status atestado como VALIDATED');
-    assert(typeof realCamValidation.latencyMs === 'number' && realCamValidation.latencyMs >= 0, 'CameraValidationService: Latência calculada');
-
-    // 10.5: Teste de Cache e Deduplicação do CameraValidationService
-    CameraValidationService.setRecord({
-      ip: '127.0.0.1',
-      status: 'VALIDATED',
-      classification: 'REAL_HARDWARE',
-      isMock: false,
-      validatedAt: Date.now(),
-      latencyMs: realCamValidation.latencyMs,
-      detectedCodec: 'H.264',
-    });
-    assert(CameraValidationService.isIpValidated('127.0.0.1'), 'CameraValidationService: isIpValidated retorna true para IP validado no cache');
-    const cachedRecord = CameraValidationService.getRecord('127.0.0.1');
-    assert(cachedRecord?.classification === 'REAL_HARDWARE', 'CameraValidationService: getRecord recupera registro em cache');
+    assert(invalidTcpRes.success === false, 'CameraValidationService: TCP sem RTSP resulta em success: false');
+    assert(invalidTcpRes.classification !== 'REAL_HARDWARE', 'CameraValidationService: TCP sem RTSP NUNCA é classificado como REAL_HARDWARE');
+    assert(invalidTcpRes.status === 'FAILED', 'CameraValidationService: Status para TCP sem RTSP é FAILED');
   } finally {
-    mockRtspServer.close();
+    invalidTcpServer.close();
   }
+
+  // 10.5: CameraValidationService - Resposta HTTP em porta RTSP (servidor responde HTTP/1.1 200 OK)
+  const httpOnRtspServer = net.createServer((socket) => {
+    socket.on('data', () => {
+      socket.write('HTTP/1.1 200 OK\r\nContent-Type: text/html\r\nContent-Length: 0\r\n\r\n');
+    });
+  });
+  const httpOnRtspPort = 55492;
+  await new Promise<void>((resolve) => httpOnRtspServer.listen(httpOnRtspPort, '127.0.0.1', () => resolve()));
+  try {
+    const httpOnRtspRes = await CameraValidationService.validateDevice({
+      ip: '127.0.0.1',
+      rtspPort: httpOnRtspPort,
+      timeoutMs: 1000,
+      isStrict: true,
+      allowDemo: false,
+    });
+    assert(httpOnRtspRes.success === false, 'CameraValidationService: HTTP em porta 554 resulta em success: false');
+    assert(httpOnRtspRes.classification !== 'REAL_HARDWARE', 'CameraValidationService: HTTP em porta 554 NÃO pode ser REAL_HARDWARE');
+    assert(httpOnRtspRes.status === 'FAILED', 'CameraValidationService: HTTP em porta 554 é FAILED');
+    assert(httpOnRtspRes.error?.includes('não é RTSP/1.0') === true, 'CameraValidationService: Erro informa que resposta não é RTSP');
+  } finally {
+    httpOnRtspServer.close();
+  }
+
+  // 10.6: CameraValidationService - RTSP válido sem SDP / Codec não inventado
+  const rtspNoSdpServer = net.createServer((socket) => {
+    socket.on('data', (data) => {
+      const str = data.toString('utf8');
+      if (str.startsWith('OPTIONS')) {
+        socket.write('RTSP/1.0 200 OK\r\nCSeq: 1\r\nPublic: OPTIONS, DESCRIBE\r\n\r\n');
+      } else if (str.startsWith('DESCRIBE')) {
+        // DESCRIBE 404 (sem stream SDP na raiz)
+        socket.write('RTSP/1.0 404 Stream Not Found\r\nCSeq: 2\r\n\r\n');
+      }
+    });
+  });
+  const rtspNoSdpPort = 55493;
+  await new Promise<void>((resolve) => rtspNoSdpServer.listen(rtspNoSdpPort, '127.0.0.1', () => resolve()));
+  try {
+    const rtspNoSdpRes = await CameraValidationService.validateDevice({
+      ip: '127.0.0.1',
+      rtspPort: rtspNoSdpPort,
+      timeoutMs: 1000,
+      isStrict: true,
+      allowDemo: false,
+    });
+    assert(rtspNoSdpRes.success === true, 'CameraValidationService: RTSP OPTIONS 200 OK aceito');
+    assert(rtspNoSdpRes.classification === 'REAL_HARDWARE', 'CameraValidationService: Classificado como REAL_HARDWARE');
+    assert(rtspNoSdpRes.detailedStatus === 'RTSP_VALIDATED', 'CameraValidationService: detailedStatus é RTSP_VALIDATED');
+    assert(rtspNoSdpRes.detectedCodec === undefined, 'CameraValidationService: Codec NÃO é inventado (retorna undefined quando não identificado no SDP)');
+    assert(typeof rtspNoSdpRes.latencyMs === 'number' && rtspNoSdpRes.latencyMs >= 0, 'CameraValidationService: Latência é uma medição real em ms');
+  } finally {
+    rtspNoSdpServer.close();
+  }
+
+  // 10.7: CameraValidationService - RTSP com SDP contendo codec real H.264
+  const rtspSdpServer = net.createServer((socket) => {
+    socket.on('data', (data) => {
+      const str = data.toString('utf8');
+      if (str.startsWith('OPTIONS')) {
+        socket.write('RTSP/1.0 200 OK\r\nCSeq: 1\r\nPublic: OPTIONS, DESCRIBE\r\n\r\n');
+      } else if (str.startsWith('DESCRIBE')) {
+        const sdpBody = 'v=0\r\no=- 1 1 IN IP4 127.0.0.1\r\ns=DoorIA Test\r\nt=0 0\r\nm=video 0 RTP/AVP 96\r\na=rtpmap:96 H264/90000\r\n';
+        socket.write(`RTSP/1.0 200 OK\r\nCSeq: 2\r\nContent-Type: application/sdp\r\nContent-Length: ${sdpBody.length}\r\n\r\n${sdpBody}`);
+      }
+    });
+  });
+  const rtspSdpPort = 55494;
+  await new Promise<void>((resolve) => rtspSdpServer.listen(rtspSdpPort, '127.0.0.1', () => resolve()));
+  try {
+    const rtspSdpRes = await CameraValidationService.validateDevice({
+      ip: '127.0.0.1',
+      rtspPort: rtspSdpPort,
+      timeoutMs: 1000,
+      isStrict: true,
+      allowDemo: false,
+    });
+    assert(rtspSdpRes.success === true, 'CameraValidationService: Stream com SDP retorna success: true');
+    assert(rtspSdpRes.classification === 'REAL_HARDWARE', 'CameraValidationService: Dispositivo com SDP é REAL_HARDWARE');
+    assert(rtspSdpRes.detailedStatus === 'STREAM_VALIDATED', 'CameraValidationService: detailedStatus é STREAM_VALIDATED');
+    assert(rtspSdpRes.streamValidated === true, 'CameraValidationService: streamValidated é true');
+    assert(rtspSdpRes.detectedCodec === 'H.264', 'CameraValidationService: Codec H.264 extraído legitimamente do SDP');
+  } finally {
+    rtspSdpServer.close();
+  }
+
+  // 10.8: CameraValidationService - Autenticação RTSP com credenciais inválidas resulta em FAILED
+  const rtspAuthServer = net.createServer((socket) => {
+    socket.on('data', () => {
+      // Sempre responde 401 Unauthorized com Basic challenge
+      socket.write('RTSP/1.0 401 Unauthorized\r\nCSeq: 1\r\nWWW-Authenticate: Basic realm="DoorIA-Cam"\r\n\r\n');
+    });
+  });
+  const rtspAuthPort = 55495;
+  await new Promise<void>((resolve) => rtspAuthServer.listen(rtspAuthPort, '127.0.0.1', () => resolve()));
+  try {
+    const authFailedRes = await CameraValidationService.validateDevice({
+      ip: '127.0.0.1',
+      rtspPort: rtspAuthPort,
+      username: 'admin',
+      password: 'senha_errada_123',
+      timeoutMs: 1000,
+      isStrict: true,
+      allowDemo: false,
+    });
+    assert(authFailedRes.success === false, 'CameraValidationService: Autenticação inválida resulta em success: false');
+    assert(authFailedRes.status === 'FAILED', 'CameraValidationService: Status para autenticação inválida é FAILED');
+    assert(authFailedRes.classification === 'FAILED', 'CameraValidationService: Classification para autenticação inválida é FAILED');
+    assert(authFailedRes.step === 'auth_check', 'CameraValidationService: Passo que falhou foi auth_check');
+  } finally {
+    rtspAuthServer.close();
+  }
+
+  // 10.9: Cache e Deduplicação do CameraValidationService
+  CameraValidationService.setRecord({
+    ip: '127.0.0.1',
+    status: 'VALIDATED',
+    classification: 'REAL_HARDWARE',
+    isMock: false,
+    validatedAt: Date.now(),
+    latencyMs: 15,
+    detectedCodec: 'H.264',
+  });
+  assert(CameraValidationService.isIpValidated('127.0.0.1'), 'CameraValidationService: isIpValidated retorna true para IP validado no cache');
+  const cachedRecord = CameraValidationService.getRecord('127.0.0.1');
+  assert(cachedRecord?.classification === 'REAL_HARDWARE', 'CameraValidationService: getRecord recupera registro em cache');
+
+  // 10.10: Importação no backend sem validação física prévia vs com validação
+  function simulateImportEndpoint(targetIp: string, isStrict: boolean, allowDemo: boolean) {
+    const isMock = targetIp.includes('192.168.1.102') || targetIp.includes('mock');
+    if (isStrict && isMock && !allowDemo) {
+      return { status: 403, error: 'MOCK_REJECTED' };
+    }
+    const record = CameraValidationService.getRecord(targetIp);
+    if (!record || record.status !== 'VALIDATED' || record.classification !== 'REAL_HARDWARE') {
+      return { status: 422, error: 'VALIDATION_REQUIRED' };
+    }
+    return { status: 200, success: true, classification: 'REAL_HARDWARE' };
+  }
+
+  assert(simulateImportEndpoint('192.168.1.102', true, false).status === 403, 'Importação: Mock em produção física é recusado com HTTP 403');
+  assert(simulateImportEndpoint('10.0.0.99', true, false).status === 422, 'Importação: IP não validado é recusado com HTTP 422');
+  CameraValidationService.setRecord({
+    ip: '10.0.0.99',
+    status: 'VALIDATED',
+    classification: 'REAL_HARDWARE',
+    isMock: false,
+    validatedAt: Date.now(),
+  });
+  assert(simulateImportEndpoint('10.0.0.99', true, false).status === 200, 'Importação: IP validado como REAL_HARDWARE é aceito com HTTP 200');
 
   // 10.6: LPR Hardening - Bloqueio estrito em DEPLOY_TARGET=physical_guarita
   function simulateLprEndpoint(body: { plate: string; isStrictProduction: boolean }) {

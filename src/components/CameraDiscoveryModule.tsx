@@ -110,9 +110,9 @@ export const CameraDiscoveryModule: React.FC<CameraDiscoveryModuleProps> = ({ on
         setTestResults((prev) => ({
           ...prev,
           [cam.ip]: {
-            latency: data.latencyEstimateMs,
-            codec: data.videoCodec || 'H.264',
-            status: 'Hardware Físico Online • 200 OK',
+            latency: typeof data.latencyMs === 'number' ? data.latencyMs : data.latencyEstimateMs,
+            codec: data.detectedCodec || undefined,
+            status: data.detailedStatus === 'STREAM_VALIDATED' ? 'Stream SDP Validado • 200 OK' : 'RTSP Protocolar Validado • 200 OK',
             isFailed: false,
             isMock: false,
           },

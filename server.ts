@@ -1663,15 +1663,18 @@ async function startServer() {
       isMock: false,
       classification: 'REAL_HARDWARE',
       status: 'online',
-      latencyEstimateMs: valResult.latencyMs,
-      videoCodec: valResult.detectedCodec || 'H.264 High Profile',
+      detailedStatus: valResult.detailedStatus,
+      latencyMs: valResult.latencyMs,
+      detectedCodec: valResult.detectedCodec, // Somente se obtido via SDP real, nunca inventado
       streamProtocol: 'webrtc',
       streamEndpoint: valResult.streamEndpoint,
+      streamValidated: valResult.streamValidated,
+      authRequired: valResult.authRequired,
     });
   });
 
   app.post('/api/v1/discovery/import', requireAuth, requireRole(['super_admin', 'admin_sistema']), async (req, res) => {
-    const { discoveredId, ip, customName, customLocation, selectedProfile } = req.body;
+    const { discoveredId, ip, customName, customLocation, selectedProfile, username, password } = req.body;
 
     // 1. Determina o IP alvo da câmera
     let targetIp = (ip || '').trim();
@@ -1692,6 +1695,7 @@ async function startServer() {
     const isMock =
       targetIp === '192.168.1.102' ||
       targetIp === '192.168.1.103' ||
+      targetIp === '192.168.1.200' ||
       targetIp.includes('mock') ||
       targetIp.includes('demo');
 
@@ -1705,37 +1709,59 @@ async function startServer() {
 
     // 3. Validação real prévia ou em tempo real
     let record = CameraValidationService.getRecord(targetIp);
-    const isRecentlyValidated = record && record.status === 'VALIDATED' && (Date.now() - record.validatedAt < 5 * 60 * 1000);
+    const isRecentlyValidated = record && record.status === 'VALIDATED' && record.classification === 'REAL_HARDWARE' && (Date.now() - record.validatedAt < 5 * 60 * 1000);
 
     if (!isRecentlyValidated) {
       const val = await CameraValidationService.validateDevice({
         ip: targetIp,
         rtspPort: 554,
+        username,
+        password,
         isStrict: isStrictProduction,
         allowDemo: allowDemoCameras,
-        timeoutMs: 2500,
+        timeoutMs: 3000,
       });
 
       CameraValidationService.setRecord({
         ip: targetIp,
         status: val.status,
+        detailedStatus: val.detailedStatus,
         classification: val.classification,
         isMock: val.isMock,
         validatedAt: Date.now(),
         latencyMs: val.latencyMs,
         detectedCodec: val.detectedCodec,
+        streamValidated: val.streamValidated,
         error: val.error,
       });
 
-      if (!val.success || val.status !== 'VALIDATED') {
+      // Em sandbox com mock permitido: importa explicitamente como MOCK_DEMO / SIMULADA
+      if (val.isMock && allowDemoCameras && !isStrictProduction) {
+        publishEvent('CAMERA_PARAMETRIZED_VIA_DISCOVERY', 'onvif_discovery', {
+          targetIp,
+          customName,
+          customLocation,
+          classification: 'MOCK_DEMO',
+        });
+        return res.json({
+          success: true,
+          status: 'SIMULADA',
+          classification: 'MOCK_DEMO',
+          message: `Câmera simulada '${customName || targetIp}' importada em modo sandbox/demonstração.`,
+        });
+      }
+
+      if (!val.success || val.status !== 'VALIDATED' || val.classification !== 'REAL_HARDWARE') {
         return res.status(422).json({
           success: false,
           status: 'FAILED',
           error: 'O dispositivo não pôde ser validado na rede física e sua importação foi recusada.',
           details: val.error,
           step: val.step,
+          detailedStatus: val.detailedStatus,
         });
       }
+      record = CameraValidationService.getRecord(targetIp);
     }
 
     // 4. Dispositivo físico comprovado e validado -> Conclui importação no CFTV
@@ -1752,13 +1778,16 @@ async function startServer() {
       'CAMERA_IMPORTADA_CFTV',
       customLocation || targetIp,
       'PERMITIDO',
-      { ip: targetIp, name: customName, profile: selectedProfile }
+      { ip: targetIp, name: customName, profile: selectedProfile, detectedCodec: record?.detectedCodec }
     );
 
     res.json({
       success: true,
       status: 'VALIDATED',
       classification: 'REAL_HARDWARE',
+      detailedStatus: record?.detailedStatus || 'RTSP_VALIDATED',
+      detectedCodec: record?.detectedCodec,
+      latencyMs: record?.latencyMs,
       message: `Câmera '${customName || targetIp}' validada fisicamente e importada com sucesso no CFTV.`,
     });
   });
