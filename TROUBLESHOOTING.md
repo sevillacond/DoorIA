@@ -1,253 +1,240 @@
 # Manual Oficial de Diagnóstico e Resolução de Problemas (Troubleshooting) — Enlace-DoorIA
 
-Este documento consolida os procedimentos técnicos para identificação, diagnóstico e resolução de incidentes no **Enlace-DoorIA**, cobrindo o banco de dados PostgreSQL 16 LTS, telefonia Asterisk 20+ (PJSIP/AMI), streaming de vídeo go2rtc, WebRTC e controladores físicos de portão.
+Este documento fornece procedimentos técnicos metódicos para diagnóstico, depuração e recuperação de falhas em bancada de homologação e na guarita, cobrindo os 15 cenários críticos de operação.
 
 ---
 
-## 1. Comandos de Diagnóstico Rápido e Triagem Inicial
+## 1. Procedimento de Triagem Rápida
 
-Execute esta sequência de comandos no terminal da VM para obter uma visão geral do estado dos serviços:
+Execute esta sequência de comandos para identificar o componente com anomalia:
 
 ```bash
-# 1. Verificar estado de execução e saúde dos contêineres Docker
+# 1. Estado geral e saúde dos contêineres Docker
 docker compose ps
 
-# 2. Testar a Liveness Probe da aplicação Core
+# 2. Testar Liveness da aplicação Core (processo ativo)
 curl -i http://localhost:3000/health/live
 
-# 3. Testar a Readiness Probe da guarita física
+# 3. Testar Readiness da aplicação Core (PostgreSQL + AMI prontos)
 curl -i http://localhost:3000/health/ready
 
-# 4. Inspecionar logs unificados de erro recentes
-docker compose logs --tail=100 -f dooria-core
+# 4. Logs recentes do container Core
+docker compose logs --tail=100 dooria-core
 ```
 
 ---
 
-## 2. Diagnóstico de Telefonia e Interfonia IP (Asterisk 20 LTS & PJSIP)
-
-### 2.1. Comandos Essenciais da CLI do Asterisk
-Acesse a CLI do Asterisk dentro do contêiner:
-```bash
-docker exec -it dooria-asterisk asterisk -rvvvvv
-```
-
-Dentro da CLI, utilize os comandos de inspeção:
-```text
-; 1. Verificar status de registro dos ramais e totens
-pjsip show endpoints
-
-; 2. Inspecionar os contatos IP e portas registrados no PJSIP
-pjsip show contacts
-
-; 3. Verificar canais ativos em tempo real
-core show channels
-
-; 4. Ativar log de depuração SIP na tela em tempo real
-pjsip set logger on
-
-; 5. Desativar log de depuração SIP
-pjsip set logger off
-```
-
-### 2.2. Falha de Registro do Totem Intelbras XPE 3115-IP (SIP 401 / 403 Forbidden)
-- **Sintoma:** O totem não conclui o registro no Asterisk e a interface web do XPE exibe "Status SIP: Desconectado" ou "Registro Falhou".
-- **Causa Raiz 1:** Divergência de senha entre a interface web do XPE e o arquivo `/config/asterisk/pjsip.conf` (seção `auth_totem`).
-- **Causa Raiz 2:** O parâmetro `XPE_SIP_USERNAME` no `.env` difere do endpoint configurado no `pjsip.conf` (padrão homologado: `8000`).
-- **Solução:**
-  1. No painel web do Totem XPE (menu *Rede / SIP*), verifique se o **Servidor SIP** aponta para o IP da LAN do servidor DoorIA (`LOCAL_SERVER_IP`, ex: `192.168.1.100`), na porta `5060`.
-  2. Ajuste o usuário para `8000` e a senha exatamente conforme declarada em `XPE_SIP_SECRET` no arquivo `.env`.
-  3. No terminal da VM, recarregue a configuração do PJSIP:
-     ```bash
-     docker exec dooria-asterisk asterisk -rx 'pjsip reload'
-     ```
-
-### 2.3. Problema de Áudio Unidirecional (One-Way Audio) ou Mudo
-- **Sintoma:** Ao atender a chamada, o morador ouve o visitante no totem, mas o visitante não ouve o morador (ou vice-versa).
-- **Causa Raiz:** Bloqueio das portas RTP UDP (10000 a 20000) no firewall da VM ou configuração incorreta de `external_media_address` no `pjsip.conf`.
-- **Solução:**
-  1. Confirme que as portas RTP estão abertas no firewall:
-     ```bash
-     sudo ufw status | grep 10000:20000
-     ```
-  2. Caso a VM opere em rede com NAT, configure o endereço IP da LAN em `/config/asterisk/pjsip.conf`:
-     ```ini
-     [transport-udp]
-     type = transport
-     protocol = udp
-     bind = 0.0.0.0:5060
-     local_net = 192.168.1.0/24
-     local_net = 172.28.0.0/24
-     external_media_address = 192.168.1.100
-     external_signaling_address = 192.168.1.100
-     ```
-  3. Recarregue o transporte: `docker exec dooria-asterisk asterisk -rx 'pjsip reload'`.
+## 2. Diagnóstico Sistemático dos 15 Cenários Críticos
 
 ---
 
-## 3. Diagnóstico do Asterisk Manager Interface (AMI - Porta 5038)
-
-### 3.1. Teste de Conectividade do Socket AMI
-A partir do host ou de dentro do contêiner `dooria-core`:
-```bash
-# Teste a partir do host da VM
-nc -zv 127.0.0.1 5038
-
-# Teste a partir do container dooria-core (rede bridge)
-docker exec dooria-core nc -zv 172.28.0.1 5038
-```
-
-### 3.2. Falha de Autenticação AMI (`Authentication failed` ou Erro 401)
-- **Sintoma:** O endpoint `/health/ready` do DoorIA retorna HTTP 503 reportando `ami: { status: "offline" }`.
-- **Causa Raiz 1:** A senha declarada em `ASTERISK_AMI_SECRET` no `.env` não é idêntica à declarada em `/etc/asterisk/manager.conf`.
-- **Causa Raiz 2:** A ACL do `manager.conf` rejeitou a conexão oriunda da rede interna do Docker (`172.28.0.0/24`).
-- **Solução:**
-  1. Inspecione a configuração ativa do gerenciador no Asterisk:
-     ```bash
-     docker exec dooria-asterisk asterisk -rx 'manager show settings'
-     docker exec dooria-asterisk asterisk -rx 'manager show users'
-     ```
-  2. Certifique-se de que `/etc/asterisk/manager.conf` possui as diretivas de permissão:
-     ```ini
-     [dooria_ami_user]
-     secret = <SENHA_DO_ENV>
-     deny = 0.0.0.0/0.0.0.0
-     permit = 127.0.0.1/255.255.255.255
-     permit = 172.28.0.0/255.255.255.0
-     ```
-  3. Recarregue o gerenciador: `docker exec dooria-asterisk asterisk -rx 'manager reload'`.
+### Cenário 1: DoorIA Core não Inicia (Container em Crash ou Reiniciando)
+- **Arquivos Relevantes:** `.env`, `docker-compose.yml`, `src/config/productionValidator.ts`, `server.ts`.
+- **Comandos de Inspeção:**
+  ```bash
+  docker compose logs --tail=100 dooria-core
+  docker inspect -f '{{.State.ExitCode}} - {{.State.Error}}' dooria-core
+  ```
+- **Logs Característicos:**
+  `[ProductionValidator] ❌ ERRO CRÍTICO DE CONFIGURAÇÃO EM PRODUÇÃO: Variável X obrigatória não definida.`
+- **Causa Provável:** Falha de validação estrita no boot (`validateProductionConfig`) decorrente de variáveis obrigatórias vazias no `.env` (ex: `SESSION_SECRET`, `CONDO_CNPJ`, `RELAY_CONTROLLER_IP` ou `LOCAL_SERVER_IP`).
+- **Ação Corretiva:** Edite o `.env`, preencha todas as variáveis obrigatórias com valores válidos e reinicie: `docker compose up -d dooria-app`.
+- **Resultado Esperado:** O log exibe `[Enlace-DoorIA] Servidor operacional na porta 3000` e o container permanece com status `Up`.
 
 ---
 
-## 4. Diagnóstico de Acionamento dos Portões e Comandos DTMF
-
-### 4.1. Falha: `Não foi possível determinar inequivocamente o canal SIP da chamada XPE`
-- **Sintoma:** Ao clicar no botão de abertura do portão no PWA, o sistema retorna erro HTTP 502 com a mensagem acima e o relé não é acionado.
-- **Causa Raiz 1:** A chamada de interfone já foi finalizada antes do clique de abertura (o canal PJSIP correspondente foi destruído pelo Asterisk).
-- **Causa Raiz 2:** Existem múltiplos canais ativos simultâneos no Asterisk e a requisição não informou o `UniqueID` ou o canal preferencial, ativando a proteção de cancelamento por ambiguidade.
-- **Solução:**
-  1. Durante a chamada ativa, consulte os canais no Asterisk:
-     ```bash
-     docker exec dooria-asterisk asterisk -rx 'core show channels'
-     ```
-  2. Verifique se o canal do XPE possui formato reconhecido (`PJSIP/totem-xpe-...` ou `PJSIP/8000-...`). O sistema associa automaticamente chamadas originadas no contexto `dooria-totem`.
-  3. Certifique-se de que o visitante não encerrou a chamada antes da liberação do portão.
-
-### 4.2. Falha: `Código DTMF não autorizado para acionamento de portão físico`
-- **Sintoma:** A requisição é rejeitada com código HTTP 400.
-- **Causa Raiz:** O comando enviado difere da lista homologada (`*07`, `*08`, `07`, `08`).
-- **Comportamento Seguro:** O `PolicyEngine` intercepta comandos maliciosos ou incorretos (ex: `*09`, `09`, `*99`, `99`) antes que qualquer ação seja disparada no Asterisk AMI. Nenhuma ação física é executada.
-
-### 4.3. Falha: `Bypass proibido: TRIGGER_METHOD=http_cgi não é permitido no modo físico da guarita`
-- **Sintoma:** Erro HTTP 403 reportado nos logs do Core.
-- **Causa Raiz:** A variável `TRIGGER_METHOD` no `.env` foi definida como `http_cgi` enquanto `DEPLOY_TARGET` está como `physical_guarita`.
-- **Solução:** Em guarita física real, todo acionamento do totem é obrigatoriamente executado via injeção DTMF (`*07` ou `*08`) decodificada e enviada ao quadro elétrico blindado. Defina `TRIGGER_METHOD=dtmf` no arquivo `.env`.
+### Cenário 2: PostgreSQL não Fica Saudável (Container `unhealthy`)
+- **Arquivos Relevantes:** `docker-compose.yml`, volume `dooria_pg_data`.
+- **Comandos de Inspeção:**
+  ```bash
+  docker compose logs postgres
+  docker exec dooria-postgres pg_isready -h localhost -p 5432 -U dooria -d dooria_db
+  ```
+- **Logs Característicos:**
+  `FATAL: password authentication failed for user "dooria"` ou `FATAL: lock file "postmaster.pid" already exists`.
+- **Causa Provável:** Divergência na senha do PostgreSQL entre o arquivo `.env` e o volume existente inicializado anteriormente, ou arquivo de lock após reinício abrupto.
+- **Ação Corretiva:** Verifique a senha no `.env`. Em caso de lock residual, pare o container (`docker compose stop postgres`), remova o postmaster.pid no volume e reinicie.
+- **Resultado Esperado:** `pg_isready` retorna código 0 (`accepting connections`) e o container atinge status `healthy`.
 
 ---
 
-## 5. Diagnóstico de Sensores Físicos (Reed Switch) e Status de Confirmação
-
-### 5.1. O acionamento ocorreu, mas o status ficou `COMMAND_SENT` em vez de `HARDWARE_CONFIRMED`
-- **Causa Raiz 1 (Ausência de Sensor):** Não há sensor de fim de curso (reed switch) instalado na porta ou o borne de entrada digital está desconectado. O sistema recusa emitir `HARDWARE_CONFIRMED` sem validação mecânica comprovada.
-- **Causa Raiz 2 (Sensor Fechado):** O pulso elétrico foi enviado, mas o portão continuou fisicamente fechado (ex: trava mecânica emperrada ou motor sem energia).
-- **Causa Raiz 3 (Mau Contato / Distância do Ímã):** A distância entre o sensor magnético e a folha do portão ultrapassa 15mm, impedindo a detecção da abertura.
-- **Procedimento de Teste:**
-  1. Teste a leitura do sensor via API ou controlador:
-     ```bash
-     curl -s http://192.168.1.160/status/sensor/1
-     ```
-  2. Abra manualmente a folha do portão afastando o ímã: o status deve alternar imediatamente de `fechado` para `aberto`.
-  3. Acione o botão de abertura com o portão aberto: o sistema registrará `HARDWARE_CONFIRMED` na auditoria do banco de dados.
-
----
-
-## 6. Diagnóstico de Câmeras IP, RTSP e Digest Auth (RFC 2617)
-
-### 6.1. Teste de Conectividade com a Câmera IP
-```bash
-# Testar se a porta RTSP padrão está aberta na câmera
-nc -zv 192.168.1.150 554
-
-# Testar handshake OPTIONS via curl ou ferramenta RTSP
-curl -i -X OPTIONS rtsp://192.168.1.150:554/cam/realmonitor?channel=1&subtype=0
-```
-
-### 6.2. Falha de Autenticação RTSP: `RTSP_AUTH_UNSUPPORTED_QOP`
-- **Sintoma:** O validador de câmeras reporta falha de autenticação com o código `RTSP_AUTH_UNSUPPORTED_QOP`.
-- **Causa Raiz:** A câmera está configurada com proteção Digest restrita a `qop="auth-int"` (integridade com cálculo de hash do corpo da mensagem), que não é suportado pelo protocolo RTSP padrão de streaming.
-- **Solução:** Na interface web da câmera IP ou do Totem Intelbras, acesse o menu *Segurança / Autenticação* e altere o modo para **Digest (MD5)** com suporte a `qop="auth"` básico.
-
-### 6.3. Falha: `Linha m=video ausente no SDP retornado`
-- **Sintoma:** O comando DESCRIBE autenticado é aceito pela câmera, mas o status da câmera não atinge `STREAM_VALIDATED`.
-- **Causa Raiz:** A URL RTSP aponta para uma sub-stream configurada com codec de vídeo desativado ou apenas canal de áudio.
-- **Solução:** Acesse a interface web da câmera e garanta que o canal secundário (Sub-stream / Perfil T) possui codec de vídeo **H.264** ativado com taxa de quadros (FPS) entre 15 e 30 fps.
+### Cenário 3: Migration Falha ao Iniciar a Aplicação
+- **Arquivos Relevantes:** `src/db/migrate.ts`, `src/db/schema.ts`, pasta `src/db/migrations/`.
+- **Comandos de Inspeção:**
+  ```bash
+  docker compose run --rm -e NODE_ENV=production dooria-app npm run db:migrate
+  docker exec -it dooria-postgres psql -U dooria -d dooria_db -c "\dt"
+  ```
+- **Logs Característicos:**
+  `error: relation "xyz" already exists` ou `FATAL ERROR: FALHA NO STARTUP DO POSTGRESQL (STARTUP FAILURE)`.
+- **Causa Provável:** Inconsistência entre a tabela `__drizzle_migrations` e as tabelas existentes, ou ausência de permissões de escrita para o usuário `dooria`.
+- **Ação Corretiva:** Conecte-se ao banco via `psql`, garanta que o usuário possui privilégios de `OWNER` no schema `public`, ou execute a migração manual com o comando de inspeção acima.
+- **Resultado Esperado:** O comando finaliza com `[DB Migrations] Migrações aplicadas com sucesso.` e as 14 tabelas são listadas.
 
 ---
 
-## 7. Diagnóstico do Gateway go2rtc (v1.9.4) e WebRTC
-
-### 7.1. Verificação da API do go2rtc
-```bash
-# Consultar a lista de streams registradas no go2rtc
-curl -s http://127.0.0.1:1984/api/streams | jq .
-```
-Se a resposta retornar `{}` (vazio), o arquivo de configuração `/config/go2rtc.yaml` não possui streams ativas ou os links RTSP falharam na inicialização.
-
-### 7.2. Erro de Conexão: `ECONNREFUSED 127.0.0.1:1984` dentro do container Core
-- **Sintoma:** O Core reporta erro de timeout ao tentar consultar a API do go2rtc.
-- **Causa Raiz:** A variável `GO2RTC_API_URL` foi configurada como `http://localhost:1984` ou `http://127.0.0.1:1984` dentro do container `dooria-core`. Como o Core roda na bridge do Docker e o go2rtc roda em `network_mode: host`, `localhost` dentro do container refere-se ao próprio container!
-- **Solução:** Configure `GO2RTC_API_URL=http://172.28.0.1:1984` (IP do gateway da bridge) ou `http://192.168.1.100:1984` (IP da LAN do servidor) no arquivo `.env`.
-
-### 7.3. WebRTC no Navegador: Tela Preta ou Vídeo em "Conectando..."
-- **Causa Raiz 1 (Codec H.265 Incompatível):** Câmeras configuradas com codec de vídeo H.265 / HEVC requerem decodificadores específicos que nem todos os navegadores suportam nativamente via WebRTC sem transcodificação.
-  - **Solução:** Configure a câmera IP para emitir stream em **H.264 (Baseline ou Main Profile)**.
-- **Causa Raiz 2 (Portas WebRTC Bloqueadas):** A porta `8555` (TCP e UDP) não está liberada no firewall do host.
-  - **Solução:** Execute `sudo ufw allow 8555/tcp && sudo ufw allow 8555/udp`.
-- **Causa Raiz 3 (Certificado Autoassinado / WSS):** Se o acesso ao PWA for realizado via HTTPS, o navegador bloqueia conexões WebSocket inseguras (`ws://`). É obrigatório ter proxy com terminação TLS (Traefik ou Nginx) ou acessar localmente via HTTP durante a homologação em bancada.
+### Cenário 4: Asterisk não Inicia (Container `dooria-asterisk` Cai no Boot)
+- **Arquivos Relevantes:** `config/asterisk/asterisk-entrypoint.sh`, `config/asterisk/pjsip.conf`, `config/asterisk/manager.conf`.
+- **Comandos de Inspeção:**
+  ```bash
+  docker compose logs asterisk
+  docker exec -it dooria-asterisk asterisk -rx 'core show version'
+  ```
+- **Logs Característicos:**
+  `Unable to bind socket: Address already in use` ou `Permission denied /etc/asterisk/manager.conf`.
+- **Causa Provável:** Conflito de porta UDP 5060 no host (ex: outro serviço de telefonia rodando no host da VM) ou erro de permissão no script `asterisk-entrypoint.sh`.
+- **Ação Corretiva:** Execute `sudo lsof -i :5060` no host para identificar processos concorrentes. Aplique `chmod +x config/asterisk/*.sh` e suba novamente.
+- **Resultado Esperado:** O processo Asterisk permanece ativo em `network_mode: host` respondendo à CLI.
 
 ---
 
-## 8. Diagnóstico do Banco de Dados PostgreSQL 16 LTS
-
-### 8.1. Verificação de Saúde do PostgreSQL
-```bash
-# Verificar se o servidor do PostgreSQL está aceitando conexões
-docker exec dooria-postgres pg_isready -h localhost -p 5432 -U dooria -d dooria_db
-```
-Se o retorno for `accepting connections`, o banco está saudável.
-
-### 8.2. Inspecionar as 14 Tabelas Oficiais no Banco de Dados
-Acesse a CLI `psql`:
-```bash
-docker exec -it dooria-postgres psql -U dooria -d dooria_db -c "\dt"
-```
-A listagem deve conter:
-- `condominium_config`
-- `xpe_config`
-- `units`
-- `residents`
-- `vehicles`
-- `gates`
-- `camera_devices`
-- `active_calls`
-- `call_logs`
-- `financial_bills`
-- `audit_logs`
-- `visitor_invites`
-- `package_deliveries`
-- `lpr_logs`
-
-### 8.3. Execução Forçada de Migrações do Drizzle ORM
-Caso alguma tabela esteja ausente ou o schema tenha sofrido atualização:
-```bash
-docker compose run --rm -e NODE_ENV=production dooria-app npm run db:migrate
-```
+### Cenário 5: Totem Intelbras XPE não Registra (SIP 401 / 403 Forbidden)
+- **Arquivos Relevantes:** `config/asterisk/pjsip.conf`, interface web do XPE.
+- **Comandos de Inspeção:**
+  ```bash
+  docker exec -it dooria-asterisk asterisk -rx 'pjsip show endpoints'
+  docker exec -it dooria-asterisk asterisk -rx 'pjsip set logger on'
+  ```
+- **Logs Característicos:**
+  `<--- Received SIP request (492 bytes) from UDP:192.168.1.150:5060 ---> REGISTER sip:...` seguido de `401 Unauthorized`.
+- **Causa Provável:** Divergência na senha de autenticação configurada na interface web do totem XPE e a declarada em `auth_totem` no `pjsip.conf`.
+- **Ação Corretiva:** Ajuste a senha no painel do XPE (menu *Rede / SIP*) exatamente igual a `XPE_SIP_SECRET` do `.env`. Recarregue o PJSIP: `docker exec dooria-asterisk asterisk -rx 'pjsip reload'`.
+- **Resultado Esperado:** `pjsip show endpoints` exibe o endpoint `totem-xpe` com status `Avail`.
 
 ---
 
-## 9. Contenção Global e Diagnóstico de Frontend (`ErrorBoundary`)
+### Cenário 6: AMI não Conecta (Erro na Porta 5038 / `Authentication Failed`)
+- **Arquivos Relevantes:** `config/asterisk/manager.conf`, `src/services/AsteriskAMI.ts`, `.env`.
+- **Comandos de Inspeção:**
+  ```bash
+  docker exec -it dooria-core nc -zv 172.28.0.1 5038
+  docker exec -it dooria-asterisk asterisk -rx 'manager show settings'
+  docker exec -it dooria-asterisk asterisk -rx 'manager show users'
+  ```
+- **Logs Característicos:**
+  `[AsteriskAMI] Falha de autenticação no Asterisk AMI: Bad credentials` ou `Connection refused`.
+- **Causa Provável:** A subnet Docker bridge (`172.28.0.0/24`) não está liberada na diretiva `permit` do `manager.conf`, ou o `ASTERISK_AMI_SECRET` está divergente.
+- **Ação Corretiva:** Certifique-se de que `/etc/asterisk/manager.conf` possui `permit = 172.28.0.0/255.255.255.0` e recarregue com `asterisk -rx 'manager reload'`.
+- **Resultado Esperado:** O endpoint `/health/ready` responde HTTP 200 com `ami: { status: "online", ping: "pong" }`.
 
-O frontend React é protegido na raiz por um componente de contenção de erros (`ErrorBoundary.tsx`):
-- **Prevenção de White Screen:** Caso ocorra qualquer exceção não tratada em componentes filhos, a aplicação não exibe tela em branco.
-- **Painel de Diagnóstico:** Uma tela técnica exibe a mensagem de erro, o componente causador e um botão para "Recarregar Aplicação".
-- **Log Seguro Automático:** O erro é sanitizado e despachado automaticamente via requisição `POST /api/v1/log-error` para o servidor Node.js, registrando o incidente estruturado no terminal com IP e contexto, sem risco de loop infinito.
+---
+
+### Cenário 7: Chamada de Interfone não Chega ao Residente
+- **Arquivos Relevantes:** `config/asterisk/extensions.conf`, `src/services/AsteriskAMI.ts`.
+- **Comandos de Inspeção:**
+  ```bash
+  docker exec -it dooria-asterisk asterisk -rx 'core show channels'
+  docker exec -it dooria-asterisk asterisk -rx 'pjsip show contacts'
+  ```
+- **Logs Característicos:**
+  `[DOORIA] Discagem do Totem para Apartamento 101` seguido de `DIALSTATUS = CHANUNAVAIL`.
+- **Causa Provável:** O ramal da unidade (ex: `101`) não está conectado via WebPhone WebRTC (porta WSS 8089) ou a discagem no totem foi direcionada a contexto incorreto.
+- **Ação Corretiva:** Abra a interface do morador no navegador para autenticar e registrar o WebPhone. Verifique no Asterisk se o contato correspondente está registrado.
+- **Resultado Esperado:** A chamada entra no contexto `dooria-totem`, o Asterisk estabelece o canal e o navegador exibe o modal de atendimento.
+
+---
+
+### Cenário 8: DTMF não Aciona o Portão (`*07` / `*08` sem Abertura)
+- **Arquivos Relevantes:** `src/services/hardware/RealHardwareAdapter.ts`, `src/services/AsteriskAMI.ts`.
+- **Comandos de Inspeção:**
+  ```bash
+  docker compose logs --tail=50 dooria-core | grep REAL_HARDWARE
+  docker exec -it dooria-asterisk asterisk -rx 'core show channels'
+  ```
+- **Logs Característicos:**
+  `[REAL_HARDWARE] Canal SIP inexistente, inativo ou não correlacionado à chamada do XPE no Asterisk. PlayDTMF abortado.`
+- **Causa Provável:** A chamada de áudio já foi finalizada antes do clique de abertura, ou existem canais ambíguos sem identificador único (`UniqueID`).
+- **Ação Corretiva:** Mantenha a chamada de áudio ativa entre o totem e o morador durante o clique de abertura. O sistema correlacionará o canal e enviará o `PlayDTMF`.
+- **Resultado Esperado:** O Asterisk injeta o áudio DTMF, o relé do quadro elétrico atua e o retorno é `COMMAND_SENT`.
+
+---
+
+### Cenário 9: Sensor Reed Switch não Confirma Abertura (Permanece `COMMAND_SENT`)
+- **Arquivos Relevantes:** `src/services/hardware/RealHardwareAdapter.ts`, módulo de entrada digital do relé.
+- **Comandos de Inspeção:**
+  ```bash
+  curl -s http://192.168.1.160/status/sensor/1
+  ```
+- **Logs Característicos:**
+  `[REAL_HARDWARE] Leitura física do sensor: fechado (hasPhysicalSensor: true). Status final: COMMAND_SENT.`
+- **Causa Provável:** O pulso do relé foi enviado, mas o portão não se moveu (falta de energia no motor), o ímã não se afastou mais de 15mm do sensor, ou fio rompido.
+- **Ação Corretiva:** Inspecione o alinhamento mecânico do ímã e teste a continuidade elétrica no borne digital do controlador ao abrir manualmente o portão.
+- **Resultado Esperado:** A leitura do sensor alterna para `aberto`, e a auditoria transiciona para `HARDWARE_CONFIRMED`.
+
+---
+
+### Cenário 10: Câmera IP não Valida no Módulo de CFTV
+- **Arquivos Relevantes:** `src/services/CameraValidator.ts`, `.env`.
+- **Comandos de Inspeção:**
+  ```bash
+  nc -zv 192.168.1.150 554
+  curl -i -X OPTIONS rtsp://192.168.1.150:554/live
+  ```
+- **Logs Característicos:**
+  `[CameraValidator] Falha ao conectar socket TCP: ECONNREFUSED na porta 554.`
+- **Causa Provável:** Câmera desligada, IP incorreto no `.env`, ou serviço RTSP desativado na interface web da câmera.
+- **Ação Corretiva:** Acesse o painel da câmera IP, confirme que o protocolo RTSP está ativo na porta 554 e que o IP está estático na LAN.
+- **Resultado Esperado:** O socket conecta e o handshake atinge `TCP_REACHABLE` e `RTSP_VALIDATED`.
+
+---
+
+### Cenário 11: RTSP Retorna 401 Unauthorized e Bloqueia
+- **Arquivos Relevantes:** `src/services/CameraValidator.ts`, `.env`.
+- **Comandos de Inspeção:**
+  ```bash
+  curl -i -X DESCRIBE rtsp://192.168.1.150:554/cam/realmonitor?channel=1&subtype=0
+  ```
+- **Logs Característicos:**
+  `RTSP/1.0 401 Unauthorized` com cabeçalho `WWW-Authenticate: Digest realm="..."`.
+- **Causa Provável:** Senha da câmera incorreta declarada no `.env` (`XPE_RTSP_PASSWORD`).
+- **Ação Corretiva:** Atualize as credenciais no `.env` e reinicie a aplicação. O validador utilizará o cálculo Digest RFC 2617.
+- **Resultado Esperado:** A resposta seguinte retorna `RTSP/1.0 200 OK` e o payload SDP de vídeo.
+
+---
+
+### Cenário 12: Digest Auth Falha com `RTSP_AUTH_UNSUPPORTED_QOP`
+- **Arquivos Relevantes:** `src/services/CameraValidator.ts`.
+- **Logs Característicos:**
+  `[CameraValidator] ❌ Falha de segurança: Challenge exige qop="auth-int", que não é suportado pelo protocolo RTSP.`
+- **Causa Provável:** A câmera IP está configurada com proteção rigorosa `auth-int` (integridade de corpo de mensagem).
+- **Ação Corretiva:** Na interface da câmera (menu *Segurança / Autenticação*), mude o modo Digest para compatibilidade padrão (`qop="auth"` ou MD5 simples).
+- **Resultado Esperado:** O validador processa o challenge com `qop=auth` e extrai os parâmetros SDP de vídeo.
+
+---
+
+### Cenário 13: go2rtc não Registra a Stream na API
+- **Arquivos Relevantes:** `config/go2rtc.yaml`, `deploy.sh`.
+- **Comandos de Inspeção:**
+  ```bash
+  curl -s http://127.0.0.1:1984/api/streams | jq .
+  docker compose logs go2rtc
+  ```
+- **Logs Característicos:**
+  A resposta da API retorna `{}` (vazio) ou `[streams] probe error`.
+- **Causa Provável:** A câmera não está habilitada (`CAMERA_PORTARIA_ENABLED=false`) ou a URL RTSP correspondente está vazia no `.env`.
+- **Ação Corretiva:** Certifique-se de que `CAMERA_PORTARIA_ENABLED=true` e `GO2RTC_CAMERA_PORTARIA_URL` contém a URL RTSP completa. Execute `./deploy.sh` para regenerar o `go2rtc.yaml`.
+- **Resultado Esperado:** A stream `camera_portaria` é exibida no JSON da API com status ativo.
+
+---
+
+### Cenário 14: WebRTC não Conecta (Vídeo Travado em "Conectando...")
+- **Arquivos Relevantes:** `src/components/WebRtcLivePlayer.tsx`, firewall UFW.
+- **Comandos de Inspeção:**
+  ```bash
+  sudo ufw status | grep 8555
+  ```
+- **Logs Característicos no Navegador:**
+  `ICE connection state failed` ou `RTCPeerConnection: connectionState -> failed`.
+- **Causa Provável:** Porta WebRTC `8555` (TCP e UDP) bloqueada no firewall da VM, impedindo a passagem dos pacotes de mídia entre o go2rtc e o navegador.
+- **Ação Corretiva:** Libere a porta: `sudo ufw allow 8555/tcp && sudo ufw allow 8555/udp`. Recarregue a página no navegador.
+- **Resultado Esperado:** O ICE estabelece estado `connected` e a stream de vídeo começa a fluir.
+
+---
+
+### Cenário 15: PWA não Apresenta Vídeo (Tela Preta ou Codec Incompatível)
+- **Arquivos Relevantes:** Interface da câmera IP, `WebRtcLivePlayer.tsx`.
+- **Logs Característicos no Console do Navegador:**
+  `Failed to execute 'setRemoteDescription' on 'RTCPeerConnection': Unsupported video codec` ou tela preta contínua com timer zerado.
+- **Causa Provável:** A câmera IP está configurada com codec de vídeo **H.265 / HEVC**, que não é suportado nativamente pelo decodificador WebRTC da maioria dos navegadores sem transcodificação.
+- **Ação Corretiva:** Na interface da câmera IP, altere o codec da stream para **H.264 (Baseline ou Main Profile)**.
+- **Resultado Esperado:** O navegador recebe os pacotes de mídia e renderiza a imagem em tempo real com latência sub-50ms.
