@@ -125,7 +125,8 @@ export class CameraValidationService {
     error?: string;
     streamsCount?: number;
   }> {
-    const apiUrl = options.go2rtcApiUrl || process.env.GO2RTC_API_URL || 'http://127.0.0.1:1984';
+    const defaultHost = process.env.LOCAL_SERVER_IP || (process.env.DEPLOY_TARGET === 'physical_guarita' ? '172.28.0.1' : '127.0.0.1');
+    const apiUrl = options.go2rtcApiUrl || process.env.GO2RTC_API_URL || `http://${defaultHost}:1984`;
     const timeoutMs = options.timeoutMs ?? 2000;
     const start = Date.now();
 

@@ -75,8 +75,10 @@ services:
       XPE_RTSP_USERNAME: "${XPE_RTSP_USERNAME:?Erro de Seguranca - XPE_RTSP_USERNAME e estritamente obrigatorio em producao}"
       XPE_RTSP_PASSWORD: "${XPE_RTSP_PASSWORD:?Erro de Seguranca - XPE_RTSP_PASSWORD e estritamente obrigatorio em producao}"
       RELAY_CONTROLLER_IP: "${RELAY_CONTROLLER_IP:?Erro de Seguranca - RELAY_CONTROLLER_IP e estritamente obrigatorio em producao}"
-      GO2RTC_API_URL: "${GO2RTC_API_URL:-http://localhost:1984}"
+      GO2RTC_API_URL: "${GO2RTC_API_URL:-http://${LOCAL_SERVER_IP:-172.28.0.1}:1984}"
       GEMINI_API_KEY: "${GEMINI_API_KEY:-}"
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
     ports:
       - "3000:3000"
     healthcheck:
@@ -112,7 +114,7 @@ services:
       retries: 3
       start_period: 15s
 
-  # 4. GO2RTC (STREAMING WEBRTC RTSP SUB-50MS)
+  # 4. GO2RTC (STREAMING WEBRTC RTSP)
   go2rtc:
     image: alexxit/go2rtc:v1.9.4
     container_name: dooria-go2rtc
@@ -120,6 +122,12 @@ services:
     network_mode: host
     volumes:
       - ./config/go2rtc.yaml:/config/go2rtc.yaml
+    environment:
+      LOCAL_SERVER_IP: "${LOCAL_SERVER_IP:-127.0.0.1}"
+      GO2RTC_CAMERA_PORTARIA_URL: "${GO2RTC_CAMERA_PORTARIA_URL:-}"
+      GO2RTC_CAMERA_GARAGEM_URL: "${GO2RTC_CAMERA_GARAGEM_URL:-}"
+      GO2RTC_CAMERA_HALL_URL: "${GO2RTC_CAMERA_HALL_URL:-}"
+      GO2RTC_CAMERA_GOURMET_URL: "${GO2RTC_CAMERA_GOURMET_URL:-}"
     healthcheck:
       test: ["CMD-SHELL", "wget -q -O - http://127.0.0.1:1984/api || exit 1"]
       interval: 10s

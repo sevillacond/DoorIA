@@ -206,6 +206,24 @@ export function validateProductionConfig(isProduction = process.env.NODE_ENV ===
         `[CRÍTICO] TRIGGER_METHOD=http_cgi is not permitted when DEPLOY_TARGET=${deployTarget}. Use Asterisk AMI + PJSIP PlayDTMF (*07/*08). Bypass HTTP CGI rejeitado.`
       );
     }
+
+    // 8. VALIDAÇÃO DETERMINÍSTICA DO GATEWAY DE VÍDEO GO2RTC
+    const go2rtcApiUrl = (process.env.GO2RTC_API_URL || '').trim();
+    if (!go2rtcApiUrl) {
+      errors.push('[CRÍTICO] GO2RTC_API_URL é obrigatório em ambiente de guarita física.');
+    } else {
+      try {
+        const parsedGo2rtcUrl = new URL(go2rtcApiUrl);
+        const host = parsedGo2rtcUrl.hostname.toLowerCase();
+        if (host === 'localhost' || host === '127.0.0.1') {
+          errors.push(
+            `[CRÍTICO] GO2RTC_API_URL não pode apontar para loopback (${host}) em ambiente de guarita física. O DoorIA Core roda em container bridge (dooria-network) e o go2rtc roda em network_mode: host. Utilize o IP da guarita (LOCAL_SERVER_IP), o gateway Docker (172.28.0.1) ou host.docker.internal.`
+          );
+        }
+      } catch {
+        errors.push('[CRÍTICO] GO2RTC_API_URL deve ser uma URL válida (ex: http://192.168.1.100:1984 ou http://172.28.0.1:1984).');
+      }
+    }
   }
 
   const valid = errors.length === 0;

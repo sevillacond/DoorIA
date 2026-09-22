@@ -20,7 +20,7 @@ Este guia documenta os passos completos para implantar o sistema **Enlace-DoorIA
 | Porta | Protocolo | Serviço | Descrição |
 |---|---|---|---|
 | **3000** | TCP | Node.js / Express | Aplicação Web DoorIA e APIs REST |
-| **5432** | TCP | PostgreSQL 16 LTS | Banco de dados puro local relacional (ACID) |
+| **5432** | TCP | PostgreSQL 16 LTS | Banco de dados puro local — acesso interno à rede Docker (não publicado na LAN por segurança) |
 | **5060** | UDP | Asterisk PJSIP | Sinalização SIP dos totens e ramais |
 | **8089** | TCP | Asterisk WSS | WebPhone WebRTC via WebSocket Seguro |
 | **10000-20000** | UDP | Asterisk RTP | Fluxo de áudio e voz em tempo real |
@@ -130,8 +130,10 @@ services:
       XPE_RTSP_USERNAME: "${XPE_RTSP_USERNAME:?Erro de Seguranca - XPE_RTSP_USERNAME e estritamente obrigatorio em producao}"
       XPE_RTSP_PASSWORD: "${XPE_RTSP_PASSWORD:?Erro de Seguranca - XPE_RTSP_PASSWORD e estritamente obrigatorio em producao}"
       RELAY_CONTROLLER_IP: "${RELAY_CONTROLLER_IP:?Erro de Seguranca - RELAY_CONTROLLER_IP e estritamente obrigatorio em producao}"
-      GO2RTC_API_URL: "${GO2RTC_API_URL:-http://localhost:1984}"
+      GO2RTC_API_URL: "${GO2RTC_API_URL:-http://${LOCAL_SERVER_IP:-172.28.0.1}:1984}"
       GEMINI_API_KEY: "${GEMINI_API_KEY:-}"
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
     ports:
       - "3000:3000"
     healthcheck:
@@ -175,6 +177,12 @@ services:
     network_mode: host
     volumes:
       - ./config/go2rtc.yaml:/config/go2rtc.yaml
+    environment:
+      LOCAL_SERVER_IP: "${LOCAL_SERVER_IP:-127.0.0.1}"
+      GO2RTC_CAMERA_PORTARIA_URL: "${GO2RTC_CAMERA_PORTARIA_URL:-}"
+      GO2RTC_CAMERA_GARAGEM_URL: "${GO2RTC_CAMERA_GARAGEM_URL:-}"
+      GO2RTC_CAMERA_HALL_URL: "${GO2RTC_CAMERA_HALL_URL:-}"
+      GO2RTC_CAMERA_GOURMET_URL: "${GO2RTC_CAMERA_GOURMET_URL:-}"
     healthcheck:
       test: ["CMD-SHELL", "wget -q -O - http://127.0.0.1:1984/api || exit 1"]
       interval: 10s
@@ -265,7 +273,8 @@ Para evitar falsos positivos na auditoria, os subsistemas de validação operam 
    - Consulta HTTP a `GET /api/streams` no go2rtc;
    - Se o gateway responde: status `GO2RTC_GATEWAY_REACHABLE`;
    - Se a stream está cadastrada: status `GO2RTC_STREAM_REGISTERED`;
-   - **Regra de Ouro:** A existência de stream no go2rtc **NÃO** significa `WEBRTC_VALIDATED` e `webrtcValidated` permanece `false`.
+   - **Regra de Ouro:** A existência de stream no go2rtc **NÃO** significa `WEBRTC_VALIDATED` e `webrtcValidated` permanece `false`;
+   - **Topologia de Conectividade Bridge → Host:** O container `dooria-app` roda na rede bridge `dooria-network` (172.28.0.0/24), enquanto o `go2rtc` opera em `network_mode: host`. O Core conecta-se deterministicamente ao go2rtc via gateway da rede Docker (`172.28.0.1`), `host.docker.internal` ou IP da guarita (`LOCAL_SERVER_IP`), sendo proibido o uso de `localhost` interno do container em ambiente de produção física.
 
 3. **Validação WebRTC Ponta a Ponta (`WEBRTC_VALIDATED`):**
    - Reservada exclusivamente para a prova ponta a ponta com negociação PeerConnection real e recebimento comprovado de frames no cliente;

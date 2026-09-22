@@ -371,7 +371,7 @@ export const HelpModule: React.FC<HelpModuleProps> = ({
                   </div>
                   <div className="flex justify-between py-1.5">
                     <span className="text-slate-500">URL RTSP go2rtc:</span>
-                    <span className="font-mono font-bold text-slate-800 dark:text-slate-200 truncate max-w-[200px]" title="rtsp://admin:admin@192.168.1.150:554/cam/realmonitor?channel=1&subtype=0">
+                    <span className="font-mono font-bold text-slate-800 dark:text-slate-200 truncate max-w-[200px]" title="rtsp://<USUARIO>:<SENHA>@192.168.1.150:554/cam/realmonitor?channel=1&subtype=0">
                       /cam/realmonitor?channel=1...
                     </span>
                   </div>
@@ -621,22 +621,25 @@ exten => *08,1,NoOp(Comando Abertura Garagem)
                 <button
                   onClick={() => copyToClipboard(`streams:
   # Câmera 01: Totem Intelbras XPE 3115-IP (Calçada Entrada)
-  cam-01: rtsp://admin:admin@192.168.1.150:554/cam/realmonitor?channel=1&subtype=0
+  cam-01: \${GO2RTC_CAMERA_PORTARIA_URL}
 
   # Câmera 02: Eclusa de Pedestres
-  cam-02: rtsp://admin:Intelbras2026@192.168.1.151:554/cam/realmonitor?channel=1&subtype=0
+  cam-02: \${GO2RTC_CAMERA_ECLUSA_URL}
 
   # Câmera 03: Portão Garagem Veicular (LPR / Placas)
-  cam-03: rtsp://admin:Hikvision2026@192.168.1.152:554/Streaming/Channels/101
+  cam-03: \${GO2RTC_CAMERA_GARAGEM_URL}
 
   # Câmera 04: Hall dos Elevadores
-  cam-04: rtsp://admin:Intelbras2026@192.168.1.153:554/cam/realmonitor?channel=1&subtype=0
+  cam-04: \${GO2RTC_CAMERA_HALL_URL}
 
 api:
   listen: ":1984"
+  origin: ""
 
 webrtc:
-  listen: ":8555"`, 'go2rtc')}
+  listen: ":8555/tcp"
+  candidates:
+    - "\${LOCAL_SERVER_IP}:8555"`, 'go2rtc')}
                   className="px-2.5 py-1 rounded-lg bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 text-slate-700 dark:text-slate-300 font-mono text-[11px] flex items-center gap-1 cursor-pointer transition"
                 >
                   <Copy className="w-3 h-3" />
@@ -647,22 +650,25 @@ webrtc:
               <pre className="p-4 rounded-2xl bg-[#070d18] text-slate-300 font-mono text-xs overflow-x-auto border border-slate-800 leading-relaxed">
 {`streams:
   # Câmera 01: Totem Intelbras XPE 3115-IP (Calçada Entrada)
-  cam-01: rtsp://admin:admin@192.168.1.150:554/cam/realmonitor?channel=1&subtype=0
+  cam-01: \${GO2RTC_CAMERA_PORTARIA_URL}
 
   # Câmera 02: Eclusa de Pedestres
-  cam-02: rtsp://admin:Intelbras2026@192.168.1.151:554/cam/realmonitor?channel=1&subtype=0
+  cam-02: \${GO2RTC_CAMERA_ECLUSA_URL}
 
   # Câmera 03: Portão Garagem Veicular (LPR / Placas)
-  cam-03: rtsp://admin:Hikvision2026@192.168.1.152:554/Streaming/Channels/101
+  cam-03: \${GO2RTC_CAMERA_GARAGEM_URL}
 
   # Câmera 04: Hall dos Elevadores
-  cam-04: rtsp://admin:Intelbras2026@192.168.1.153:554/cam/realmonitor?channel=1&subtype=0
+  cam-04: \${GO2RTC_CAMERA_HALL_URL}
 
 api:
   listen: ":1984"
+  origin: ""
 
 webrtc:
-  listen: ":8555"`}
+  listen: ":8555/tcp"
+  candidates:
+    - "\${LOCAL_SERVER_IP}:8555"`}
               </pre>
             </div>
           </div>

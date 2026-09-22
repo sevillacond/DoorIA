@@ -289,13 +289,13 @@ export async function runRegressionTests() {
   const dirtyCameraObj = {
     id: 'cam-test',
     name: 'Câmera Teste',
-    rtspUrl: 'rtsp://admin:intelbras2026@192.168.1.100:554/stream',
-    username: 'admin',
-    password: 'intelbras2026',
-    credentials: { user: 'admin', pass: 'intelbras2026' },
-    defaultCredentialsHint: 'admin/admin',
-    suggestedRtspMain: 'rtsp://admin:intelbras2026@192.168.1.100:554/stream',
-    suggestedRtspSub: 'rtsp://admin:intelbras2026@192.168.1.100:554/stream_sub',
+    rtspUrl: 'rtsp://synthetic_test_user:synthetic_test_token_999@192.168.1.100:554/stream',
+    username: 'synthetic_test_user',
+    password: 'synthetic_test_token_999',
+    credentials: { user: 'synthetic_test_user', pass: 'synthetic_test_token_999' },
+    defaultCredentialsHint: 'synthetic_test_user/synthetic_test_token_999',
+    suggestedRtspMain: 'rtsp://synthetic_test_user:synthetic_test_token_999@192.168.1.100:554/stream',
+    suggestedRtspSub: 'rtsp://synthetic_test_user:synthetic_test_token_999@192.168.1.100:554/stream_sub',
   };
   const sanitizedCam = sanitizeCameraForClient(dirtyCameraObj);
 
@@ -312,7 +312,7 @@ export async function runRegressionTests() {
   // Nenhuma resposta ou payload pode vazar segredos críticos da infraestrutura
   const serializedPayload = JSON.stringify(sanitizedCam);
   const bannedSecrets = [
-    'intelbras2026',
+    'synthetic_test_token_999',
     process.env.XPE_RTSP_PASSWORD || 'XPE_RTSP_PASSWORD',
     process.env.ASTERISK_AMI_SECRET || 'ASTERISK_AMI_SECRET',
     process.env.POSTGRES_PASSWORD || 'POSTGRES_PASSWORD',
@@ -501,6 +501,7 @@ export async function runRegressionTests() {
     ASTERISK_AMI_SECRET: 'AmiSegredo2026!',
     ASTERISK_SIP_SERVER: '192.168.1.220',
     ASTERISK_SIP_PORT: '5060',
+    GO2RTC_API_URL: 'http://172.28.0.1:1984',
   };
 
   const backupEnv = { ...process.env };
@@ -728,8 +729,8 @@ export async function runRegressionTests() {
     model: 'VIP 3230 B LPR (Demo)',
     classification: 'MOCK_DEMO',
     isMock: true,
-    rtspUrl: 'rtsp://admin:secret123@192.168.1.102:554/cam',
-    defaultCredentialsHint: 'admin/secret123',
+    rtspUrl: 'rtsp://synthetic_cam_user:synthetic_cam_pass_123@192.168.1.102:554/cam',
+    defaultCredentialsHint: 'synthetic_cam_user/synthetic_cam_pass_123',
   };
   const sanitizedMockCam = sanitizeCameraForClient(mockCamera as any);
   assert((sanitizedMockCam as any).rtspUrl === undefined, 'Sanitizer: Deleta qualquer URL RTSP do objeto enviado ao frontend');
@@ -1097,6 +1098,38 @@ export async function runRegressionTests() {
       }
     }
     assert(allowedDemoHttpCgi, 'Cenário 4.7: CGI permitido fora do modo físico da guarita (DEPLOY_TARGET=demo)');
+
+    // 4.8 GO2RTC_API_URL AUSENTE EM PHYSICAL_GUARITA -> STARTUP FAILURE
+    const envGuaritaNoGo2rtc = { ...baseValidProdEnv, DEPLOY_TARGET: 'physical_guarita', GO2RTC_API_URL: '' };
+    process.env = envGuaritaNoGo2rtc as any;
+    let failedGuaritaNoGo2rtc = false;
+    try {
+      validateProductionConfig(true);
+    } catch (err: any) {
+      failedGuaritaNoGo2rtc = true;
+      assert(err.message.includes('STARTUP FAILURE'), 'Cenário 4.8: Startup cancelado para falta de GO2RTC_API_URL');
+      assert(err.message.includes('GO2RTC_API_URL é obrigatório'), 'Cenário 4.8: Erro explícito de GO2RTC_API_URL obrigatório');
+    }
+    assert(failedGuaritaNoGo2rtc, 'Cenário 4.8: Falha se GO2RTC_API_URL estiver ausente em physical_guarita');
+
+    // 4.9 GO2RTC_API_URL APONTANDO PARA LOOPBACK (LOCALHOST/127.0.0.1) EM PHYSICAL_GUARITA -> STARTUP FAILURE
+    const envGuaritaLoopbackGo2rtc = { ...baseValidProdEnv, DEPLOY_TARGET: 'physical_guarita', GO2RTC_API_URL: 'http://localhost:1984' };
+    process.env = envGuaritaLoopbackGo2rtc as any;
+    let failedGuaritaLoopbackGo2rtc = false;
+    try {
+      validateProductionConfig(true);
+    } catch (err: any) {
+      failedGuaritaLoopbackGo2rtc = true;
+      assert(err.message.includes('STARTUP FAILURE'), 'Cenário 4.9: Startup cancelado para loopback em GO2RTC_API_URL');
+      assert(err.message.includes('loopback'), 'Cenário 4.9: Erro explícito proibindo loopback no container bridge');
+    }
+    assert(failedGuaritaLoopbackGo2rtc, 'Cenário 4.9: Falha obrigatória se GO2RTC_API_URL usar localhost/127.0.0.1 em physical_guarita');
+
+    // 4.10 GO2RTC_API_URL VÁLIDA COM IP DO SERVIDOR OU GATEWAY DOCKER EM PHYSICAL_GUARITA -> APROVADO
+    const envGuaritaValidGo2rtc = { ...baseValidProdEnv, DEPLOY_TARGET: 'physical_guarita', GO2RTC_API_URL: 'http://172.28.0.1:1984' };
+    process.env = envGuaritaValidGo2rtc as any;
+    const resGuaritaValidGo2rtc = validateProductionConfig(true);
+    assert(resGuaritaValidGo2rtc.valid, 'Cenário 4.10: GO2RTC_API_URL com IP do gateway Docker (172.28.0.1) é validada com sucesso');
   } finally {
     process.env = backupProdEnv;
   }
@@ -1822,6 +1855,7 @@ export async function runRegressionTests() {
     process.env.ASTERISK_AMI_SECRET = 'AmiSecretPassword2026!';
     process.env.ASTERISK_SIP_SERVER = '192.168.1.100';
     process.env.ASTERISK_SIP_PORT = '5060';
+    process.env.GO2RTC_API_URL = 'http://172.28.0.1:1984';
 
     // Caso de violação: ASTERISK_AMI_PERMIT aberto para o mundo (0.0.0.0/0.0.0.0)
     process.env.ASTERISK_AMI_PERMIT = '0.0.0.0/0.0.0.0';
